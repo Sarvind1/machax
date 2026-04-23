@@ -1,0 +1,16 @@
+[     502ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[     569ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_react-dom_0bruynb._.js:15305
+[     609ms] Error: Cannot find the middleware module
+    at DevServer.runMiddleware (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/next-server.js:1184:23)
+    at async DevServer.runMiddleware (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/dev/next-dev-server.js:278:28)
+    at async NextNodeServer.handleCatchallMiddlewareRequest (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/next-server.js:392:26)
+    at async DevServer.handleRequestImpl (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/base-server.js:940:28)
+    at async (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/dev/next-dev-server.js:394:20)
+    at async Span.traceAsyncFn (file:///Users/sarvind/Projects/machax/node_modules/next/dist/trace/trace.js:164:20)
+    at async DevServer.handleRequest (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/dev/next-dev-server.js:390:24)
+    at async handleRoute (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/lib/router-utils/resolve-routes.js:352:33)
+    at async resolveRoutes (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/lib/router-utils/resolve-routes.js:608:28)
+    at async handleRequest (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/lib/router-server.js:314:96)
+    at async requestHandlerImpl (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/lib/router-server.js:514:13)
+    at async Server.requestListener (file:///Users/sarvind/Projects/machax/node_modules/next/dist/server/lib/start-server.js:225:13)
+[     608ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226

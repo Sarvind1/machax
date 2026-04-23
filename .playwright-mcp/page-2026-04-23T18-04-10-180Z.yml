@@ -1,0 +1,121 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - text: Macha
+      - img [ref=e5]:
+        - generic [ref=e11]: X
+    - generic [ref=e12]:
+      - generic [ref=e13]: beta · invite only
+      - generic [ref=e14]: made in Bengaluru
+  - generic [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e19]: your brain's new operating system
+      - heading "Why can't you just… decide? Because your brain has 47 tabs open and zero decisions made." [level=1] [ref=e21]:
+        - text: Why can't you just…
+        - emphasis [ref=e22]: decide?
+        - generic [ref=e23]: Because your brain has 47 tabs open and zero decisions made.
+      - paragraph [ref=e24]: Vent your raw ideas into a voice note. Your council of AI agents does the overthinking for you — debates it, cuts the fluff, picks one action. “Someday” becomes “scheduled.” You just… do the thing.
+      - generic [ref=e25]:
+        - textbox "email" [ref=e26]:
+          - /placeholder: you@somewhere.com
+        - button "Join the waitlist →" [ref=e27] [cursor=pointer]
+      - generic [ref=e34]: 2,847 overthinkers in the queue
+      - generic [ref=e35]: same spiral since freshman year
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]: You · 11:47 pm
+        - text: should i text her back or is that desperate
+      - generic [ref=e40]:
+        - generic [ref=e41]: Fomo · overthinker
+        - text: Define “desperate.” Is it desperate or is it honest? Also—when did you last reply within 5 mins to literally anyone?
+      - generic [ref=e42]:
+        - generic [ref=e43]: Didi · voice of reason
+        - text: Two options. (a) Reply now, keep it short. (b) Wait till morning, risk overthinking all night. That's it.
+      - generic [ref=e44]:
+        - generic [ref=e45]: Boss · the decider
+        - text: "Ruling: (a). Send it. Three words max. No re-reading."
+      - generic [ref=e46]:
+        - generic [ref=e47]: Hype · your cheerleader
+        - text: "Quest: “Brave Little Samosa” — send before you brush your teeth. +40 XP."
+      - generic [ref=e48]:
+        - generic [ref=e49]: You
+        - text: ok fine. sending.
+  - generic [ref=e52]:
+    - generic [ref=e53]:
+      - generic [ref=e54]:
+        - button "should I quit?" [ref=e55] [cursor=pointer]
+        - button "pay cut dilemma" [ref=e56] [cursor=pointer]
+      - generic [ref=e58]:
+        - generic [ref=e59]:
+          - generic [ref=e60]: You · 11:52 pm
+          - text: i can't tell if i should quit my job. i think i'm just tired??
+        - generic [ref=e61]:
+          - generic [ref=e62]: Fomo · overthinker
+          - text: Okay but "tired" is doing a lot of work there. Tired of the work, the people, the commute, or the story you're telling yourself? Also—when did you last feel un-tired? Name the day.
+        - generic [ref=e63]:
+          - generic [ref=e64]: Didi · voice of reason
+          - generic [ref=e65]: "Parking the existential bit. Real choices tonight: (a) take a mental-health day Friday, (b) book a coffee with your old manager, (c) do nothing and revisit Sunday."
+        - generic [ref=e66]:
+          - generic [ref=e67]: Boss · the decider
+          - generic [ref=e68]: "Ruling: (b). Lowest-risk info-gathering move. Message drafted in your clipboard."
+        - generic [ref=e69]:
+          - generic [ref=e70]: Hype · your cheerleader
+          - text: "Quest: \"The Coffee Gambit\" — send the text before you brush your teeth. +60 XP. Trophy: \"Brave Little Toaster.\" 🏆"
+        - generic [ref=e71]:
+          - generic [ref=e72]: You
+          - text: ok fine. sending.
+    - complementary [ref=e73]:
+      - heading "You vent. They triage." [level=3] [ref=e74]:
+        - text: You vent. They
+        - emphasis [ref=e75]: triage.
+      - paragraph [ref=e76]: "You don't pick which agent replies — the session does. Each voice has a job: widen the question, cut the noise, make the call, make it fun."
+      - paragraph [ref=e77]: No lectures. No “as an AI.” They banter, disagree on purpose, and hand you an action before they hand you a feeling.
+      - paragraph [ref=e78]: It won't fix your life. It will fix your Tuesday.
+      - generic [ref=e79]: the council has spoken ✨
+      - generic [ref=e80]:
+        - heading "Dump → Deliberate → Done." [level=4] [ref=e81]:
+          - text: Dump → Deliberate →
+          - emphasis [ref=e82]: Done.
+        - generic [ref=e83]:
+          - generic [ref=e84]:
+            - generic [ref=e85]: "01"
+            - generic [ref=e86]: Dump it— Type your messiest thought. No structure.
+          - generic [ref=e87]:
+            - generic [ref=e88]: "02"
+            - generic [ref=e89]: Council deliberates— Complicate, simplify, decide, gamify. One verdict.
+          - generic [ref=e90]:
+            - generic [ref=e91]: "03"
+            - generic [ref=e92]: One action— One clear thing you can do in the next 20 minutes.
+          - generic [ref=e93]:
+            - generic [ref=e94]: "04"
+            - generic [ref=e95]: Follow through— Task in Notion. Nudge on WhatsApp. XP & streaks.
+        - generic [ref=e96]:
+          - generic [ref=e97]:
+            - generic [ref=e98]: 📋
+            - text: Notion
+          - generic [ref=e99]:
+            - generic [ref=e100]: 💬
+            - text: WhatsApp
+          - generic [ref=e101]:
+            - generic [ref=e102]: 🎮
+            - text: XP
+          - generic [ref=e103]:
+            - generic [ref=e104]: 📊
+            - text: Priorities
+  - generic [ref=e107]:
+    - heading "Send your worst 3am thought." [level=2] [ref=e108]
+    - paragraph [ref=e109]: Your council turns the spiral into a single tap. One decision, one quest, one good night's sleep.
+    - generic [ref=e110]:
+      - textbox "email" [ref=e111]:
+        - /placeholder: you@somewhere.com
+      - button "Join the waitlist →" [ref=e112] [cursor=pointer]
+    - generic [ref=e113]: Invites start Summer 2026 · No spam · Unsubscribe anytime
+  - contentinfo [ref=e115]:
+    - generic [ref=e116]:
+      - text: Macha
+      - img [ref=e117]:
+        - generic [ref=e123]: X
+    - generic [ref=e124]: © 2026 · Bengaluru
+  - button "Open Next.js Dev Tools" [ref=e132] [cursor=pointer]:
+    - img [ref=e133]
+  - alert [ref=e136]
