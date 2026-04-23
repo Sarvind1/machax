@@ -144,7 +144,19 @@ export default function Home() {
       <div className="wrap">
         <div className="topbar">
           <div className="logo">
-            <div className="icon">M</div> MachaX
+            Macha
+            <svg className="logo-cup" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Cup body */}
+              <path d="M6 8 L4 52 Q4 60 12 60 L32 60 Q40 60 40 52 L38 8 Z" fill="var(--accent)" rx="4"/>
+              {/* Handle */}
+              <path d="M38 18 Q50 18 50 32 Q50 44 40 44" stroke="var(--accent)" strokeWidth="4" fill="none" strokeLinecap="round"/>
+              {/* Steam lines */}
+              <path d="M14 4 Q16 0 18 4" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+              <path d="M22 2 Q24 -2 26 2" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+              <path d="M30 4 Q32 0 34 4" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+              {/* X letter */}
+              <text x="21" y="44" textAnchor="middle" fill="#fff" fontWeight="800" fontSize="32" fontFamily="sans-serif">X</text>
+            </svg>
           </div>
           <div className="pills">
             <span>beta &middot; invite only</span>
@@ -333,7 +345,15 @@ export default function Home() {
       <div className="wrap">
         <footer>
           <div className="logo">
-            <div className="icon">M</div> MachaX
+            Macha
+            <svg className="logo-cup" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 8 L4 52 Q4 60 12 60 L32 60 Q40 60 40 52 L38 8 Z" fill="var(--accent)" rx="4"/>
+              <path d="M38 18 Q50 18 50 32 Q50 44 40 44" stroke="var(--accent)" strokeWidth="4" fill="none" strokeLinecap="round"/>
+              <path d="M14 4 Q16 0 18 4" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+              <path d="M22 2 Q24 -2 26 2" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+              <path d="M30 4 Q32 0 34 4" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+              <text x="21" y="44" textAnchor="middle" fill="#fff" fontWeight="800" fontSize="32" fontFamily="sans-serif">X</text>
+            </svg>
           </div>
           <div>&copy; 2026 &middot; Bengaluru</div>
         </footer>

@@ -56,22 +56,17 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 2px;
   font-weight: 700;
-  font-size: 20px;
+  font-size: 36px;
   letter-spacing: -0.5px;
-}
-.logo .icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
-  display: grid;
-  place-items: center;
   font-family: var(--font-serif), serif;
-  font-size: 16px;
-  font-style: italic;
+}
+.logo .logo-cup {
+  height: 1.1em;
+  width: auto;
+  vertical-align: middle;
+  margin-bottom: -0.05em;
 }
 .pills {
   display: flex;
@@ -573,10 +568,8 @@ footer {
   color: var(--muted);
 }
 footer .logo {
-  font-family: var(--font-serif), serif;
-  font-size: 18px;
+  font-size: 22px;
   text-transform: none;
-  letter-spacing: -0.5px;
   color: var(--ink);
 }
 
