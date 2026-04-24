@@ -199,6 +199,8 @@ export default function ChatPage() {
 
               if (data.done) {
                 setTypingAgents([]);
+                setIsLoading(false);
+                isStreamingRef.current = false;
               }
             } catch {
               // Skip malformed JSON lines

@@ -85,6 +85,7 @@ async function callAiSdk(
     system,
     messages: [{ role: "user", content: userPrompt }],
     maxOutputTokens: maxTokens,
+    temperature: 0.95, // higher temperature for more human-like variety
   });
 
   return result.text;
@@ -109,22 +110,44 @@ function buildFriendPrompt(
   friendRole: string,
   transcript: string,
   isFirstResponder: boolean,
-  priorFriendsInRound: string[]
+  priorFriendsInRound: string[],
+  lengthInstruction: string,
+  modeInstruction: string
 ): string {
   if (isFirstResponder) {
-    return `You are ${friendName} (${friendRole}) in a group chat with close friends. Here is the conversation so far:
+    return `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp. Someone just sent this:
 
 ${transcript}
 
-You are the first friend to respond to this. React naturally — ask a question, share your take, challenge an assumption, or empathize. Write 2-4 sentences. Be conversational, like you're texting friends. Do NOT use quotes around your response. Do NOT start with your name.`;
+Reply like you actually would in a real group chat. You might:
+- Just react ("lol", "bruh", "this", "omg", "\u{1F480}", "nah")
+- Ask a question
+- Share a strong opinion
+- Make a joke
+- Go on a tangent
+- Disagree with someone
+- Only respond to part of what was said
+- Be unhelpful on purpose if that's your vibe
+
+${lengthInstruction}
+${modeInstruction}
+
+DO NOT be a therapist. DO NOT give structured advice. DO NOT be universally supportive. Be YOUR character. Be messy. Be real.
+Do NOT use quotes around your response. Do NOT start with your name.`;
   }
 
   const othersText = priorFriendsInRound.join(", ");
-  return `You are ${friendName} (${friendRole}) in a group chat with close friends. Here is the conversation so far:
+  return `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp. Here's the conversation:
 
 ${transcript}
 
-${othersText} already responded above. Now it's your turn. IMPORTANT: React to what the others said — agree, disagree, build on their point, push back, or add a new angle. This should feel like a real discussion, not separate monologues. Write 2-4 sentences. Be conversational. Do NOT use quotes around your response. Do NOT start with your name.`;
+${othersText} already replied. Now it's your turn. React to what they said — agree, disagree, roast them, build on it, derail it. Don't just add a separate monologue.
+
+${lengthInstruction}
+${modeInstruction}
+
+DO NOT be a therapist. DO NOT give structured advice. DO NOT be universally supportive. Be YOUR character. Be messy. Be real.
+Do NOT use quotes around your response. Do NOT start with your name.`;
 }
 
 // ── Clean up model response ──
@@ -139,6 +162,36 @@ function cleanResponse(text: string, friendName: string): string {
   const namePrefix = new RegExp(`^${friendName}:\\s*`, "i");
   text = text.replace(namePrefix, "");
   return text;
+}
+
+// ── Per-friend follow-up call helper (short reaction) ──
+async function callFriendFollowUp(
+  friendId: string,
+  fullHistory: ChatEntry[],
+  roundResponses: ChatEntry[],
+  provider: ProviderConfig
+): Promise<ChatEntry> {
+  const friend = FRIENDS_BY_ID[friendId];
+  if (!friend) return { from: friendId, text: "lol" };
+
+  const transcript = formatTranscript(fullHistory, roundResponses);
+
+  const prompt = `You are ${friend.name} (${friend.role}) in a group chat. Here is the conversation so far:
+
+${transcript}
+
+You just read the group's responses. React briefly — agree, disagree, joke, emoji, one-liner. This is a FOLLOW-UP, not a full take. Keep it under 10 words ideally.`;
+
+  const maxTokens = 40;
+
+  try {
+    let text = await callModel(friend.systemPrompt, prompt, provider, maxTokens);
+    text = cleanResponse(text, friend.name);
+    return { from: friendId, text };
+  } catch (err) {
+    console.error(`Error generating follow-up for ${friendId}:`, err);
+    return { from: friendId, text: "lol exactly" };
+  }
 }
 
 // ── Per-friend call helper ──
@@ -160,25 +213,21 @@ async function callFriend(
   const mode = pickRandomMode();
   const length = pickResponseLength(friend.defaultLength, mode ?? undefined);
   const lengthInstruction = lengthToInstruction(length);
-  const modeInstruction = mode ? `\n[MODE: ${mode.name}] ${mode.promptOverlay}` : "";
+  const modeInstruction = mode ? `[MODE: ${mode.name}] ${mode.promptOverlay}` : "";
 
-  let prompt = buildFriendPrompt(
+  const prompt = buildFriendPrompt(
     friend.name,
     friend.role,
     transcript,
     roundResponses.length === 0,
-    priorNames
+    priorNames,
+    lengthInstruction,
+    modeInstruction
   );
-
-  // Replace the fixed "2-4 sentences" with dynamic length + mode
-  prompt = prompt.replace(
-    /Write 2-4 sentences\./g,
-    lengthInstruction
-  );
-  prompt += modeInstruction;
 
   // Adjust max tokens based on length
-  const maxTokens = length === "micro" ? 40 : length === "short" ? 100 : length === "long" ? 400 : length === "rant" ? 500 : 250;
+  // Tight token limits — real humans text short. Research says 40-60 tokens avg.
+  const maxTokens = length === "micro" ? 20 : length === "short" ? 60 : length === "long" ? 200 : length === "rant" ? 300 : 100;
 
   try {
     let text = await callModel(friend.systemPrompt, prompt, provider, maxTokens);
@@ -237,52 +286,56 @@ export async function* orchestrateChat(params: {
 
   const roundResponses: ChatEntry[] = [];
 
-  // Split friends into parallel waves: [0,1] [2,3] [4]
-  const wave1Ids = podFriendIds.slice(0, 2);
-  const wave2Ids = podFriendIds.slice(2, 4);
-  const wave3Ids = podFriendIds.slice(4);
+  // Randomly drop 0-2 agents to make it feel natural
+  const dropCount = Math.random() < 0.3 ? 0 : Math.random() < 0.6 ? 1 : 2;
+  const activeIds = [...podFriendIds].sort(() => Math.random() - 0.5).slice(dropCount);
 
-  // Wave 1: first 2 friends in parallel (only see user message)
-  for (const id of wave1Ids) {
-    yield { typing: id };
-  }
-  const wave1Results = await runWave(wave1Ids, fullHistory, [], provider);
-  for (const r of wave1Results) {
-    roundResponses.push(r);
-    yield { from: r.from, text: r.text };
+  // Adaptive wave structure based on number of active responders
+  // 3 agents: 2+1, 4 agents: 2+2, 5 agents: 2+2+1
+  const waves: string[][] = [];
+  if (activeIds.length <= 2) {
+    waves.push(activeIds);
+  } else if (activeIds.length === 3) {
+    waves.push(activeIds.slice(0, 2));
+    waves.push(activeIds.slice(2, 3));
+  } else if (activeIds.length === 4) {
+    waves.push(activeIds.slice(0, 2));
+    waves.push(activeIds.slice(2, 4));
+  } else {
+    waves.push(activeIds.slice(0, 2));
+    waves.push(activeIds.slice(2, 4));
+    waves.push(activeIds.slice(4));
   }
 
-  // Wave 2: next 2 friends in parallel (see wave 1 responses)
-  if (wave2Ids.length > 0) {
-    for (const id of wave2Ids) {
+  // Execute waves sequentially — each wave sees prior responses
+  for (const waveIds of waves) {
+    for (const id of waveIds) {
       yield { typing: id };
     }
-    const wave2Results = await runWave(
-      wave2Ids,
+    const waveResults = await runWave(
+      waveIds,
       fullHistory,
       [...roundResponses],
       provider
     );
-    for (const r of wave2Results) {
+    for (const r of waveResults) {
       roundResponses.push(r);
       yield { from: r.from, text: r.text };
     }
   }
 
-  // Wave 3: final friend (sees everything)
-  if (wave3Ids.length > 0) {
-    for (const id of wave3Ids) {
+  // Follow-up round: 40% chance of 1-2 agents jumping back in
+  if (Math.random() < 0.4) {
+    const followUpCount = Math.random() < 0.5 ? 1 : 2;
+    const eligibleIds = podFriendIds.filter(id => roundResponses.some(r => r.from === id));
+    const shuffled = eligibleIds.sort(() => Math.random() - 0.5);
+    const followUpIds = shuffled.slice(0, followUpCount);
+
+    for (const id of followUpIds) {
       yield { typing: id };
-    }
-    const wave3Results = await runWave(
-      wave3Ids,
-      fullHistory,
-      [...roundResponses],
-      provider
-    );
-    for (const r of wave3Results) {
-      roundResponses.push(r);
-      yield { from: r.from, text: r.text };
+      const result = await callFriendFollowUp(id, fullHistory, roundResponses, provider);
+      roundResponses.push(result);
+      yield { from: result.from, text: result.text };
     }
   }
 
