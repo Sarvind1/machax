@@ -7,6 +7,7 @@ export interface AgentTraits {
   verbosityRange: [number, number]; // [min, max] words
   confidenceLevel: number; // 0-1, hedging vs assertive
   lurkerChance: number; // 0-1, chance of reading but not responding
+  tangentProbability?: number; // 0-1, chance of going off-topic instead of replying to the scored message
   attentionWindow?: number; // how many recent messages the agent reads before replying (default derived from responseSpeed)
 }
 

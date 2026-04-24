@@ -338,11 +338,9 @@ function scoreMessagesForAgent(
       score += 1;
     }
 
-    // -1 if 2+ agents already replied to this message
+    // Penalty scales with reply count — more agents piling on = lower score
     const replies = replyCounts.get(i) ?? 0;
-    if (replies >= 2) {
-      score -= 1;
-    }
+    score -= replies;
 
     // -2 if this agent broadly agrees and has nothing new to add
     if (traits.agreementBias > 0.3 && replies >= 1) {
@@ -385,8 +383,15 @@ function shouldRespond(
   const agentResponses = roundResponses.filter((r) => r.from === agent.id);
   if (agentResponses.length >= 3 && Math.random() < 0.6) return false;
 
-  // Random lurker dropout based on trait
-  if (Math.random() < agent.traits.lurkerChance * 0.5) return false;
+  // Random dropout: 15% base "didn't reply" rate + character-specific lurker chance
+  let dropoutProb = 0.15 + agent.traits.lurkerChance;
+
+  // After 3 agents have responded, double the dropout probability for remaining agents
+  if (roundResponses.length >= 3) {
+    dropoutProb *= 2;
+  }
+
+  if (Math.random() < dropoutProb) return false;
 
   return true;
 }
@@ -410,6 +415,8 @@ function buildPrompt(
   isLateJoiner: boolean,
   isClosingOut: boolean,
   energy: number,
+  participantNames: string[],
+  agreementBias: number,
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.`;
 
@@ -429,7 +436,16 @@ function buildPrompt(
     energyBlock = `\nThe conversation is losing steam. Keep it short, don't introduce new topics.`;
   }
 
+  const participantBlock = `People in this chat: ${participantNames.join(', ')}, and the user.`;
+
+  const stanceHint = agreementBias < -0.2
+    ? `\nYou don't have to agree with anyone. If something sounds off, say so directly.`
+    : "";
+
   return `${baseIdentity} ${contextBlock}
+
+${participantBlock}
+You can respond to specific people by name. You can ask the user directly what they think.
 
 Reply like you actually would in a real group chat. You might:
 - Just react ("lol", "bruh", "this", "omg", "\u{1F480}", "nah")
@@ -445,7 +461,7 @@ ${lengthInstruction}
 ${modeInstruction}
 ${energyBlock}
 
-DO NOT be a therapist. DO NOT give structured advice. DO NOT be universally supportive. Be YOUR character. Be messy. Be real.
+DO NOT be a therapist. DO NOT give structured advice. DO NOT be universally supportive. Be YOUR character. Be messy. Be real.${stanceHint}
 Do NOT use quotes around your response. Do NOT start with your name.`;
 }
 
@@ -459,6 +475,7 @@ async function callFriend(
   isLateJoiner: boolean,
   energy: number,
   attentionWindow: number,
+  podFriendIds: string[],
 ): Promise<{ entry: ChatEntry; replyTo: string | null }> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -481,8 +498,22 @@ async function callFriend(
     replyToId = replyTarget.from;
   }
 
+  // Tangent probability — chance of going off-topic instead of replying to the scored message
+  const tangentProb = friend.traits.tangentProbability ?? 0.05;
+  if (Math.random() < tangentProb) {
+    replyToName = null;
+    replyToText = null;
+    // Keep replyToId so we still track the reply chain, but prompt will be unanchored
+  }
+
+  // Build participant names (excluding current agent)
+  const participantNames = podFriendIds
+    .filter((id) => id !== friendId)
+    .map((id) => FRIENDS_BY_ID[id]?.name)
+    .filter((n): n is string => !!n);
+
   // Pick mode and length
-  const mode = pickRandomMode();
+  const mode = pickRandomMode(friend.traits.agreementBias);
   const isClosingOut = energy < 0.3;
   let length;
   if (isClosingOut) {
@@ -508,6 +539,8 @@ async function callFriend(
     isLateJoiner,
     isClosingOut,
     energy,
+    participantNames,
+    friend.traits.agreementBias,
   );
 
   const maxTokens =
@@ -681,6 +714,7 @@ export async function* orchestrateChat(params: {
           isLateJoiner,
           energy,
           attentionWindow,
+          podFriendIds,
         );
       }),
     );
