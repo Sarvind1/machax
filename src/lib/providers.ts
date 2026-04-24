@@ -80,9 +80,9 @@ const MODEL_MAP: Record<
     label: "Claude CLI (Haiku)",
   },
   gemini: {
-    model: "gemini-2.0-flash",
-    synthesisModel: "gemini-2.0-flash",
-    label: "Gemini Flash",
+    model: "gemini-2.5-flash",
+    synthesisModel: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
   },
   openai: {
     model: "gpt-4o-mini",
