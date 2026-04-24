@@ -583,12 +583,20 @@ async function callFriend(
     // Validate response quality — retry once if garbage
     const isGarbage = text.length < 2
       || (text.length > 5 && !/[.!?…💀😭🤣❤️✨🔥😤🫠)\s]$/.test(text) && /\s/.test(text))
-      || allMessages.some(m => m.from !== friendId && m.text.toLowerCase() === text.toLowerCase());
+      || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase());
 
     if (isGarbage) {
       const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
-      text = await callModel(friend.systemPrompt, retryPrompt, provider, maxTokens + 50);
+      text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150));
       text = cleanResponse(text, friend.name);
+
+      // If still garbage after retry, use a safe fallback
+      const stillGarbage = text.length < 2
+        || (text.length > 5 && !/[.!?…💀😭🤣❤️✨🔥😤🫠)\s]$/.test(text) && /\s/.test(text))
+        || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase());
+      if (stillGarbage && text.length < 4) {
+        text = "hmm let me think about that";
+      }
     }
 
     return { entry: { from: friendId, text }, replyTo: replyToId };

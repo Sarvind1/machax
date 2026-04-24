@@ -1488,11 +1488,11 @@ export const MODES: ConversationMode[] = [
 // ── Response length logic ─────────────────────────────────────────────
 
 const LENGTH_WEIGHTS: Record<ResponseLength, number> = {
-  micro: 40,
-  short: 30,
-  medium: 20,
-  long: 7,
-  rant: 3,
+  micro: 5,
+  short: 15,
+  medium: 40,
+  long: 25,
+  rant: 10,
 };
 
 const LENGTH_ORDER: ResponseLength[] = ["micro", "short", "medium", "long", "rant"];

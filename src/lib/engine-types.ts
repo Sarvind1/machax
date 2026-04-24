@@ -40,7 +40,7 @@ export const SPEED_DELAYS: Record<AgentTraits["responseSpeed"], [number, number]
 
 // Speed → default attention window (messages)
 export const ATTENTION_WINDOWS: Record<AgentTraits["responseSpeed"], number> = {
-  impulsive: 2,
-  normal: 5,
+  impulsive: 5,
+  normal: 8,
   thoughtful: 999,
 };
