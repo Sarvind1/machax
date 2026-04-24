@@ -1,0 +1,59 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e6]: council is online · bengaluru
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "first, who dis?" [level=1] [ref=e10]:
+          - text: first,
+          - emphasis [ref=e11]: who dis?
+        - paragraph [ref=e12]: the council needs to know before they let you in.
+      - generic [ref=e14]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - generic [ref=e29]: boss
+            - generic [ref=e30]: the judge
+          - generic [ref=e31]: halt. credentials, please.
+        - generic [ref=e32]:
+          - generic [ref=e33]:
+            - generic [ref=e35]: didi
+            - generic [ref=e36]: the anchor
+          - generic [ref=e37]: don’t mind him. he’s like that with everyone.
+        - generic [ref=e38]:
+          - generic [ref=e39]:
+            - generic [ref=e41]: didi
+            - generic [ref=e42]: the anchor
+          - generic [ref=e43]: have we met? or is this a first-time thing?
+        - generic [ref=e48]: i have an account
+        - generic [ref=e55]:
+          - generic [ref=e56]:
+            - generic [ref=e58]: didi
+            - generic [ref=e59]: the anchor
+          - generic [ref=e60]:
+            - text: let’s start with your
+            - strong [ref=e80]: username
+            - text: .
+        - generic [ref=e73]: sarvind
+        - generic [ref=e81]:
+          - generic [ref=e82]:
+            - generic [ref=e84]: didi
+            - generic [ref=e85]: the anchor
+          - generic [ref=e86]:
+            - emphasis [ref=e87]: sarvind
+            - text: . password next. no peeking.
+    - generic [ref=e62]:
+      - generic [ref=e88]: password
+      - generic [ref=e64]:
+        - textbox "••••••••" [active] [ref=e89]
+        - button "Send" [disabled] [ref=e66]: ↑
+      - generic [ref=e67]:
+        - generic [ref=e68]:
+          - generic [ref=e69]: enter
+          - text: to send
+        - button "forgot password?" [ref=e70] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e21] [cursor=pointer]:
+    - img [ref=e22]
+  - alert [ref=e25]

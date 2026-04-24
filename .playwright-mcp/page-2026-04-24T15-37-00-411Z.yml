@@ -1,0 +1,50 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e6]: council is online · bengaluru
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "first, who dis?" [level=1] [ref=e10]:
+          - text: first,
+          - emphasis [ref=e11]: who dis?
+        - paragraph [ref=e12]: the council needs to know before they let you in.
+        - generic [ref=e13]:
+          - button "log in" [ref=e14] [cursor=pointer]
+          - button "sign up" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - generic [ref=e19]:
+              - generic [ref=e20]: username
+              - textbox "username" [disabled] [ref=e94]:
+                - /placeholder: your username
+                - text: sarvind
+            - generic [ref=e22]:
+              - generic [ref=e23]: password
+              - textbox "password" [disabled] [ref=e95]:
+                - /placeholder: ••••••••
+                - text: test1234
+            - button "checking…" [disabled] [ref=e115]
+          - generic [ref=e27]: or continue with
+          - button "continue with google soon" [disabled] [ref=e28]:
+            - img [ref=e29]
+            - text: continue with google
+            - generic [ref=e34]: soon
+        - generic [ref=e35]:
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e106]: hype
+              - generic [ref=e107]: the hype
+            - generic [ref=e108]: a challenger appears! ✨
+          - generic [ref=e109]:
+            - generic [ref=e110]:
+              - generic [ref=e112]: didi
+              - generic [ref=e113]: the anchor
+            - generic [ref=e114]: fill in the form. we’ll handle the drama.
+          - generic [ref=e116]: didi· typing…
+  - button "Open Next.js Dev Tools" [ref=e41] [cursor=pointer]:
+    - img [ref=e42]
+  - alert [ref=e45]

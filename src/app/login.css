@@ -1,4 +1,4 @@
-/* login.css — chat-disguised login/signup flow */
+/* login.css — form-based login/signup with chat personality */
 
 .login-page {
   --paper: #F4F1E8;
@@ -100,7 +100,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding-bottom: 140px;
+  padding-bottom: 48px;
 }
 
 /* ===== INTRO HEADER ===== */
@@ -132,6 +132,186 @@
   margin: 0;
 }
 
+/* ===== TABS ===== */
+.login-tabs {
+  display: flex;
+  gap: 0;
+  margin-top: 18px;
+  justify-content: center;
+  border-bottom: 1px solid var(--rule);
+}
+
+.login-tab {
+  font: inherit;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  background: none;
+  border: none;
+  padding: 8px 20px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  text-transform: lowercase;
+}
+
+.login-tab:hover {
+  color: var(--ink-soft);
+}
+
+.login-tab--active {
+  color: var(--ink);
+  border-bottom-color: var(--matcha-deep);
+}
+
+/* ===== FORM CARD ===== */
+.login-form-card {
+  background: #fff;
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  padding: 28px 32px;
+  max-width: 440px;
+  width: 100%;
+  margin: 0 auto 24px;
+  animation: login-msgIn 0.4s ease forwards;
+}
+
+/* ===== FORM FIELDS ===== */
+.login-field {
+  margin-bottom: 16px;
+}
+
+.login-field label {
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--ink-faint);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.login-field input {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-family: var(--font-body), system-ui, sans-serif;
+  border: 1.5px solid var(--rule);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.login-field input:focus {
+  border-color: var(--matcha);
+}
+
+.login-field input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-field input::placeholder {
+  color: var(--ink-faint);
+}
+
+.login-field-error {
+  color: #c44;
+  font-size: 12px;
+  margin-top: 4px;
+  font-family: var(--font-mono), monospace;
+}
+
+/* ===== SUBMIT BUTTON ===== */
+.login-submit-btn {
+  width: 100%;
+  padding: 13px 20px;
+  background: var(--ink);
+  color: var(--paper);
+  border: none;
+  border-radius: 12px;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+  margin-top: 4px;
+}
+
+.login-submit-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.login-submit-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ===== DIVIDER ===== */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.login-divider span {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+/* ===== GOOGLE BUTTON ===== */
+.login-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 20px;
+  background: var(--bg-2);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--ink-faint);
+  cursor: not-allowed;
+  transition: none;
+  opacity: 0.7;
+}
+
+.login-google svg {
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.login-soon {
+  font-family: var(--font-mono), monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--rule);
+  color: var(--ink-faint);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 4px;
+}
+
 /* ===== MESSAGE STREAM ===== */
 .login-stream {
   display: flex;
@@ -150,10 +330,6 @@
 
 .login-msg.login-msg--agent {
   align-self: flex-start;
-}
-
-.login-msg.login-msg--user {
-  align-self: flex-end;
 }
 
 .login-msg.login-msg--system {
@@ -227,13 +403,6 @@
   border-top-left-radius: 4px;
 }
 
-/* user bubbles */
-.login-bubble--user {
-  background: var(--ink);
-  color: var(--paper);
-  border-bottom-right-radius: 4px;
-}
-
 /* system messages */
 .login-bubble--system {
   background: transparent;
@@ -289,191 +458,6 @@
     opacity: 1;
     transform: translateY(-3px);
   }
-}
-
-/* ===== CHIPS ===== */
-.login-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
-  animation: login-msgIn 0.45s ease forwards;
-}
-
-.login-chip {
-  padding: 9px 18px;
-  border: 1px solid var(--rule);
-  border-radius: 999px;
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  color: var(--ink);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.login-chip:hover {
-  background: #fff;
-  border-color: var(--ink-soft);
-}
-
-.login-chip:active {
-  transform: scale(0.97);
-}
-
-/* ===== COMPOSER ===== */
-.login-composer-wrap {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  padding: 0 24px 20px;
-}
-
-.login-composer-wrap::before {
-  content: "";
-  position: absolute;
-  top: -48px;
-  left: 0;
-  right: 0;
-  height: 48px;
-  background: linear-gradient(to bottom, transparent, var(--paper));
-  pointer-events: none;
-}
-
-.login-composer-inner {
-  max-width: 640px;
-  margin: 0 auto;
-}
-
-.login-composer-locked {
-  opacity: 0.55;
-  pointer-events: none;
-}
-
-.login-prompt {
-  font-family: var(--font-mono), monospace;
-  font-size: 10.5px;
-  letter-spacing: 0.06em;
-  color: var(--ink-faint);
-  margin-bottom: 6px;
-  padding-left: 2px;
-}
-
-.login-composer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fff;
-  border: 1px solid var(--rule);
-  border-radius: 14px;
-  padding: 4px 4px 4px 14px;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.login-composer:focus-within {
-  border-color: var(--matcha);
-  box-shadow: 0 0 0 3px rgba(107, 174, 126, 0.12);
-}
-
-.login-composer input {
-  flex: 1;
-  border: none;
-  outline: none;
-  font: inherit;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--ink);
-  background: transparent;
-  padding: 8px 0;
-}
-
-.login-composer input::placeholder {
-  color: var(--ink-faint);
-}
-
-.login-composer-send {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: none;
-  background: var(--ink);
-  color: var(--paper);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: opacity 0.15s, transform 0.15s;
-  font-size: 16px;
-}
-
-.login-composer-send:hover {
-  transform: translateY(-1px);
-}
-
-.login-composer-send:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.login-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 2px 0;
-  font-family: var(--font-mono), monospace;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--ink-faint);
-}
-
-.login-footer kbd {
-  display: inline-block;
-  padding: 1px 5px;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  background: var(--bg-2);
-  font-family: var(--font-mono), monospace;
-  font-size: 9px;
-  vertical-align: 1px;
-}
-
-.login-forgot {
-  background: none;
-  border: none;
-  font: inherit;
-  font-family: var(--font-mono), monospace;
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--ink-faint);
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.15s;
-}
-
-.login-forgot:hover {
-  color: var(--ink-soft);
-}
-
-.login-forgot:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-/* shake animation for validation */
-.login-shake {
-  animation: login-shake 0.4s ease;
-}
-
-@keyframes login-shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-6px); }
-  40% { transform: translateX(6px); }
-  60% { transform: translateX(-4px); }
-  80% { transform: translateX(4px); }
 }
 
 /* ===== VICTORY CARD ===== */
@@ -537,8 +521,9 @@
     font-size: 32px;
   }
 
-  .login-composer-wrap {
-    padding: 0 16px 14px;
+  .login-form-card {
+    padding: 20px 18px;
+    border-radius: 14px;
   }
 
   .login-msg {

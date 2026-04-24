@@ -1,0 +1,37 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e6]: council is online · bengaluru
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "first, who dis?" [level=1] [ref=e10]:
+          - text: first,
+          - emphasis [ref=e11]: who dis?
+        - paragraph [ref=e12]: the council needs to know before they let you in.
+        - generic [ref=e13]:
+          - button "log in" [ref=e14] [cursor=pointer]
+          - button "sign up" [ref=e15] [cursor=pointer]
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e65]: fomo
+          - generic [ref=e66]: the worrier
+        - generic [ref=e67]:
+          - text: oh hi hi hi. ok —
+          - strong [ref=e68]: name first.
+          - text: what do people call you?
+    - generic [ref=e69]:
+      - generic [ref=e70]: your name
+      - generic [ref=e71]:
+        - textbox "first name is fine" [active] [ref=e72]
+        - button "Send" [disabled] [ref=e73]: ↑
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - generic [ref=e76]: enter
+          - text: to send
+        - button "forgot password?" [disabled] [ref=e77]
+  - button "Open Next.js Dev Tools" [ref=e24] [cursor=pointer]:
+    - img [ref=e25]
+  - alert [ref=e28]

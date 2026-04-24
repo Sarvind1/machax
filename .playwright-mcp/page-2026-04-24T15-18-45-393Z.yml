@@ -1,0 +1,25 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e6]: council is online · bengaluru
+    - generic [ref=e9]:
+      - heading "first, who dis?" [level=1] [ref=e10]:
+        - text: first,
+        - emphasis [ref=e11]: who dis?
+      - paragraph [ref=e12]: the council needs to know before they let you in.
+    - generic [ref=e15]:
+      - generic:
+        - generic:
+          - textbox "waiting for the council..." [disabled]
+          - button "Send" [disabled]: ↑
+        - generic:
+          - generic:
+            - generic: enter
+            - text: to send
+          - button "forgot password?" [disabled]
+  - button "Open Next.js Dev Tools" [ref=e21] [cursor=pointer]:
+    - img [ref=e22]
+  - alert [ref=e25]
