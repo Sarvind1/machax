@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 
 const copy = {
   in: {
@@ -206,6 +207,7 @@ export default function HomePage({ locale }: { locale: Locale }) {
               </p>
 
               <WaitlistForm id="heroForm" />
+              <Link href="/chat" className="try-btn">try it now &rarr;</Link>
 
               <div className="counter">
                 <div className="avatars">
@@ -350,6 +352,7 @@ export default function HomePage({ locale }: { locale: Locale }) {
               quest, one good night&apos;s sleep.
             </p>
             <WaitlistForm id="closingForm" />
+            <Link href="/chat" className="try-btn" style={{ marginTop: 12 }}>try it now &rarr;</Link>
             <div className="meta">
               Invites start Summer 2026 &middot; No spam &middot; Unsubscribe
               anytime

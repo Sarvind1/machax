@@ -6,4 +6,33 @@ export default defineSchema({
     email: v.string(),
     joinedAt: v.number(),
   }).index("by_email", ["email"]),
+
+  conversations: defineTable({
+    title: v.string(),
+    tag: v.string(),
+    podFriendIds: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  messages: defineTable({
+    conversationId: v.id("conversations"),
+    from: v.string(),
+    text: v.string(),
+    timestamp: v.number(),
+  }).index("by_conversation", ["conversationId", "timestamp"]),
+
+  decisions: defineTable({
+    conversationId: v.id("conversations"),
+    question: v.string(),
+    options: v.array(
+      v.object({
+        id: v.string(),
+        label: v.string(),
+        blurb: v.string(),
+        voices: v.array(v.string()),
+      })
+    ),
+    selectedOptionId: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_conversation", ["conversationId"]),
 });

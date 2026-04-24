@@ -625,5 +625,33 @@ footer .logo {
 @media (max-width: 600px) {
   h1.display {
     font-size: 38px;
+    letter-spacing: -1px;
   }
+  .wrap {
+    padding: 0 16px;
+  }
+  .waitlist-form {
+    flex-direction: column;
+  }
+  .waitlist-form input,
+  .waitlist-form button {
+    width: 100%;
+  }
+}
+
+/* ===== TRY-IT CTA ===== */
+.try-btn {
+  display: inline-block;
+  padding: 13px 20px;
+  border: 1.5px solid var(--accent);
+  border-radius: 10px;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  transition: all 0.15s;
+}
+.try-btn:hover {
+  background: var(--accent);
+  color: #fff;
 }
