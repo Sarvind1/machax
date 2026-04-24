@@ -63,7 +63,7 @@ async function callClaudeCli(
   try {
     writeFileSync(tmpFile, userPrompt);
     const escapedSystem = system.replace(/'/g, "'\\''");
-    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --max-tokens ${maxTokens} --output-format json --system-prompt '${escapedSystem}'`;
+    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --output-format json --system-prompt '${escapedSystem}'`;
 
     const env = Object.fromEntries(
       Object.entries(process.env).filter(
@@ -343,9 +343,9 @@ function scoreMessagesForAgent(
       score += Math.round(Math.abs(traits.agreementBias) * 2);
     }
 
-    // +1 if it's the user's original message
+    // +3 if it's the user's original message — prioritize engaging the user
     if (msg.from === "user") {
-      score += 1;
+      score += 3;
     }
 
     // +1 if it's recent (last 2 messages)
@@ -354,12 +354,22 @@ function scoreMessagesForAgent(
     }
 
     // Penalty scales with reply count — more agents piling on = lower score
+    // User messages get a softer penalty (everyone should have a take on the user's question)
     const replies = replyCounts.get(i) ?? 0;
-    score -= replies;
+    if (msg.from === "user") {
+      score -= Math.floor(replies * 0.5); // softer penalty for user messages
+    } else {
+      score -= replies;
+    }
 
     // -2 if this agent broadly agrees and has nothing new to add
     if (traits.agreementBias > 0.3 && replies >= 1) {
       score -= 2;
+    }
+
+    // -1 penalty for replying to other agents (prefer user engagement)
+    if (msg.from !== "user") {
+      score -= 1;
     }
 
     scored.push({ index: i, from: msg.from, text: msg.text, score });
@@ -382,9 +392,8 @@ function shouldRespond(
   // If nothing scored above 0, don't respond
   if (bestScore === null || bestScore <= 0) return false;
 
-  // Lurker check — even with a good score, lurkers might stay silent
-  if (agent.state === "lurking" && bestScore < 3) {
-    // Lurkers only activate for strong triggers (direct address = 3+)
+  // Lurker check — lurkers need a decent trigger to chime in
+  if (agent.state === "lurking" && bestScore < 2) {
     return false;
   }
 
@@ -394,15 +403,24 @@ function shouldRespond(
   // Low energy → higher bar to respond
   if (energy < 0.4 && bestScore < 2 && Math.random() < 0.4) return false;
 
-  // Check if someone already made their point
+  // Prevent same agent from responding twice in a row
+  if (roundResponses.length > 0 && roundResponses[roundResponses.length - 1].from === agent.id) {
+    return false;
+  }
+
+  // Hard cap: no agent responds more than 2 times total
   const agentResponses = roundResponses.filter((r) => r.from === agent.id);
-  if (agentResponses.length >= 3 && Math.random() < 0.6) return false;
+  if (agentResponses.length >= 2) return false;
 
   // Random dropout: 15% base "didn't reply" rate + character-specific lurker chance
   let dropoutProb = 0.15 + agent.traits.lurkerChance;
 
-  // After 3 agents have responded, double the dropout probability for remaining agents
-  if (roundResponses.length >= 3) {
+  // After several agents have responded, increase dropout for remaining agents
+  if (roundResponses.length >= 7) {
+    dropoutProb = 0.9; // almost certainly stop after 7 messages
+  } else if (roundResponses.length >= 5) {
+    dropoutProb *= 3;
+  } else if (roundResponses.length >= 3) {
     dropoutProb *= 2;
   }
 
@@ -463,32 +481,24 @@ function buildPrompt(
 ${participantBlock}
 You can respond to specific people by name. You can ask ${userName} directly what they think.
 
-Reply like you actually would in a real group chat. You might:
-- Just react ("lol", "bruh", "this", "omg", "\u{1F480}", "nah")
-- Ask a question
-- Share a strong opinion
-- Make a joke
-- Go on a tangent
-- Disagree with someone
-- Only respond to part of what was said
-- Be unhelpful on purpose if that's your vibe
+Reply like you actually would in a real WhatsApp group chat. Think: how would a real person thumb-type this on their phone?
 
 ${lengthInstruction}
 ${modeInstruction}
 
-Examples of good replies (match this style):
-- "pizza all the way, burgers are mid"
-- "omg literally same thing happened to me last week"
-- "nah that's a terrible idea lol"
-- "wait what?? since when??"
-- "honestly just do whatever makes you happy"
-- "\u{1F480}\u{1F480}\u{1F480}"
-- "okay but hear me out... what if you just didn't"
+STYLE RULES:
+- Type like you text. Lowercase. Abbreviations. "rn" "ngl" "fr" "tbh" "lol" "omg"
+- No formal language. No philosophical phrasing. No "underlying desire" type stuff.
+- You can react, joke, disagree, tease, ask a question, go off-topic, or just send an emoji
+- Keep it SHORT. Most group chat messages are one line. Don't write paragraphs.
+- If you disagree, just say it bluntly
+- Reference ${userName} by name sometimes
 
 ${energyBlock}
 
-DO NOT be a therapist. DO NOT give structured advice. DO NOT be universally supportive. Be YOUR character. Be messy. Be real.${stanceHint}
-IMPORTANT: Your reply must be a COMPLETE thought or sentence. Never output a fragment or incomplete phrase. Do NOT use quotes around your response. Do NOT start with your name. Do NOT echo or repeat what others said — add something new.`;
+DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${stanceHint}
+Your reply must be a COMPLETE thought. Never a fragment. Do NOT use quotes around your response. Do NOT prefix with your name.
+CRITICAL: Do NOT repeat or rephrase what someone else already said. If someone already asked "what happened" don't ask the same thing. Add a NEW perspective, joke, reaction, or opinion.`;
 }
 
 // ── Call a friend with v3 engine context ────────────────────────────
@@ -573,14 +583,14 @@ async function callFriend(
 
   const maxTokens =
     length === "micro"
-      ? 40
+      ? 30
       : length === "short"
-        ? 80
+        ? 60
         : length === "long"
-          ? 200
+          ? 150
           : length === "rant"
-            ? 350
-            : 120;
+            ? 250
+            : 80; // medium
 
   try {
     let text = await callModel(
@@ -670,7 +680,7 @@ export async function* orchestrateChat(params: {
   // Each iteration: advance time, update presence, pick next responder, call model
 
   const ENERGY_FLOOR = 0.15;
-  const MAX_ITERATIONS = 15; // safety cap
+  const MAX_ITERATIONS = 10; // safety cap — aim for 5-8 messages
   let iterations = 0;
 
   while (energy > ENERGY_FLOOR && iterations < MAX_ITERATIONS) {
@@ -781,6 +791,14 @@ export async function* orchestrateChat(params: {
       const agent = batch[i].agent;
       const target = batch[i].target;
 
+      // Deduplication: skip if this message is too similar to an existing one
+      const isDuplicate = roundResponses.some(
+        (r) => r.text.toLowerCase() === entry.text.toLowerCase()
+          || (r.text.length > 15 && entry.text.length > 15
+            && r.text.toLowerCase().includes(entry.text.toLowerCase().slice(0, 20)))
+      );
+      if (isDuplicate) continue;
+
       // Update reply counts
       replyCounts.set(target.index, (replyCounts.get(target.index) ?? 0) + 1);
 
@@ -805,12 +823,12 @@ export async function* orchestrateChat(params: {
       };
 
       // ── Energy decay ──
-      const decayAmount = 0.06 + Math.random() * 0.04;
+      const decayAmount = 0.08 + Math.random() * 0.05;
       energy -= decayAmount;
 
-      // Questions from agents add a bit of energy back
+      // Questions from agents add a tiny bit of energy back
       if (containsQuestion(entry.text)) {
-        energy += 0.1;
+        energy += 0.05;
         pendingQuestions++;
         yield { type: "nudge" };
       }
