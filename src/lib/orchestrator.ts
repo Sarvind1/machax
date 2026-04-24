@@ -27,10 +27,10 @@ type ChatEntry = { from: string; text: string };
 
 // ── Kept infrastructure ──────────────────────────────────────────────
 
-function formatTranscript(messages: ChatEntry[]): string {
+function formatTranscript(messages: ChatEntry[], userName: string = "friend"): string {
   return messages
     .map((m) => {
-      const label = m.from === "user" ? "you" : m.from;
+      const label = m.from === "user" ? userName : m.from;
       return `[${label}] ${m.text}`;
     })
     .join("\n");
@@ -40,11 +40,12 @@ function formatTranscript(messages: ChatEntry[]): string {
 function formatWindowedTranscript(
   allMessages: ChatEntry[],
   windowSize: number,
+  userName: string = "friend",
 ): string {
   const visible = windowSize >= allMessages.length
     ? allMessages
     : allMessages.slice(-windowSize);
-  return formatTranscript(visible);
+  return formatTranscript(visible, userName);
 }
 
 // ── Claude CLI call (async — supports parallel execution) ──
@@ -431,6 +432,7 @@ function buildPrompt(
   energy: number,
   participantNames: string[],
   agreementBias: number,
+  userName: string = "friend",
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.`;
 
@@ -450,7 +452,7 @@ function buildPrompt(
     energyBlock = `\nThe conversation is losing steam. Keep it short, don't introduce new topics.`;
   }
 
-  const participantBlock = `People in this chat: ${participantNames.join(', ')}, and the user.`;
+  const participantBlock = `People in this chat: ${participantNames.join(', ')}, and ${userName}.`;
 
   const stanceHint = agreementBias < -0.2
     ? `\nYou don't have to agree with anyone. If something sounds off, say so directly.`
@@ -459,7 +461,7 @@ function buildPrompt(
   return `${baseIdentity} ${contextBlock}
 
 ${participantBlock}
-You can respond to specific people by name. You can ask the user directly what they think.
+You can respond to specific people by name. You can ask ${userName} directly what they think.
 
 Reply like you actually would in a real group chat. You might:
 - Just react ("lol", "bruh", "this", "omg", "\u{1F480}", "nah")
@@ -500,6 +502,7 @@ async function callFriend(
   energy: number,
   attentionWindow: number,
   podFriendIds: string[],
+  userName: string = "friend",
 ): Promise<{ entry: ChatEntry; replyTo: string | null }> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -509,7 +512,7 @@ async function callFriend(
     };
 
   // Windowed transcript — agent only sees recent messages per their attention
-  const transcript = formatWindowedTranscript(allMessages, attentionWindow);
+  const transcript = formatWindowedTranscript(allMessages, attentionWindow, userName);
 
   // Resolve reply target
   let replyToName: string | null = null;
@@ -517,7 +520,7 @@ async function callFriend(
   let replyToId: string | null = null;
   if (replyTarget) {
     const replyFriend = FRIENDS_BY_ID[replyTarget.from];
-    replyToName = replyTarget.from === "user" ? "you" : (replyFriend?.name ?? replyTarget.from);
+    replyToName = replyTarget.from === "user" ? userName : (replyFriend?.name ?? replyTarget.from);
     replyToText = replyTarget.text;
     replyToId = replyTarget.from;
   }
@@ -565,18 +568,19 @@ async function callFriend(
     energy,
     participantNames,
     friend.traits.agreementBias,
+    userName,
   );
 
   const maxTokens =
     length === "micro"
-      ? 50
+      ? 40
       : length === "short"
-        ? 100
+        ? 80
         : length === "long"
-          ? 250
+          ? 200
           : length === "rant"
-            ? 400
-            : 150;
+            ? 350
+            : 120;
 
   try {
     let text = await callModel(
@@ -622,8 +626,9 @@ export async function* orchestrateChat(params: {
   message: string;
   podFriendIds: string[];
   history: { from: string; text: string }[];
+  userName?: string;
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history } = params;
+  const { message, podFriendIds, history, userName = "friend" } = params;
 
   const provider = getActiveProvider();
   if (!provider) {
@@ -759,6 +764,7 @@ export async function* orchestrateChat(params: {
           energy,
           attentionWindow,
           podFriendIds,
+          userName,
         );
       }),
     );
@@ -824,7 +830,7 @@ export async function* orchestrateChat(params: {
 
   // ── Synthesis pass — extract decision options ──────────────────────
 
-  const fullTranscript = formatTranscript(allMessages());
+  const fullTranscript = formatTranscript(allMessages(), userName);
   const friendNames = podFriendIds
     .map((id) => FRIENDS_BY_ID[id]?.name)
     .filter(Boolean);

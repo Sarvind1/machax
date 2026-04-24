@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -48,6 +48,17 @@ export default function ChatPage() {
     }
   }, [router]);
 
+  const userName = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("machax-user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return parsed?.name || parsed?.username || "friend";
+      }
+    } catch {}
+    return "friend";
+  }, []);
+
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
   const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
@@ -75,6 +86,7 @@ export default function ChatPage() {
   }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const isStreamingRef = useRef(false);
 
   const conversations = useSafeQuery<any[]>(api.conversations.list) ?? [];
@@ -120,9 +132,14 @@ export default function ChatPage() {
     }
   }, [convexDecision, isLoading]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom only if user is near the bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200;
+    if (isNearBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages, typingAgents]);
 
   // Safety timeout: if isLoading stays true for 90s, force-reset
@@ -155,6 +172,7 @@ export default function ChatPage() {
             message,
             podFriendIds: podIds,
             history,
+            userName,
           }),
         });
 
@@ -271,7 +289,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     },
-    [sendMessage, upsertDecision]
+    [sendMessage, upsertDecision, userName]
   );
 
   const handleSubmit = useCallback(async () => {
@@ -579,7 +597,7 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="chat-messages">
+        <div className="chat-messages" ref={chatContainerRef}>
           {messages.map((m) => (
             <ChatMessage
               key={m.id}

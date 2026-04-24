@@ -1488,11 +1488,11 @@ export const MODES: ConversationMode[] = [
 // ── Response length logic ─────────────────────────────────────────────
 
 const LENGTH_WEIGHTS: Record<ResponseLength, number> = {
-  micro: 5,
-  short: 15,
-  medium: 40,
-  long: 25,
-  rant: 10,
+  micro: 10,
+  short: 30,
+  medium: 35,
+  long: 15,
+  rant: 5,
 };
 
 const LENGTH_ORDER: ResponseLength[] = ["micro", "short", "medium", "long", "rant"];
@@ -1534,11 +1534,11 @@ export function pickResponseLength(
 
 export function lengthToInstruction(length: ResponseLength): string {
   switch (length) {
-    case "micro": return "Reply in 1-8 words. A complete reaction — like 'lol that's so true' or 'bruh no way' or 'nah i disagree' or '\u{1F480}'. Must be a COMPLETE thought, not a fragment.";
-    case "short": return "One short sentence. A complete thought, like an actual text message someone would send. Not a fragment.";
-    case "medium": return "2-3 sentences. Like a normal group chat reply. Each sentence must be complete.";
-    case "long": return "Go off. 3-5 sentences. You have feelings about this.";
-    case "rant": return "Full rant mode. 5+ sentences. Nobody asked but here you go.";
+    case "micro": return "Reply in 1-8 words. A quick reaction — like 'lol that's so true' or 'bruh no way' or '\u{1F480}'. Complete thought, not a fragment.";
+    case "short": return "One sentence. Like an actual text message.";
+    case "medium": return "1-2 sentences. Normal group chat energy.";
+    case "long": return "2-4 sentences. You have opinions about this.";
+    case "rant": return "Go off. 4+ sentences. Nobody asked but here you go.";
   }
 }
 
