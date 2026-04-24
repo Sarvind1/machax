@@ -466,10 +466,20 @@ Reply like you actually would in a real group chat. You might:
 
 ${lengthInstruction}
 ${modeInstruction}
+
+Examples of good replies (match this style):
+- "pizza all the way, burgers are mid"
+- "omg literally same thing happened to me last week"
+- "nah that's a terrible idea lol"
+- "wait what?? since when??"
+- "honestly just do whatever makes you happy"
+- "\u{1F480}\u{1F480}\u{1F480}"
+- "okay but hear me out... what if you just didn't"
+
 ${energyBlock}
 
 DO NOT be a therapist. DO NOT give structured advice. DO NOT be universally supportive. Be YOUR character. Be messy. Be real.${stanceHint}
-Do NOT use quotes around your response. Do NOT start with your name.`;
+IMPORTANT: Your reply must be a COMPLETE thought or sentence. Never output a fragment or incomplete phrase. Do NOT use quotes around your response. Do NOT start with your name. Do NOT echo or repeat what others said — add something new.`;
 }
 
 // ── Call a friend with v3 engine context ────────────────────────────
@@ -552,14 +562,14 @@ async function callFriend(
 
   const maxTokens =
     length === "micro"
-      ? 35
+      ? 50
       : length === "short"
-        ? 80
+        ? 100
         : length === "long"
-          ? 200
+          ? 250
           : length === "rant"
-            ? 300
-            : 120;
+            ? 400
+            : 150;
 
   try {
     let text = await callModel(
@@ -569,6 +579,18 @@ async function callFriend(
       maxTokens,
     );
     text = cleanResponse(text, friend.name);
+
+    // Validate response quality — retry once if garbage
+    const isGarbage = text.length < 2
+      || (text.length > 5 && !/[.!?…💀😭🤣❤️✨🔥😤🫠)\s]$/.test(text) && /\s/.test(text))
+      || allMessages.some(m => m.from !== friendId && m.text.toLowerCase() === text.toLowerCase());
+
+    if (isGarbage) {
+      const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
+      text = await callModel(friend.systemPrompt, retryPrompt, provider, maxTokens + 50);
+      text = cleanResponse(text, friend.name);
+    }
+
     return { entry: { from: friendId, text }, replyTo: replyToId };
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);

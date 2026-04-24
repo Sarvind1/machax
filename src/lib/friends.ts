@@ -1534,9 +1534,9 @@ export function pickResponseLength(
 
 export function lengthToInstruction(length: ResponseLength): string {
   switch (length) {
-    case "micro": return "Reply in 1-5 words MAX. A reaction, not a take. Like 'lol true' or 'bruh' or '\u{1F480}' or 'nah'.";
-    case "short": return "One sentence max. Punchy. Like an actual text message.";
-    case "medium": return "2-3 sentences tops. Like a normal group chat message.";
+    case "micro": return "Reply in 1-8 words. A complete reaction — like 'lol that's so true' or 'bruh no way' or 'nah i disagree' or '\u{1F480}'. Must be a COMPLETE thought, not a fragment.";
+    case "short": return "One short sentence. A complete thought, like an actual text message someone would send. Not a fragment.";
+    case "medium": return "2-3 sentences. Like a normal group chat reply. Each sentence must be complete.";
     case "long": return "Go off. 3-5 sentences. You have feelings about this.";
     case "rant": return "Full rant mode. 5+ sentences. Nobody asked but here you go.";
   }
