@@ -1,18 +1,22 @@
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
-import { execSync } from "child_process";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { FRIENDS_BY_ID } from "./friends";
+import { FRIENDS_BY_ID, pickRandomMode, pickResponseLength, lengthToInstruction } from "./friends";
 import { getActiveProvider, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
+
+const execAsync = promisify(exec);
 
 type ChatEntry = { from: string; text: string };
 type OrchestratorYield =
   | { from: string; text: string }
   | { decision: Decision }
-  | { provider: string };
+  | { provider: string }
+  | { typing: string };
 
 function formatTranscript(
   history: ChatEntry[],
@@ -27,7 +31,7 @@ function formatTranscript(
     .join("\n");
 }
 
-// ── Claude CLI call (mirrors pipeline/client.py pattern) ──
+// ── Claude CLI call (async — supports parallel execution) ──
 async function callClaudeCli(
   system: string,
   userPrompt: string,
@@ -37,8 +41,6 @@ async function callClaudeCli(
 
   try {
     writeFileSync(tmpFile, userPrompt);
-    // --system-prompt replaces the entire default system prompt (suppresses CLAUDE.md injection)
-    // while keeping OAuth/keychain auth intact
     const escapedSystem = system.replace(/'/g, "'\\''");
     const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --output-format json --system-prompt '${escapedSystem}'`;
 
@@ -46,14 +48,13 @@ async function callClaudeCli(
       Object.entries(process.env).filter(([k]) => k !== "ANTHROPIC_AUTH_TOKEN")
     ) as NodeJS.ProcessEnv;
 
-    const result = execSync(shellCmd, {
+    const result = await execAsync(shellCmd, {
       timeout: 60_000,
       env,
-      stdio: ["pipe", "pipe", "pipe"],
       maxBuffer: 1024 * 1024,
     });
 
-    const stdout = result.toString().trim();
+    const stdout = result.stdout.trim();
     if (!stdout) throw new Error("claude -p produced no output");
 
     const data = JSON.parse(stdout);
@@ -126,6 +127,91 @@ ${transcript}
 ${othersText} already responded above. Now it's your turn. IMPORTANT: React to what the others said — agree, disagree, build on their point, push back, or add a new angle. This should feel like a real discussion, not separate monologues. Write 2-4 sentences. Be conversational. Do NOT use quotes around your response. Do NOT start with your name.`;
 }
 
+// ── Clean up model response ──
+function cleanResponse(text: string, friendName: string): string {
+  text = text.trim();
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    text = text.slice(1, -1);
+  }
+  const namePrefix = new RegExp(`^${friendName}:\\s*`, "i");
+  text = text.replace(namePrefix, "");
+  return text;
+}
+
+// ── Per-friend call helper ──
+async function callFriend(
+  friendId: string,
+  fullHistory: ChatEntry[],
+  roundResponses: ChatEntry[],
+  provider: ProviderConfig
+): Promise<ChatEntry> {
+  const friend = FRIENDS_BY_ID[friendId];
+  if (!friend) return { from: friendId, text: "hmm let me think about that..." };
+
+  const transcript = formatTranscript(fullHistory, roundResponses);
+  const priorNames = roundResponses.map(
+    (r) => FRIENDS_BY_ID[r.from]?.name ?? r.from
+  );
+
+  // Pick a random mode and response length for variety
+  const mode = pickRandomMode();
+  const length = pickResponseLength(friend.defaultLength, mode ?? undefined);
+  const lengthInstruction = lengthToInstruction(length);
+  const modeInstruction = mode ? `\n[MODE: ${mode.name}] ${mode.promptOverlay}` : "";
+
+  let prompt = buildFriendPrompt(
+    friend.name,
+    friend.role,
+    transcript,
+    roundResponses.length === 0,
+    priorNames
+  );
+
+  // Replace the fixed "2-4 sentences" with dynamic length + mode
+  prompt = prompt.replace(
+    /Write 2-4 sentences\./g,
+    lengthInstruction
+  );
+  prompt += modeInstruction;
+
+  // Adjust max tokens based on length
+  const maxTokens = length === "micro" ? 40 : length === "short" ? 100 : length === "long" ? 400 : length === "rant" ? 500 : 250;
+
+  try {
+    let text = await callModel(friend.systemPrompt, prompt, provider, maxTokens);
+    text = cleanResponse(text, friend.name);
+    return { from: friendId, text };
+  } catch (err) {
+    console.error(`Error generating response for ${friendId}:`, err);
+    return { from: friendId, text: "hmm let me think about that..." };
+  }
+}
+
+// ── Run a wave of parallel friend calls ──
+async function runWave(
+  friendIds: string[],
+  fullHistory: ChatEntry[],
+  roundResponses: ChatEntry[],
+  provider: ProviderConfig
+): Promise<ChatEntry[]> {
+  if (friendIds.length === 0) return [];
+
+  const settled = await Promise.allSettled(
+    friendIds.map((id) => callFriend(id, fullHistory, roundResponses, provider))
+  );
+
+  return settled.map((result, i) => {
+    if (result.status === "fulfilled") {
+      return result.value;
+    }
+    console.error(`Wave call failed for ${friendIds[i]}:`, result.reason);
+    return { from: friendIds[i], text: "hmm let me think about that..." };
+  });
+}
+
 export async function* orchestrateChat(params: {
   message: string;
   podFriendIds: string[];
@@ -151,56 +237,52 @@ export async function* orchestrateChat(params: {
 
   const roundResponses: ChatEntry[] = [];
 
-  // Generate each friend's response sequentially
-  for (let i = 0; i < podFriendIds.length; i++) {
-    const friendId = podFriendIds[i];
-    const friend = FRIENDS_BY_ID[friendId];
-    if (!friend) continue;
+  // Split friends into parallel waves: [0,1] [2,3] [4]
+  const wave1Ids = podFriendIds.slice(0, 2);
+  const wave2Ids = podFriendIds.slice(2, 4);
+  const wave3Ids = podFriendIds.slice(4);
 
-    const transcript = formatTranscript(fullHistory, roundResponses);
-    const priorFriendsInRound = roundResponses.map(
-      (r) => FRIENDS_BY_ID[r.from]?.name ?? r.from
+  // Wave 1: first 2 friends in parallel (only see user message)
+  for (const id of wave1Ids) {
+    yield { typing: id };
+  }
+  const wave1Results = await runWave(wave1Ids, fullHistory, [], provider);
+  for (const r of wave1Results) {
+    roundResponses.push(r);
+    yield { from: r.from, text: r.text };
+  }
+
+  // Wave 2: next 2 friends in parallel (see wave 1 responses)
+  if (wave2Ids.length > 0) {
+    for (const id of wave2Ids) {
+      yield { typing: id };
+    }
+    const wave2Results = await runWave(
+      wave2Ids,
+      fullHistory,
+      [...roundResponses],
+      provider
     );
+    for (const r of wave2Results) {
+      roundResponses.push(r);
+      yield { from: r.from, text: r.text };
+    }
+  }
 
-    const prompt = buildFriendPrompt(
-      friend.name,
-      friend.role,
-      transcript,
-      i === 0,
-      priorFriendsInRound
+  // Wave 3: final friend (sees everything)
+  if (wave3Ids.length > 0) {
+    for (const id of wave3Ids) {
+      yield { typing: id };
+    }
+    const wave3Results = await runWave(
+      wave3Ids,
+      fullHistory,
+      [...roundResponses],
+      provider
     );
-
-    try {
-      let text = await callModel(
-        friend.systemPrompt,
-        prompt,
-        provider,
-        300 // enough for 2-4 real sentences
-      );
-
-      // Clean up: remove wrapping quotes that models sometimes add
-      text = text.trim();
-      if (
-        (text.startsWith('"') && text.endsWith('"')) ||
-        (text.startsWith("'") && text.endsWith("'"))
-      ) {
-        text = text.slice(1, -1);
-      }
-      // Remove leading "Name:" if the model prefixed it
-      const namePrefix = new RegExp(`^${friend.name}:\\s*`, "i");
-      text = text.replace(namePrefix, "");
-
-      const response: ChatEntry = { from: friendId, text };
-      roundResponses.push(response);
-      yield { from: friendId, text };
-    } catch (err) {
-      console.error(`Error generating response for ${friendId}:`, err);
-      const fallback: ChatEntry = {
-        from: friendId,
-        text: "hmm let me think about that...",
-      };
-      roundResponses.push(fallback);
-      yield { from: friendId, text: fallback.text };
+    for (const r of wave3Results) {
+      roundResponses.push(r);
+      yield { from: r.from, text: r.text };
     }
   }
 

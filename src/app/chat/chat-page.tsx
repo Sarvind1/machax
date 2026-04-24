@@ -19,6 +19,7 @@ import ChatMessage from "./components/chat-message";
 import ChatComposer from "./components/chat-composer";
 import DecisionPanel from "./components/decision-panel";
 import FriendPill from "./components/friend-pill";
+import TypingIndicator from "./components/typing-indicator";
 import "./chat.css";
 
 type ConversationId = Id<"conversations">;
@@ -37,7 +38,7 @@ export default function ChatPage() {
   const [pod, setPod] = useState<Friend[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [typingAgent, setTypingAgent] = useState<string | null>(null);
+  const [typingAgents, setTypingAgents] = useState<string[]>([]);
   const [mobileDecisionOpen, setMobileDecisionOpen] = useState(false);
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
@@ -102,7 +103,7 @@ export default function ChatPage() {
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingAgent]);
+  }, [messages, typingAgents]);
 
   const streamChat = useCallback(
     async (
@@ -154,7 +155,8 @@ export default function ChatPage() {
               }
 
               if (data.from && data.text) {
-                setTypingAgent(null);
+                // Remove this friend from typing list
+                setTypingAgents((prev) => prev.filter((id) => id !== data.from));
                 const newMsg: ChatMessageType = {
                   id: `${data.from}-${Date.now()}-${Math.random()}`,
                   conversationId: convoId as string,
@@ -177,7 +179,9 @@ export default function ChatPage() {
               }
 
               if (data.typing) {
-                setTypingAgent(data.typing);
+                setTypingAgents((prev) =>
+                  prev.includes(data.typing) ? prev : [...prev, data.typing]
+                );
               }
 
               if (data.decision) {
@@ -194,7 +198,7 @@ export default function ChatPage() {
               }
 
               if (data.done) {
-                setTypingAgent(null);
+                setTypingAgents([]);
               }
             } catch {
               // Skip malformed JSON lines
@@ -206,7 +210,7 @@ export default function ChatPage() {
       } finally {
         isStreamingRef.current = false;
         setIsLoading(false);
-        setTypingAgent(null);
+        setTypingAgents([]);
       }
     },
     [sendMessage, upsertDecision]
@@ -216,6 +220,13 @@ export default function ChatPage() {
     const text = input.trim();
     if (!text || isLoading) return;
     setInput("");
+
+    // Guard against Convex reactive query overwriting local state during the
+    // submit flow.  The sendMessage mutation triggers the convexMessages query
+    // to update, and the useEffect that syncs convexMessages → setMessages
+    // checks isStreamingRef.  We must set it *before* any Convex mutation so
+    // the guard is active when the reactive query fires.
+    isStreamingRef.current = true;
 
     if (!activeConversation) {
       // First message — create conversation
@@ -250,6 +261,7 @@ export default function ChatPage() {
         await streamChat(text, convoId, selectedPod.map((f) => f.id), []);
       } catch (err) {
         console.error("Failed to create conversation:", err);
+        isStreamingRef.current = false;
       }
     } else {
       // Subsequent message
@@ -294,7 +306,7 @@ export default function ChatPage() {
     setDecision(null);
     setPod([]);
     setInput("");
-    setTypingAgent(null);
+    setTypingAgents([]);
     setIsLoading(false);
   };
 
@@ -316,7 +328,9 @@ export default function ChatPage() {
     }
   };
 
-  const typingFriend = typingAgent ? FRIENDS_BY_ID[typingAgent] : null;
+  const friendsRecord = Object.fromEntries(
+    FRIENDS.map((f) => [f.id, { name: f.name, color: f.color }])
+  );
 
   // Landing state
   if (!activeConversation && messages.length === 0) {
@@ -468,15 +482,11 @@ export default function ChatPage() {
             />
           ))}
 
-          {typingAgent && typingFriend && (
-            <div className="chat-typing">
-              <div className="chat-typing-dots">
-                <span />
-                <span />
-                <span />
-              </div>
-              {typingFriend.name.toLowerCase()} is typing...
-            </div>
+          {typingAgents.length > 0 && (
+            <TypingIndicator
+              typingAgents={typingAgents}
+              friends={friendsRecord}
+            />
           )}
 
           <div ref={messagesEndRef} />
