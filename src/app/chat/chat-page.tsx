@@ -45,6 +45,7 @@ export default function ChatPage() {
   }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isStreamingRef = useRef(false);
 
   const conversations = useQuery(api.conversations.list) ?? [];
   const createConversation = useMutation(api.conversations.create);
@@ -63,7 +64,7 @@ export default function ChatPage() {
   );
 
   useEffect(() => {
-    if (convexMessages && !isLoading) {
+    if (convexMessages && !isLoading && !isStreamingRef.current) {
       setMessages(
         convexMessages.map((m) => ({
           id: m._id,
@@ -102,6 +103,7 @@ export default function ChatPage() {
       history: { from: string; text: string }[]
     ) => {
       setIsLoading(true);
+      isStreamingRef.current = true;
       try {
         const response = await fetch("/api/chat", {
           method: "POST",
@@ -193,6 +195,7 @@ export default function ChatPage() {
       } catch (err) {
         console.error("Chat stream error:", err);
       } finally {
+        isStreamingRef.current = false;
         setIsLoading(false);
         setTypingAgent(null);
       }

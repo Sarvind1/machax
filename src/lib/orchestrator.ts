@@ -12,7 +12,7 @@ type ChatEntry = { from: string; text: string };
 type OrchestratorYield =
   | { from: string; text: string }
   | { decision: Decision }
-  | { provider: string }; // announce which provider is active
+  | { provider: string };
 
 function formatTranscript(
   history: ChatEntry[],
@@ -31,17 +31,17 @@ function formatTranscript(
 async function callClaudeCli(
   system: string,
   userPrompt: string,
-  model: string,
-  maxTokens: number
+  model: string
 ): Promise<string> {
-  const fullPrompt = `<system>\n${system}\n</system>\n\n${userPrompt}`;
   const tmpFile = join(tmpdir(), `machax-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`);
 
   try {
-    writeFileSync(tmpFile, fullPrompt);
-    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --output-format json`;
+    writeFileSync(tmpFile, userPrompt);
+    // --system-prompt replaces the entire default system prompt (suppresses CLAUDE.md injection)
+    // while keeping OAuth/keychain auth intact
+    const escapedSystem = system.replace(/'/g, "'\\''");
+    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --output-format json --system-prompt '${escapedSystem}'`;
 
-    // Strip ANTHROPIC_AUTH_TOKEN — let CLI use its own keychain auth
     const env = Object.fromEntries(
       Object.entries(process.env).filter(([k]) => k !== "ANTHROPIC_AUTH_TOKEN")
     ) as NodeJS.ProcessEnv;
@@ -70,15 +70,13 @@ async function callAiSdk(
   provider: ProviderConfig,
   maxTokens: number
 ): Promise<string> {
-  // Build the model based on provider
   let model;
   switch (provider.name) {
     case "gemini":
       model = google(provider.model);
       break;
     default:
-      // For any AI SDK provider, use google as fallback
-      model = google("gemini-2.0-flash");
+      model = google("gemini-2.5-flash");
   }
 
   const result = await generateText({
@@ -99,9 +97,33 @@ async function callModel(
   maxTokens: number
 ): Promise<string> {
   if (provider.name === "claude-cli") {
-    return callClaudeCli(system, userPrompt, provider.model, maxTokens);
+    return callClaudeCli(system, userPrompt, provider.model);
   }
   return callAiSdk(system, userPrompt, provider, maxTokens);
+}
+
+// Build a prompt that makes each friend aware of what others said
+function buildFriendPrompt(
+  friendName: string,
+  friendRole: string,
+  transcript: string,
+  isFirstResponder: boolean,
+  priorFriendsInRound: string[]
+): string {
+  if (isFirstResponder) {
+    return `You are ${friendName} (${friendRole}) in a group chat with close friends. Here is the conversation so far:
+
+${transcript}
+
+You are the first friend to respond to this. React naturally — ask a question, share your take, challenge an assumption, or empathize. Write 2-4 sentences. Be conversational, like you're texting friends. Do NOT use quotes around your response. Do NOT start with your name.`;
+  }
+
+  const othersText = priorFriendsInRound.join(", ");
+  return `You are ${friendName} (${friendRole}) in a group chat with close friends. Here is the conversation so far:
+
+${transcript}
+
+${othersText} already responded above. Now it's your turn. IMPORTANT: React to what the others said — agree, disagree, build on their point, push back, or add a new angle. This should feel like a real discussion, not separate monologues. Write 2-4 sentences. Be conversational. Do NOT use quotes around your response. Do NOT start with your name.`;
 }
 
 export async function* orchestrateChat(params: {
@@ -111,7 +133,6 @@ export async function* orchestrateChat(params: {
 }): AsyncGenerator<OrchestratorYield> {
   const { message, podFriendIds, history } = params;
 
-  // Resolve which provider to use
   const provider = getActiveProvider();
   if (!provider) {
     yield {
@@ -121,7 +142,6 @@ export async function* orchestrateChat(params: {
     return;
   }
 
-  // Announce the active provider to the client
   yield { provider: provider.label };
 
   const fullHistory: ChatEntry[] = [
@@ -132,19 +152,43 @@ export async function* orchestrateChat(params: {
   const roundResponses: ChatEntry[] = [];
 
   // Generate each friend's response sequentially
-  for (const friendId of podFriendIds) {
+  for (let i = 0; i < podFriendIds.length; i++) {
+    const friendId = podFriendIds[i];
     const friend = FRIENDS_BY_ID[friendId];
     if (!friend) continue;
 
     const transcript = formatTranscript(fullHistory, roundResponses);
+    const priorFriendsInRound = roundResponses.map(
+      (r) => FRIENDS_BY_ID[r.from]?.name ?? r.from
+    );
+
+    const prompt = buildFriendPrompt(
+      friend.name,
+      friend.role,
+      transcript,
+      i === 0,
+      priorFriendsInRound
+    );
 
     try {
-      const text = await callModel(
+      let text = await callModel(
         friend.systemPrompt,
-        `You are ${friend.name} in a group chat. Here is the conversation so far:\n\n${transcript}\n\nRespond as ${friend.name}. Keep it short and conversational.`,
+        prompt,
         provider,
-        150
+        300 // enough for 2-4 real sentences
       );
+
+      // Clean up: remove wrapping quotes that models sometimes add
+      text = text.trim();
+      if (
+        (text.startsWith('"') && text.endsWith('"')) ||
+        (text.startsWith("'") && text.endsWith("'"))
+      ) {
+        text = text.slice(1, -1);
+      }
+      // Remove leading "Name:" if the model prefixed it
+      const namePrefix = new RegExp(`^${friend.name}:\\s*`, "i");
+      text = text.replace(namePrefix, "");
 
       const response: ChatEntry = { from: friendId, text };
       roundResponses.push(response);
@@ -171,10 +215,9 @@ export async function* orchestrateChat(params: {
       `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`,
       `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 3-4 distinct options/perspectives that emerged. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. Return 3-4 options.`,
       { ...provider, model: provider.synthesisModel },
-      500
+      600
     );
 
-    // Parse JSON — handle markdown fences
     let cleaned = synthesisText.trim();
     cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
     const startIdx = cleaned.indexOf("{");
