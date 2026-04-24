@@ -1,11 +1,36 @@
 export const dynamic = "force-dynamic";
 
 import { orchestrateChat } from "@/lib/orchestrator";
+import type { EngineEvent } from "@/lib/engine-types";
 
 const encoder = new TextEncoder();
 
+// Translate EngineEvent to the flat SSE shape the frontend expects
+function translateEvent(event: EngineEvent): Record<string, unknown> {
+  switch (event.type) {
+    case "provider":
+      return { provider: event.label };
+    case "typing":
+      return { typing: event.agentId };
+    case "typing-stop":
+      return { typingStop: event.agentId };
+    case "message":
+      return { from: event.from, text: event.text, ...(event.replyTo ? { replyTo: event.replyTo } : {}) };
+    case "joined":
+      return { joined: event.agentId };
+    case "lurking":
+      return { lurking: event.agentId };
+    case "winding-down":
+      return { windingDown: true };
+    case "decision":
+      return { decision: event.decision };
+    case "done":
+      return { done: true };
+  }
+}
+
 function iteratorToStream(
-  iterator: AsyncGenerator<unknown>
+  iterator: AsyncGenerator<EngineEvent>
 ): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async pull(controller) {
@@ -15,8 +40,9 @@ function iteratorToStream(
           controller.enqueue(encoder.encode(`data: {"done":true}\n\n`));
           controller.close();
         } else {
+          const flat = translateEvent(value);
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(value)}\n\n`)
+            encoder.encode(`data: ${JSON.stringify(flat)}\n\n`)
           );
         }
       } catch (err) {

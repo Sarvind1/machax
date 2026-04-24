@@ -788,3 +788,43 @@
 .reveal-text {
   display: inline;
 }
+
+/* ===== System messages (joins, events) ===== */
+.chat-system-msg {
+  text-align: center;
+  padding: 6px 0;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.08em;
+}
+
+/* ===== Reply-to indicator ===== */
+.reply-to-label {
+  font-family: var(--font-mono), monospace;
+  font-size: 9.5px;
+  color: var(--ink-faint);
+  margin-bottom: 3px;
+  padding-left: 2px;
+}
+
+/* ===== Lurker pill ===== */
+.friend-pill.lurking {
+  opacity: 0.5;
+}
+.lurker-label {
+  font-family: var(--font-mono), monospace;
+  font-size: 8px;
+  color: var(--ink-faint);
+  margin-left: 4px;
+}
+
+/* ===== Winding down indicator ===== */
+.chat-winding-down {
+  text-align: center;
+  padding: 8px 0;
+  font-family: var(--font-caveat), cursive;
+  font-size: 14px;
+  color: var(--ink-faint);
+  font-style: italic;
+}

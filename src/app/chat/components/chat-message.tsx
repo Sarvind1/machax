@@ -6,9 +6,19 @@ interface ChatMessageProps {
   from: string;
   text: string;
   isUser: boolean;
+  replyTo?: string;
 }
 
-export default function ChatMessage({ from, text, isUser }: ChatMessageProps) {
+export default function ChatMessage({ from, text, isUser, replyTo }: ChatMessageProps) {
+  // System messages (joins, events)
+  if (from === "system") {
+    return (
+      <div className="chat-system-msg">
+        <span>{text}</span>
+      </div>
+    );
+  }
+
   const friend = !isUser ? FRIENDS_BY_ID[from] : null;
 
   if (isUser) {
@@ -20,6 +30,8 @@ export default function ChatMessage({ from, text, isUser }: ChatMessageProps) {
       </div>
     );
   }
+
+  const replyFriend = replyTo ? FRIENDS_BY_ID[replyTo] : null;
 
   return (
     <div className="chat-bubble-row friend">
@@ -33,6 +45,13 @@ export default function ChatMessage({ from, text, isUser }: ChatMessageProps) {
         {friend?.name[0] ?? "?"}
       </div>
       <div className="chat-bubble-content">
+        {replyTo && replyFriend && (
+          <div className="reply-to-label">
+            {"<-"} replying to <span style={{ color: replyFriend.color }}>
+              {replyFriend.name.toLowerCase()}
+            </span>
+          </div>
+        )}
         <span
           className="chat-bubble-name"
           style={{ color: friend?.tintInk ?? "#888" }}

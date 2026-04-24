@@ -15,6 +15,9 @@ function useSafeQuery<T>(query: any, args?: any): T | null {
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ChatMessage as ChatMessageType, Decision } from "@/lib/types";
 import { FRIENDS, FRIENDS_BY_ID, STARTERS, selectPod, type Friend } from "@/lib/friends";
+
+type ChatMessageWithReply = ChatMessageType & { replyTo?: string };
+
 import ChatMessage from "./components/chat-message";
 import ChatComposer from "./components/chat-composer";
 import DecisionPanel from "./components/decision-panel";
@@ -33,7 +36,7 @@ interface ProviderInfo {
 
 export default function ChatPage() {
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
-  const [messages, setMessages] = useState<ChatMessageType[]>([]);
+  const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [pod, setPod] = useState<Friend[]>([]);
   const [input, setInput] = useState("");
@@ -42,6 +45,9 @@ export default function ChatPage() {
   const [mobileDecisionOpen, setMobileDecisionOpen] = useState(false);
   const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
+  const [joinedAgents, setJoinedAgents] = useState<string[]>([]);
+  const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
+  const [isWindingDown, setIsWindingDown] = useState(false);
 
   // Probe providers on mount
   useEffect(() => {
@@ -166,14 +172,40 @@ export default function ChatPage() {
                 setActiveProvider(data.provider);
               }
 
+              if (data.joined) {
+                const friend = FRIENDS_BY_ID[data.joined];
+                if (friend) {
+                  setPod(prev => prev.some(f => f.id === data.joined) ? prev : [...prev, friend]);
+                }
+                setJoinedAgents(prev => [...prev, data.joined]);
+                setMessages(prev => [...prev, {
+                  id: `join-${data.joined}-${Date.now()}`,
+                  conversationId: convoId as string,
+                  from: "system",
+                  text: `${FRIENDS_BY_ID[data.joined]?.name?.toLowerCase() ?? data.joined} just saw this`,
+                  timestamp: Date.now(),
+                }]);
+              }
+
+              if (data.lurking) {
+                setLurkingAgents(prev =>
+                  prev.includes(data.lurking) ? prev : [...prev, data.lurking]
+                );
+              }
+
+              if (data.windingDown) {
+                setIsWindingDown(true);
+              }
+
               if (data.from && data.text) {
                 // Remove this friend from typing list
                 setTypingAgents((prev) => prev.filter((id) => id !== data.from));
-                const newMsg: ChatMessageType = {
+                const newMsg: ChatMessageWithReply = {
                   id: `${data.from}-${Date.now()}-${Math.random()}`,
                   conversationId: convoId as string,
                   from: data.from,
                   text: data.text,
+                  replyTo: data.replyTo || undefined,
                   timestamp: Date.now(),
                 };
                 setMessages((prev) => [...prev, newMsg]);
@@ -329,6 +361,9 @@ export default function ChatPage() {
     setInput("");
     setTypingAgents([]);
     setIsLoading(false);
+    setJoinedAgents([]);
+    setLurkingAgents([]);
+    setIsWindingDown(false);
   };
 
   const handleLoadConversation = (convoId: ConversationId, convo: { podFriendIds: string[] }) => {
@@ -451,6 +486,19 @@ export default function ChatPage() {
               {pod.map((f) => (
                 <FriendPill key={f.id} friend={f} />
               ))}
+              {lurkingAgents
+                .filter(id => !pod.some(f => f.id === id))
+                .map(id => {
+                  const f = FRIENDS_BY_ID[id];
+                  if (!f) return null;
+                  return (
+                    <div key={id} className="friend-pill lurking">
+                      <span className="friend-pill-avatar" style={{ background: f.color, opacity: 0.4 }}>{f.name[0]}</span>
+                      <span style={{ opacity: 0.5 }}>{f.name.toLowerCase()}</span>
+                      <span className="lurker-label">reading</span>
+                    </div>
+                  );
+                })}
             </div>
           </>
         )}
@@ -500,6 +548,7 @@ export default function ChatPage() {
               from={m.from}
               text={m.text}
               isUser={m.from === "user"}
+              replyTo={m.replyTo}
             />
           ))}
 
@@ -508,6 +557,12 @@ export default function ChatPage() {
               typingAgents={typingAgents}
               friends={friendsRecord}
             />
+          )}
+
+          {isWindingDown && (
+            <div className="chat-winding-down">
+              conversation settling...
+            </div>
           )}
 
           <div ref={messagesEndRef} />
