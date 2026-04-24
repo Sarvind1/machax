@@ -828,3 +828,43 @@
   color: var(--ink-faint);
   font-style: italic;
 }
+
+/* ===== Friend Pill Presence States ===== */
+.friend-pill-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  transition: opacity 0.4s;
+}
+
+.friend-pill-presence.active {
+  opacity: 1;
+}
+.friend-pill-presence.active .presence-dot-small {
+  background: #6BAE7E;
+  box-shadow: 0 0 4px #6BAE7E;
+}
+
+.friend-pill-presence.joined {
+  opacity: 0.7;
+}
+.friend-pill-presence.joined .presence-dot-small {
+  background: #6BAE7E;
+}
+
+.friend-pill-presence.lurking {
+  opacity: 0.45;
+}
+.friend-pill-presence.lurking .presence-dot-small {
+  background: #8A8374;
+}
+
+.presence-dot-small {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

@@ -17,8 +17,9 @@ import type {
   EngineEvent,
   AgentTraits,
   ConversationPhase,
+  PresenceState,
 } from "./engine-types";
-import { SPEED_DELAYS } from "./engine-types";
+import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
 
 const execAsync = promisify(exec);
 
@@ -26,17 +27,24 @@ type ChatEntry = { from: string; text: string };
 
 // ── Kept infrastructure ──────────────────────────────────────────────
 
-function formatTranscript(
-  history: ChatEntry[],
-  roundResponses: ChatEntry[],
-): string {
-  const all = [...history, ...roundResponses];
-  return all
+function formatTranscript(messages: ChatEntry[]): string {
+  return messages
     .map((m) => {
       const label = m.from === "user" ? "you" : m.from;
       return `[${label}] ${m.text}`;
     })
     .join("\n");
+}
+
+/** Windowed transcript — only the last N messages visible to this agent */
+function formatWindowedTranscript(
+  allMessages: ChatEntry[],
+  windowSize: number,
+): string {
+  const visible = windowSize >= allMessages.length
+    ? allMessages
+    : allMessages.slice(-windowSize);
+  return formatTranscript(visible);
 }
 
 // ── Claude CLI call (async — supports parallel execution) ──
@@ -198,6 +206,12 @@ function getTraits(friendId: string): AgentTraits {
   };
 }
 
+/** Resolve attention window — use explicit trait or derive from speed */
+function getAttentionWindow(traits: AgentTraits): number {
+  if (traits.attentionWindow != null) return traits.attentionWindow;
+  return ATTENTION_WINDOWS[traits.responseSpeed];
+}
+
 // ── Delay drawing ────────────────────────────────────────────────────
 
 function drawDelay(speed: AgentTraits["responseSpeed"]): number {
@@ -205,9 +219,187 @@ function drawDelay(speed: AgentTraits["responseSpeed"]): number {
   return min + Math.random() * (max - min);
 }
 
-// ── Prompt builders ──────────────────────────────────────────────────
+// ── Presence state tracking ─────────────────────────────────────────
 
-function buildThreadedPrompt(
+interface AgentPresence {
+  id: string;
+  state: PresenceState;
+  traits: AgentTraits;
+  arriveAtMs: number; // simulated time to come online
+  responseCount: number; // how many times this agent has responded
+  lastRespondedAtMs: number; // simulated time of last response
+  fadeAfter: number; // response count threshold before fading
+}
+
+function initPresence(agentId: string): AgentPresence {
+  const traits = getTraits(agentId);
+  const baseDelay = drawDelay(traits.responseSpeed);
+  // Stagger arrivals: some come fast, some slow
+  const arriveAtMs = baseDelay * (0.3 + Math.random() * 0.7);
+  return {
+    id: agentId,
+    state: "offline",
+    traits,
+    arriveAtMs,
+    responseCount: 0,
+    lastRespondedAtMs: 0,
+    fadeAfter: 2 + Math.floor(Math.random() * 2), // stable threshold: 2 or 3
+  };
+}
+
+function updatePresenceState(
+  agent: AgentPresence,
+  simulatedTimeMs: number,
+  energy: number,
+): PresenceState {
+  const prev = agent.state;
+
+  if (prev === "offline") {
+    if (simulatedTimeMs >= agent.arriveAtMs) {
+      // Lurkers start lurking, others go active
+      return Math.random() < agent.traits.lurkerChance ? "lurking" : "active";
+    }
+    return "offline";
+  }
+
+  if (prev === "active") {
+    // Fade after responding enough times and energy is declining
+    if (agent.responseCount >= agent.fadeAfter && energy < 0.6) {
+      return "fading";
+    }
+    return "active";
+  }
+
+  if (prev === "lurking") {
+    // Stay lurking — activation is handled by scoring (direct address)
+    return "lurking";
+  }
+
+  if (prev === "fading") {
+    // Fading agents might leave or stay fading
+    if (energy < 0.3 || Math.random() < 0.3) return "offline";
+    return "fading";
+  }
+
+  return prev;
+}
+
+// ── Scoring-based reply selection ───────────────────────────────────
+
+interface ScoredMessage {
+  index: number;
+  from: string;
+  text: string;
+  score: number;
+}
+
+function scoreMessagesForAgent(
+  agentId: string,
+  allMessages: ChatEntry[],
+  replyCounts: Map<number, number>,
+  traits: AgentTraits,
+): ScoredMessage | null {
+  const friend = FRIENDS_BY_ID[agentId];
+  if (!friend) return null;
+
+  const agentName = friend.name.toLowerCase();
+  const scored: ScoredMessage[] = [];
+
+  for (let i = 0; i < allMessages.length; i++) {
+    const msg = allMessages[i];
+    if (msg.from === agentId) continue; // don't reply to yourself
+
+    let score = 0;
+    const textLower = msg.text.toLowerCase();
+
+    // +3 if it directly addresses this agent by name
+    if (textLower.includes(agentName)) {
+      score += 3;
+    }
+
+    // +2 if it contains a question directed at "you" (general address)
+    if (textLower.includes("?") && textLower.includes("you")) {
+      score += 2;
+    }
+
+    // +2 if this agent disagrees with the take (contrarian bias)
+    if (traits.agreementBias < 0) {
+      // Contrarian agents find disagreement opportunities
+      score += Math.round(Math.abs(traits.agreementBias) * 2);
+    }
+
+    // +1 if it's the user's original message
+    if (msg.from === "user") {
+      score += 1;
+    }
+
+    // +1 if it's recent (last 2 messages)
+    if (i >= allMessages.length - 2) {
+      score += 1;
+    }
+
+    // -1 if 2+ agents already replied to this message
+    const replies = replyCounts.get(i) ?? 0;
+    if (replies >= 2) {
+      score -= 1;
+    }
+
+    // -2 if this agent broadly agrees and has nothing new to add
+    if (traits.agreementBias > 0.3 && replies >= 1) {
+      score -= 2;
+    }
+
+    scored.push({ index: i, from: msg.from, text: msg.text, score });
+  }
+
+  // Return the highest scoring message, or null if none score above 0
+  scored.sort((a, b) => b.score - a.score);
+  if (scored.length === 0 || scored[0].score <= 0) return null;
+  return scored[0];
+}
+
+// ── Should agent respond? (behavioral dropout) ─────────────────────
+
+function shouldRespond(
+  agent: AgentPresence,
+  bestScore: number | null,
+  roundResponses: ChatEntry[],
+  energy: number,
+): boolean {
+  // If nothing scored above 0, don't respond
+  if (bestScore === null || bestScore <= 0) return false;
+
+  // Lurker check — even with a good score, lurkers might stay silent
+  if (agent.state === "lurking" && bestScore < 3) {
+    // Lurkers only activate for strong triggers (direct address = 3+)
+    return false;
+  }
+
+  // Fading agents are less likely to respond
+  if (agent.state === "fading" && Math.random() < 0.5) return false;
+
+  // Low energy → higher bar to respond
+  if (energy < 0.4 && bestScore < 2 && Math.random() < 0.4) return false;
+
+  // Check if someone already made their point
+  const agentResponses = roundResponses.filter((r) => r.from === agent.id);
+  if (agentResponses.length >= 3 && Math.random() < 0.6) return false;
+
+  // Random lurker dropout based on trait
+  if (Math.random() < agent.traits.lurkerChance * 0.5) return false;
+
+  return true;
+}
+
+// ── Detect questions in text (for soft pressure) ────────────────────
+
+function containsQuestion(text: string): boolean {
+  return text.includes("?") || /\b(what|how|should|would|do you|are you|right)\b/i.test(text);
+}
+
+// ── Prompt builder ──────────────────────────────────────────────────
+
+function buildPrompt(
   friendName: string,
   friendRole: string,
   transcript: string,
@@ -216,7 +408,8 @@ function buildThreadedPrompt(
   lengthInstruction: string,
   modeInstruction: string,
   isLateJoiner: boolean,
-  isWindingDown: boolean,
+  isClosingOut: boolean,
+  energy: number,
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.`;
 
@@ -229,9 +422,11 @@ function buildThreadedPrompt(
     contextBlock = `Someone just sent this:\n\n${transcript}`;
   }
 
-  let windingDownBlock = "";
-  if (isWindingDown) {
-    windingDownBlock = `\nThe conversation is winding down. Keep it super brief — "anyway lol", "okay but just do X", "alright i'm out", a quick final take, or a reaction emoji. Don't start a new thread.`;
+  let energyBlock = "";
+  if (isClosingOut) {
+    energyBlock = `\nThe conversation is winding down. Keep it super brief — "anyway lol", "okay but just do X", "alright i'm out", a quick final take, or a reaction emoji. Don't start a new thread.`;
+  } else if (energy < 0.5) {
+    energyBlock = `\nThe conversation is losing steam. Keep it short, don't introduce new topics.`;
   }
 
   return `${baseIdentity} ${contextBlock}
@@ -248,22 +443,22 @@ Reply like you actually would in a real group chat. You might:
 
 ${lengthInstruction}
 ${modeInstruction}
-${windingDownBlock}
+${energyBlock}
 
 DO NOT be a therapist. DO NOT give structured advice. DO NOT be universally supportive. Be YOUR character. Be messy. Be real.
 Do NOT use quotes around your response. Do NOT start with your name.`;
 }
 
-// ── Call a friend with traits-aware prompting ────────────────────────
+// ── Call a friend with v3 engine context ────────────────────────────
 
-async function callFriendV2(
+async function callFriend(
   friendId: string,
-  fullHistory: ChatEntry[],
-  roundResponses: ChatEntry[],
+  allMessages: ChatEntry[],
   provider: ProviderConfig,
-  replyToId: string | null,
+  replyTarget: ScoredMessage | null,
   isLateJoiner: boolean,
-  phase: ConversationPhase,
+  energy: number,
+  attentionWindow: number,
 ): Promise<{ entry: ChatEntry; replyTo: string | null }> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -272,27 +467,28 @@ async function callFriendV2(
       replyTo: null,
     };
 
-  const transcript = formatTranscript(fullHistory, roundResponses);
+  // Windowed transcript — agent only sees recent messages per their attention
+  const transcript = formatWindowedTranscript(allMessages, attentionWindow);
 
-  // Resolve who we're replying to
+  // Resolve reply target
   let replyToName: string | null = null;
   let replyToText: string | null = null;
-  if (replyToId) {
-    const replyFriend = FRIENDS_BY_ID[replyToId];
-    const replyMsg = [...roundResponses]
-      .reverse()
-      .find((r) => r.from === replyToId);
-    if (replyFriend && replyMsg) {
-      replyToName = replyFriend.name;
-      replyToText = replyMsg.text;
-    }
+  let replyToId: string | null = null;
+  if (replyTarget) {
+    const replyFriend = FRIENDS_BY_ID[replyTarget.from];
+    replyToName = replyTarget.from === "user" ? "you" : (replyFriend?.name ?? replyTarget.from);
+    replyToText = replyTarget.text;
+    replyToId = replyTarget.from;
   }
 
   // Pick mode and length
   const mode = pickRandomMode();
+  const isClosingOut = energy < 0.3;
   let length;
-  if (phase === "winding-down") {
+  if (isClosingOut) {
     length = Math.random() < 0.5 ? ("micro" as const) : ("short" as const);
+  } else if (energy < 0.5) {
+    length = Math.random() < 0.3 ? ("micro" as const) : ("short" as const);
   } else {
     length = pickResponseLength(friend.defaultLength, mode ?? undefined);
   }
@@ -301,7 +497,7 @@ async function callFriendV2(
     ? `[MODE: ${mode.name}] ${mode.promptOverlay}`
     : "";
 
-  const prompt = buildThreadedPrompt(
+  const prompt = buildPrompt(
     friend.name,
     friend.role,
     transcript,
@@ -310,7 +506,8 @@ async function callFriendV2(
     lengthInstruction,
     modeInstruction,
     isLateJoiner,
-    phase === "winding-down",
+    isClosingOut,
+    energy,
   );
 
   const maxTokens =
@@ -342,90 +539,7 @@ async function callFriendV2(
   }
 }
 
-// ── Batching helpers ─────────────────────────────────────────────────
-
-interface ScheduledAgent {
-  id: string;
-  delay: number;
-}
-
-function batchByDelay(
-  agents: ScheduledAgent[],
-  windowMs: number = 3000,
-): ScheduledAgent[][] {
-  if (agents.length === 0) return [];
-  const batches: ScheduledAgent[][] = [];
-  let currentBatch: ScheduledAgent[] = [agents[0]];
-  let batchStart = agents[0].delay;
-
-  for (let i = 1; i < agents.length; i++) {
-    if (agents[i].delay - batchStart <= windowMs) {
-      currentBatch.push(agents[i]);
-    } else {
-      batches.push(currentBatch);
-      currentBatch = [agents[i]];
-      batchStart = agents[i].delay;
-    }
-  }
-  batches.push(currentBatch);
-  return batches;
-}
-
-// ── Pick who an agent is replying to ─────────────────────────────────
-
-function pickReplyTarget(
-  roundResponses: ChatEntry[],
-  agentId: string,
-): string | null {
-  if (roundResponses.length === 0) return null;
-  const r = Math.random();
-  if (r < 0.3) return null;
-  if (r < 0.7) {
-    const last = [...roundResponses]
-      .reverse()
-      .find((m) => m.from !== agentId);
-    return last?.from ?? null;
-  }
-  const others = roundResponses.filter((m) => m.from !== agentId);
-  if (others.length === 0) return null;
-  return others[Math.floor(Math.random() * others.length)].from;
-}
-
-// ── Check for convergence (winding down heuristic) ───────────────────
-
-function isConverging(responses: ChatEntry[]): boolean {
-  if (responses.length < 3) return false;
-  const last3 = responses.slice(-3);
-  return last3.every((r) => r.text.length < 40);
-}
-
-// ── Check if an agent was mentioned by name ──────────────────────────
-
-function wasMentioned(agentId: string, responses: ChatEntry[]): boolean {
-  const friend = FRIENDS_BY_ID[agentId];
-  if (!friend) return false;
-  const name = friend.name.toLowerCase();
-  return responses.some((r) => r.text.toLowerCase().includes(name));
-}
-
-// ── Check if agent should drop out ───────────────────────────────────
-
-function shouldDropOut(
-  _agentId: string,
-  roundResponses: ChatEntry[],
-  traits: AgentTraits,
-): boolean {
-  if (Math.random() < traits.lurkerChance) return true;
-  if (
-    roundResponses.length >= 3 &&
-    traits.agreementBias > 0.5 &&
-    Math.random() < 0.4
-  )
-    return true;
-  return false;
-}
-
-// ── Main engine ──────────────────────────────────────────────────────
+// ── Main v3 engine ──────────────────────────────────────────────────
 
 export async function* orchestrateChat(params: {
   message: string;
@@ -446,251 +560,193 @@ export async function* orchestrateChat(params: {
 
   yield { type: "provider", label: provider.label };
 
-  const fullHistory: ChatEntry[] = [
+  // All messages: history + user's new message + round responses
+  const baseMessages: ChatEntry[] = [
     ...history,
     { from: "user", text: message },
   ];
-
   const roundResponses: ChatEntry[] = [];
+
+  // All messages as a single list for scoring/prompting
+  const allMessages = (): ChatEntry[] => [...baseMessages, ...roundResponses];
+
+  // ── Conversation energy ──
+  let energy = 1.0;
   let phase: ConversationPhase = "active";
-  let messageCount = 0;
-  const MAX_MESSAGES = 8;
-  const HARD_CAP = 12;
   let simulatedTimeMs = 0;
+  let pendingQuestions = 0; // questions agents asked the user (for soft pressure)
 
-  // ── Step 1: Schedule agents by personality delay ──
+  // Track how many agents replied to each message index
+  const replyCounts = new Map<number, number>();
 
-  const allTraits = podFriendIds.map((id) => ({
-    id,
-    traits: getTraits(id),
-  }));
-  const scheduled: ScheduledAgent[] = allTraits.map(({ id, traits }) => ({
-    id,
-    delay: drawDelay(traits.responseSpeed),
-  }));
-  scheduled.sort((a, b) => a.delay - b.delay);
+  // ── Initialize presence for all agents ──
+  const agents: AgentPresence[] = podFriendIds.map((id) => initPresence(id));
+  // Sort by arrival time so fast agents come online first
+  agents.sort((a, b) => a.arriveAtMs - b.arriveAtMs);
 
-  // ── Step 2: Dynamic entrance — start with 2-3 fastest ──
+  // ── Continuous flow loop ──
+  // Each iteration: advance time, update presence, pick next responder, call model
 
-  const initialCount = Math.min(
-    scheduled.length,
-    Math.random() < 0.5 ? 2 : 3,
-  );
-  const initialAgents = scheduled.slice(0, initialCount);
-  const latePool = scheduled.slice(initialCount);
+  const ENERGY_FLOOR = 0.15;
+  const MAX_ITERATIONS = 15; // safety cap
+  let iterations = 0;
 
-  // Pick 0-1 lurkers from the late pool
-  const lurkers: string[] = [];
-  for (const agent of latePool) {
-    const traits = getTraits(agent.id);
-    if (Math.random() < traits.lurkerChance && lurkers.length < 2) {
-      lurkers.push(agent.id);
+  while (energy > ENERGY_FLOOR && iterations < MAX_ITERATIONS) {
+    iterations++;
+
+    // ── Advance simulated time ──
+    // Base tick: fastest agent's delay. Modified by soft pressure.
+    const baseTick = 2000 + Math.random() * 4000;
+    const pressureMultiplier = pendingQuestions >= 2 ? 3.0 : pendingQuestions >= 1 ? 2.0 : 1.0;
+    const tick = baseTick * pressureMultiplier;
+    simulatedTimeMs += tick;
+
+    // ── Update presence states & emit events ──
+    for (const agent of agents) {
+      const prevState = agent.state;
+      agent.state = updatePresenceState(agent, simulatedTimeMs, energy);
+
+      if (agent.state !== prevState) {
+        yield { type: "presence", agentId: agent.id, state: agent.state };
+
+        if (prevState === "offline" && (agent.state === "active" || agent.state === "lurking")) {
+          if (agent.state === "active") {
+            yield { type: "joined", agentId: agent.id };
+          } else {
+            yield { type: "lurking", agentId: agent.id };
+          }
+        }
+      }
     }
-  }
-  const potentialJoiners = latePool.filter((a) => !lurkers.includes(a.id));
 
-  // ── Step 3: Run initial batches ──
+    // ── Collect candidates (active or lurking) ──
+    const candidates = agents.filter(
+      (a) => a.state === "active" || a.state === "lurking" || a.state === "fading",
+    );
 
-  const initialBatches = batchByDelay(initialAgents);
+    if (candidates.length === 0) continue;
 
-  for (const batch of initialBatches) {
-    for (const agent of batch) {
+    // ── Score each candidate against all messages ──
+    const msgs = allMessages();
+    const scoredCandidates: { agent: AgentPresence; target: ScoredMessage; delay: number }[] = [];
+
+    for (const agent of candidates) {
+      const target = scoreMessagesForAgent(
+        agent.id,
+        msgs,
+        replyCounts,
+        agent.traits,
+      );
+
+      if (!target) continue;
+
+      if (!shouldRespond(agent, target.score, roundResponses, energy)) continue;
+
+      const delay = drawDelay(agent.traits.responseSpeed);
+      scoredCandidates.push({ agent, target, delay });
+    }
+
+    if (scoredCandidates.length === 0) {
+      // Nobody wants to respond — small energy decay (silence shouldn't drain much)
+      energy -= 0.02;
+      continue;
+    }
+
+    // ── Sort by delay (fastest first) — process 1-2 at a time ──
+    scoredCandidates.sort((a, b) => a.delay - b.delay);
+
+    // Take 1-2 agents per iteration (small parallel batch for near-simultaneous)
+    const batchSize = scoredCandidates.length >= 2 &&
+      Math.abs(scoredCandidates[0].delay - scoredCandidates[1].delay) < 3000
+      ? 2
+      : 1;
+    const batch = scoredCandidates.slice(0, batchSize);
+
+    // ── Emit typing events ──
+    for (const { agent } of batch) {
       yield { type: "typing", agentId: agent.id };
     }
-    simulatedTimeMs = batch[batch.length - 1].delay;
 
+    // ── Call models (parallel within batch) ──
     const results = await Promise.allSettled(
-      batch.map((agent) => {
-        const replyTo = pickReplyTarget(roundResponses, agent.id);
-        return callFriendV2(
+      batch.map(({ agent, target }) => {
+        const attentionWindow = getAttentionWindow(agent.traits);
+        const isLateJoiner = agent.responseCount === 0 && roundResponses.length >= 2;
+
+        return callFriend(
           agent.id,
-          fullHistory,
-          [...roundResponses],
+          msgs,
           provider,
-          replyTo,
-          false,
-          phase,
+          target,
+          isLateJoiner,
+          energy,
+          attentionWindow,
         );
       }),
     );
 
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        const { entry, replyTo } = result.value;
-        roundResponses.push(entry);
-        messageCount++;
-        yield {
-          type: "message",
-          from: entry.from,
-          text: entry.text,
-          replyTo: replyTo ?? undefined,
-        };
-      } else {
-        console.error("Batch call failed:", result.reason);
+    // ── Process results ──
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status !== "fulfilled") {
+        console.error("Agent call failed:", result.reason);
+        continue;
       }
-    }
-  }
 
-  // Emit lurking events
-  for (const lurkerId of lurkers) {
-    yield { type: "lurking", agentId: lurkerId };
-  }
+      const { entry, replyTo } = result.value;
+      const agent = batch[i].agent;
+      const target = batch[i].target;
 
-  // ── Step 4: Dynamic joins from late pool ──
+      // Update reply counts
+      replyCounts.set(target.index, (replyCounts.get(target.index) ?? 0) + 1);
 
-  for (const joiner of potentialJoiners) {
-    if (messageCount >= HARD_CAP) break;
+      // Update agent presence
+      agent.responseCount++;
+      agent.lastRespondedAtMs = simulatedTimeMs;
 
-    if (Math.random() > 0.5) continue;
-
-    const joinerTraits = getTraits(joiner.id);
-    if (shouldDropOut(joiner.id, roundResponses, joinerTraits)) continue;
-
-    // Check phase transition
-    if (phase === "active") {
-      if (
-        messageCount >= MAX_MESSAGES ||
-        isConverging(roundResponses) ||
-        simulatedTimeMs >= 90000
-      ) {
-        phase = "winding-down";
-        yield { type: "winding-down" };
+      // Activate lurkers who just responded
+      if (agent.state === "lurking") {
+        agent.state = "active";
+        yield { type: "joined", agentId: agent.id };
+        yield { type: "presence", agentId: agent.id, state: "active" };
       }
-    }
 
-    yield { type: "joined", agentId: joiner.id };
-    yield { type: "typing", agentId: joiner.id };
-    simulatedTimeMs += joiner.delay;
-
-    const replyTo = pickReplyTarget(roundResponses, joiner.id);
-    const { entry, replyTo: actualReplyTo } = await callFriendV2(
-      joiner.id,
-      fullHistory,
-      [...roundResponses],
-      provider,
-      replyTo,
-      true,
-      phase,
-    );
-    roundResponses.push(entry);
-    messageCount++;
-    yield {
-      type: "message",
-      from: entry.from,
-      text: entry.text,
-      replyTo: actualReplyTo ?? undefined,
-    };
-  }
-
-  // ── Step 5: Trigger-based follow-ups ──
-
-  if (phase !== "winding-down") {
-    if (
-      messageCount >= MAX_MESSAGES ||
-      isConverging(roundResponses) ||
-      simulatedTimeMs >= 90000
-    ) {
-      phase = "winding-down";
-      yield { type: "winding-down" };
-    }
-  }
-
-  const followUpCandidates: { id: string; reason: string }[] = [];
-
-  for (const agentInfo of allTraits) {
-    if (messageCount >= HARD_CAP) break;
-    const recentResponders = roundResponses.slice(-2).map((r) => r.from);
-    if (recentResponders.includes(agentInfo.id)) continue;
-    if (!roundResponses.some((r) => r.from === agentInfo.id)) continue;
-
-    if (wasMentioned(agentInfo.id, roundResponses) && Math.random() < 0.8) {
-      followUpCandidates.push({ id: agentInfo.id, reason: "mentioned" });
-      continue;
-    }
-
-    if (agentInfo.traits.agreementBias < 0 && Math.random() < 0.6) {
-      followUpCandidates.push({
-        id: agentInfo.id,
-        reason: "disagreement",
-      });
-      continue;
-    }
-  }
-
-  const followUps = followUpCandidates.slice(
-    0,
-    Math.random() < 0.5 ? 1 : 2,
-  );
-
-  for (const followUp of followUps) {
-    if (messageCount >= HARD_CAP) break;
-
-    yield { type: "typing", agentId: followUp.id };
-    const replyTo = pickReplyTarget(roundResponses, followUp.id);
-    const { entry, replyTo: actualReplyTo } = await callFriendV2(
-      followUp.id,
-      fullHistory,
-      [...roundResponses],
-      provider,
-      replyTo,
-      false,
-      phase,
-    );
-    roundResponses.push(entry);
-    messageCount++;
-    yield {
-      type: "message",
-      from: entry.from,
-      text: entry.text,
-      replyTo: actualReplyTo ?? undefined,
-    };
-  }
-
-  // ── Step 6: Winding-down messages ──
-
-  if (phase !== "winding-down" && messageCount >= MAX_MESSAGES) {
-    phase = "winding-down";
-    yield { type: "winding-down" };
-  }
-
-  if (phase === "winding-down" && messageCount < HARD_CAP) {
-    const activeAgentIds = [
-      ...new Set(roundResponses.map((r) => r.from)),
-    ];
-    const windDownCount = Math.random() < 0.5 ? 1 : 2;
-    const shuffledActive = activeAgentIds.sort(() => Math.random() - 0.5);
-    const windDownAgents = shuffledActive.slice(
-      0,
-      Math.min(windDownCount, HARD_CAP - messageCount),
-    );
-
-    for (const agentId of windDownAgents) {
-      if (messageCount >= HARD_CAP) break;
-      yield { type: "typing", agentId };
-      const replyTo = pickReplyTarget(roundResponses, agentId);
-      const { entry, replyTo: actualReplyTo } = await callFriendV2(
-        agentId,
-        fullHistory,
-        [...roundResponses],
-        provider,
-        replyTo,
-        false,
-        "winding-down",
-      );
       roundResponses.push(entry);
-      messageCount++;
+
       yield {
         type: "message",
         from: entry.from,
         text: entry.text,
-        replyTo: actualReplyTo ?? undefined,
+        replyTo: replyTo ?? undefined,
       };
+
+      // ── Energy decay ──
+      const decayAmount = 0.1 + Math.random() * 0.05;
+      energy -= decayAmount;
+
+      // Questions from agents add a bit of energy back
+      if (containsQuestion(entry.text)) {
+        energy += 0.1;
+        pendingQuestions++;
+        yield { type: "nudge" };
+      }
+    }
+
+    // ── Phase transitions ──
+    if (phase === "active" && energy < 0.3) {
+      phase = "winding-down";
+      yield { type: "winding-down" };
+    }
+
+    // Reset pending questions over time (simulated user silence)
+    if (simulatedTimeMs > 15000 * pendingQuestions) {
+      pendingQuestions = Math.max(0, pendingQuestions - 1);
     }
   }
 
-  // ── Step 7: Synthesis pass — extract decision options ──
+  // ── Synthesis pass — extract decision options ──────────────────────
 
-  const fullTranscript = formatTranscript(fullHistory, roundResponses);
+  const fullTranscript = formatTranscript(allMessages());
   const friendNames = podFriendIds
     .map((id) => FRIENDS_BY_ID[id]?.name)
     .filter(Boolean);

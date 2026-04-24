@@ -48,6 +48,7 @@ export default function ChatPage() {
   const [joinedAgents, setJoinedAgents] = useState<string[]>([]);
   const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
   const [isWindingDown, setIsWindingDown] = useState(false);
+  const [activeAgentIds, setActiveAgentIds] = useState<Set<string>>(new Set());
 
   // Probe providers on mount
   useEffect(() => {
@@ -178,13 +179,7 @@ export default function ChatPage() {
                   setPod(prev => prev.some(f => f.id === data.joined) ? prev : [...prev, friend]);
                 }
                 setJoinedAgents(prev => [...prev, data.joined]);
-                setMessages(prev => [...prev, {
-                  id: `join-${data.joined}-${Date.now()}`,
-                  conversationId: convoId as string,
-                  from: "system",
-                  text: `${FRIENDS_BY_ID[data.joined]?.name?.toLowerCase() ?? data.joined} just saw this`,
-                  timestamp: Date.now(),
-                }]);
+                // Silent join — no system message
               }
 
               if (data.lurking) {
@@ -198,6 +193,10 @@ export default function ChatPage() {
               }
 
               if (data.from && data.text) {
+                // Track agents that have actually spoken
+                if (data.from !== "user") {
+                  setActiveAgentIds(prev => new Set([...prev, data.from]));
+                }
                 // Remove this friend from typing list
                 setTypingAgents((prev) => prev.filter((id) => id !== data.from));
                 const newMsg: ChatMessageWithReply = {
@@ -364,6 +363,7 @@ export default function ChatPage() {
     setJoinedAgents([]);
     setLurkingAgents([]);
     setIsWindingDown(false);
+    setActiveAgentIds(new Set());
   };
 
   const handleLoadConversation = (convoId: ConversationId, convo: { podFriendIds: string[] }) => {
@@ -483,18 +483,27 @@ export default function ChatPage() {
           <>
             <div className="chat-sidebar-section">your pod</div>
             <div className="chat-pod-list">
-              {pod.map((f) => (
-                <FriendPill key={f.id} friend={f} />
-              ))}
+              {pod.map((f) => {
+                const isActive = activeAgentIds.has(f.id);
+                const isLurking = lurkingAgents.includes(f.id);
+                return (
+                  <div key={f.id} className={`friend-pill-presence ${isActive ? 'active' : isLurking ? 'lurking' : 'joined'}`}>
+                    <span className="presence-dot-small" />
+                    <span className="friend-pill-avatar" style={{ background: f.color }}>{f.name[0]}</span>
+                    <span>{f.name.toLowerCase()}</span>
+                  </div>
+                );
+              })}
               {lurkingAgents
                 .filter(id => !pod.some(f => f.id === id))
                 .map(id => {
                   const f = FRIENDS_BY_ID[id];
                   if (!f) return null;
                   return (
-                    <div key={id} className="friend-pill lurking">
+                    <div key={id} className="friend-pill-presence lurking">
+                      <span className="presence-dot-small" />
                       <span className="friend-pill-avatar" style={{ background: f.color, opacity: 0.4 }}>{f.name[0]}</span>
-                      <span style={{ opacity: 0.5 }}>{f.name.toLowerCase()}</span>
+                      <span>{f.name.toLowerCase()}</span>
                       <span className="lurker-label">reading</span>
                     </div>
                   );

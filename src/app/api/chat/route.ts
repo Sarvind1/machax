@@ -20,6 +20,10 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
       return { joined: event.agentId };
     case "lurking":
       return { lurking: event.agentId };
+    case "presence":
+      return { presence: { agentId: event.agentId, state: event.state } };
+    case "nudge":
+      return { nudge: true };
     case "winding-down":
       return { windingDown: true };
     case "decision":
