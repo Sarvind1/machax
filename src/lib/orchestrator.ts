@@ -227,7 +227,7 @@ async function callFriend(
 
   // Adjust max tokens based on length
   // Tight token limits — real humans text short. Research says 40-60 tokens avg.
-  const maxTokens = length === "micro" ? 20 : length === "short" ? 60 : length === "long" ? 200 : length === "rant" ? 300 : 100;
+  const maxTokens = length === "micro" ? 15 : length === "short" ? 40 : length === "long" ? 150 : length === "rant" ? 250 : 70;
 
   try {
     let text = await callModel(friend.systemPrompt, prompt, provider, maxTokens);

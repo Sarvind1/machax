@@ -105,6 +105,18 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingAgents]);
 
+  // Safety timeout: if isLoading stays true for 90s, force-reset
+  useEffect(() => {
+    if (!isLoading) return;
+    const timeout = setTimeout(() => {
+      console.warn("Safety timeout: force-resetting isLoading after 90s");
+      setIsLoading(false);
+      isStreamingRef.current = false;
+      setTypingAgents([]);
+    }, 90_000);
+    return () => clearTimeout(timeout);
+  }, [isLoading]);
+
   const streamChat = useCallback(
     async (
       message: string,
@@ -289,12 +301,19 @@ export default function ChatPage() {
       const history = messages.map((m) => ({ from: m.from, text: m.text }));
       history.push({ from: "user", text });
 
-      await streamChat(
-        text,
-        activeConversation,
-        pod.map((f) => f.id),
-        history
-      );
+      try {
+        await streamChat(
+          text,
+          activeConversation,
+          pod.map((f) => f.id),
+          history
+        );
+      } catch (err) {
+        console.error("Stream failed on subsequent message:", err);
+        isStreamingRef.current = false;
+        setIsLoading(false);
+        setTypingAgents([]);
+      }
     }
   }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat]);
 
