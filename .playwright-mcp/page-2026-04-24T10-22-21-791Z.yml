@@ -1,0 +1,43 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - link "machaX" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - text: macha
+        - emphasis [ref=e5]: X
+      - button "+ new chat" [ref=e6] [cursor=pointer]
+    - generic [ref=e7]:
+      - heading "what's on your mind?" [level=1] [ref=e8]
+      - paragraph [ref=e9]: dump your messiest thought. your council of AI friends will hash it out.
+      - generic [ref=e11]:
+        - textbox "type it out..." [ref=e12]
+        - button "Send message" [disabled] [ref=e13]:
+          - img [ref=e14]
+      - generic [ref=e16]:
+        - button "💼 I got an offer but I'm weirdly not excited" [ref=e17] [cursor=pointer]:
+          - generic [ref=e18]: 💼
+          - text: I got an offer but I'm weirdly not excited
+        - button "💬 My friend cancelled plans again. Overreacting?" [ref=e19] [cursor=pointer]:
+          - generic [ref=e20]: 💬
+          - text: My friend cancelled plans again. Overreacting?
+        - button "🛒 iPhone or should I finally try Android" [ref=e21] [cursor=pointer]:
+          - generic [ref=e22]: 🛒
+          - text: iPhone or should I finally try Android
+        - button "🌀 Is it weird to text first after a silent week" [ref=e23] [cursor=pointer]:
+          - generic [ref=e24]: 🌀
+          - text: Is it weird to text first after a silent week
+        - button "🔥 Give me your worst takes on weekend brunch" [ref=e25] [cursor=pointer]:
+          - generic [ref=e26]: 🔥
+          - text: Give me your worst takes on weekend brunch
+        - button "🌧 Feeling flat for no reason. Talk to me" [ref=e27] [cursor=pointer]:
+          - generic [ref=e28]: 🌧
+          - text: Feeling flat for no reason. Talk to me
+        - button "₹ Should I move out or keep saving" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: ₹
+          - text: Should I move out or keep saving
+        - button "◐ Everyone's getting married and I'm tired" [ref=e31] [cursor=pointer]:
+          - generic [ref=e32]: ◐
+          - text: Everyone's getting married and I'm tired
+  - button "Open Next.js Dev Tools" [ref=e38] [cursor=pointer]:
+    - img [ref=e39]
+  - alert [ref=e42]

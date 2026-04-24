@@ -1,0 +1,36 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - heading "what's on your mind?" [level=1] [ref=e4]
+    - paragraph [ref=e5]: dump your messiest thought. your council of AI friends will hash it out.
+    - generic [ref=e7]:
+      - textbox "type it out..." [ref=e8]
+      - button "Send message" [disabled] [ref=e9]:
+        - img [ref=e10]
+    - generic [ref=e12]:
+      - button "💼 I got an offer but I'm weirdly not excited" [ref=e13] [cursor=pointer]:
+        - generic [ref=e14]: 💼
+        - text: I got an offer but I'm weirdly not excited
+      - button "💬 My friend cancelled plans again. Overreacting?" [ref=e15] [cursor=pointer]:
+        - generic [ref=e16]: 💬
+        - text: My friend cancelled plans again. Overreacting?
+      - button "🛒 iPhone or should I finally try Android" [ref=e17] [cursor=pointer]:
+        - generic [ref=e18]: 🛒
+        - text: iPhone or should I finally try Android
+      - button "🌀 Is it weird to text first after a silent week" [ref=e19] [cursor=pointer]:
+        - generic [ref=e20]: 🌀
+        - text: Is it weird to text first after a silent week
+      - button "🔥 Give me your worst takes on weekend brunch" [ref=e21] [cursor=pointer]:
+        - generic [ref=e22]: 🔥
+        - text: Give me your worst takes on weekend brunch
+      - button "🌧 Feeling flat for no reason. Talk to me" [ref=e23] [cursor=pointer]:
+        - generic [ref=e24]: 🌧
+        - text: Feeling flat for no reason. Talk to me
+      - button "₹ Should I move out or keep saving" [ref=e25] [cursor=pointer]:
+        - generic [ref=e26]: ₹
+        - text: Should I move out or keep saving
+      - button "◐ Everyone's getting married and I'm tired" [ref=e27] [cursor=pointer]:
+        - generic [ref=e28]: ◐
+        - text: Everyone's getting married and I'm tired
+  - button "Open Next.js Dev Tools" [ref=e34] [cursor=pointer]:
+    - img [ref=e35]
+  - alert [ref=e38]

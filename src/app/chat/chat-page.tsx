@@ -3,6 +3,15 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+
+function useSafeQuery<T>(query: any, args?: any): T | null {
+  try {
+    const result = useQuery(query, args);
+    return result ?? null;
+  } catch {
+    return null;
+  }
+}
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ChatMessage as ChatMessageType, Decision } from "@/lib/types";
 import { FRIENDS, FRIENDS_BY_ID, STARTERS, selectPod, type Friend } from "@/lib/friends";
@@ -47,18 +56,18 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isStreamingRef = useRef(false);
 
-  const conversations = useQuery(api.conversations.list) ?? [];
+  const conversations = useSafeQuery<any[]>(api.conversations.list) ?? [];
   const createConversation = useMutation(api.conversations.create);
   const sendMessage = useMutation(api.messages.send);
   const upsertDecision = useMutation(api.decisions.upsert);
   const selectDecision = useMutation(api.decisions.select);
 
   // Load messages from Convex when conversation changes
-  const convexMessages = useQuery(
+  const convexMessages = useSafeQuery<any[]>(
     api.messages.list,
     activeConversation ? { conversationId: activeConversation } : "skip"
   );
-  const convexDecision = useQuery(
+  const convexDecision = useSafeQuery<any>(
     api.decisions.get,
     activeConversation ? { conversationId: activeConversation } : "skip"
   );

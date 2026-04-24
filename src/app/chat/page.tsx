@@ -16,6 +16,10 @@ class ChatErrorBoundary extends Component<
     return { hasError: true };
   }
 
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("ChatErrorBoundary caught:", error, errorInfo);
+  }
+
   render() {
     if (this.state.hasError) {
       return (
