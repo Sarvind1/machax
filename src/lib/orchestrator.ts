@@ -52,6 +52,7 @@ async function callClaudeCli(
   system: string,
   userPrompt: string,
   model: string,
+  maxTokens: number,
 ): Promise<string> {
   const tmpFile = join(
     tmpdir(),
@@ -61,7 +62,7 @@ async function callClaudeCli(
   try {
     writeFileSync(tmpFile, userPrompt);
     const escapedSystem = system.replace(/'/g, "'\\''");
-    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --output-format json --system-prompt '${escapedSystem}'`;
+    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --max-tokens ${maxTokens} --output-format json --system-prompt '${escapedSystem}'`;
 
     const env = Object.fromEntries(
       Object.entries(process.env).filter(
@@ -101,7 +102,13 @@ async function callAiSdk(
     case "gemini":
       model = google(provider.model);
       break;
+    case "openai":
+    case "anthropic":
+      console.warn(`[orchestrator] Provider "${provider.name}" not yet supported by AI SDK, falling back to Gemini with model ${provider.model}`);
+      model = google(provider.model);
+      break;
     default:
+      console.warn(`[orchestrator] Unknown provider "${provider.name}", falling back to gemini-2.5-flash`);
       model = google("gemini-2.5-flash");
   }
 
@@ -110,7 +117,7 @@ async function callAiSdk(
     system,
     messages: [{ role: "user", content: userPrompt }],
     maxOutputTokens: maxTokens,
-    temperature: 0.95,
+    temperature: 0.7,
   });
 
   return result.text;
@@ -124,7 +131,7 @@ async function callModel(
   maxTokens: number,
 ): Promise<string> {
   if (provider.name === "claude-cli") {
-    return callClaudeCli(system, userPrompt, provider.model);
+    return callClaudeCli(system, userPrompt, provider.model, maxTokens);
   }
   return callAiSdk(system, userPrompt, provider, maxTokens);
 }
@@ -514,12 +521,12 @@ async function callFriend(
 
   // Pick mode and length
   const mode = pickRandomMode(friend.traits.agreementBias);
-  const isClosingOut = energy < 0.3;
+  const isClosingOut = energy < 0.2;
   let length;
   if (isClosingOut) {
     length = Math.random() < 0.5 ? ("micro" as const) : ("short" as const);
-  } else if (energy < 0.5) {
-    length = Math.random() < 0.3 ? ("micro" as const) : ("short" as const);
+  } else if (energy < 0.35) {
+    length = Math.random() < 0.25 ? ("short" as const) : ("medium" as const);
   } else {
     length = pickResponseLength(friend.defaultLength, mode ?? undefined);
   }
@@ -545,14 +552,14 @@ async function callFriend(
 
   const maxTokens =
     length === "micro"
-      ? 15
+      ? 35
       : length === "short"
-        ? 40
+        ? 80
         : length === "long"
-          ? 150
+          ? 200
           : length === "rant"
-            ? 250
-            : 70;
+            ? 300
+            : 120;
 
   try {
     let text = await callModel(
@@ -755,7 +762,7 @@ export async function* orchestrateChat(params: {
       };
 
       // ── Energy decay ──
-      const decayAmount = 0.1 + Math.random() * 0.05;
+      const decayAmount = 0.06 + Math.random() * 0.04;
       energy -= decayAmount;
 
       // Questions from agents add a bit of energy back
