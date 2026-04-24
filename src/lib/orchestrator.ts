@@ -39,7 +39,7 @@ async function callClaudeCli(
 
   try {
     writeFileSync(tmpFile, fullPrompt);
-    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --output-format json --max-tokens ${maxTokens}`;
+    const shellCmd = `cat "${tmpFile}" | claude -p --model ${model} --output-format json`;
 
     // Strip ANTHROPIC_AUTH_TOKEN — let CLI use its own keychain auth
     const env = Object.fromEntries(
