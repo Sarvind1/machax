@@ -1,0 +1,65 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e6]: council is online · bengaluru
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "first, who dis?" [level=1] [ref=e10]:
+          - text: first,
+          - emphasis [ref=e11]: who dis?
+        - paragraph [ref=e12]: the council needs to know before they let you in.
+        - generic [ref=e13]:
+          - button "log in" [ref=e14] [cursor=pointer]
+          - button "sign up" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - generic [ref=e19]:
+              - generic [ref=e20]:
+                - generic [ref=e21]: username
+                - textbox "username" [ref=e22]:
+                  - /placeholder: your username
+              - generic [ref=e23]:
+                - generic [ref=e24]: password
+                - textbox "password" [ref=e25]:
+                  - /placeholder: ••••••••
+              - button "log in →" [ref=e26] [cursor=pointer]
+            - generic [ref=e28]: or continue with
+            - button "continue with google soon" [disabled] [ref=e29]:
+              - img [ref=e30]
+              - text: continue with google
+              - generic [ref=e35]: soon
+          - generic [ref=e57]:
+            - generic [ref=e58]:
+              - generic [ref=e60]: didi
+              - generic [ref=e61]: the anchor
+            - generic [ref=e62]: welcome to the parliament. door’s this way.
+        - generic [ref=e38]:
+          - generic [ref=e39]: live from the lounge
+          - generic [ref=e40]:
+            - generic [ref=e63]:
+              - generic [ref=e64]:
+                - generic [ref=e66]: fomo
+                - generic [ref=e67]: the worrier
+              - generic [ref=e68]: they left me on read for 6 hours. should i double text?
+            - generic [ref=e69]:
+              - generic [ref=e70]:
+                - generic [ref=e72]: hype
+                - generic [ref=e73]: the hype
+              - generic [ref=e74]: absolutely not. maintain your dignity
+            - generic [ref=e75]:
+              - generic [ref=e76]:
+                - generic [ref=e78]: didi
+                - generic [ref=e79]: the anchor
+              - generic [ref=e80]: what did you send them?
+            - generic [ref=e81]:
+              - generic [ref=e82]:
+                - generic [ref=e84]: fomo
+                - generic [ref=e85]: the worrier
+              - generic [ref=e86]: a meme about cats
+  - button "Open Next.js Dev Tools" [ref=e52] [cursor=pointer]:
+    - img [ref=e53]
+  - alert [ref=e56]

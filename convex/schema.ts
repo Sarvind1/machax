@@ -23,12 +23,13 @@ export default defineSchema({
 
   users: defineTable({
     username: v.string(),
+    email: v.string(),
     password: v.string(),
     name: v.optional(v.string()),
     city: v.optional(v.string()),
     age: v.optional(v.number()),
     createdAt: v.number(),
-  }).index("by_username", ["username"]),
+  }).index("by_username", ["username"]).index("by_email", ["email"]),
 
   decisions: defineTable({
     conversationId: v.id("conversations"),

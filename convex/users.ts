@@ -4,21 +4,30 @@ import { v } from "convex/values";
 export const signup = mutation({
   args: {
     username: v.string(),
+    email: v.string(),
     password: v.string(),
     name: v.optional(v.string()),
     city: v.optional(v.string()),
     age: v.optional(v.number()),
   },
-  handler: async (ctx, { username, password, name, city, age }) => {
-    const existing = await ctx.db
+  handler: async (ctx, { username, email, password, name, city, age }) => {
+    const existingUsername = await ctx.db
       .query("users")
       .withIndex("by_username", (q) => q.eq("username", username))
       .first();
-    if (existing) {
+    if (existingUsername) {
       return { success: false as const, error: "username_taken" as const };
+    }
+    const existingEmail = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+    if (existingEmail) {
+      return { success: false as const, error: "email_taken" as const };
     }
     await ctx.db.insert("users", {
       username,
+      email,
       password,
       name,
       city,
@@ -31,21 +40,29 @@ export const signup = mutation({
 
 export const login = mutation({
   args: {
-    username: v.string(),
+    identifier: v.string(),
     password: v.string(),
   },
-  handler: async (ctx, { username, password }) => {
-    const user = await ctx.db
+  handler: async (ctx, { identifier, password }) => {
+    // Try username first
+    let user = await ctx.db
       .query("users")
-      .withIndex("by_username", (q) => q.eq("username", username))
+      .withIndex("by_username", (q) => q.eq("username", identifier))
       .first();
+    // If not found, try email
+    if (!user) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", identifier))
+        .first();
+    }
     if (!user) {
       return { success: false as const, error: "not_found" as const };
     }
     if (user.password !== password) {
       return { success: false as const, error: "wrong_password" as const };
     }
-    return { success: true as const, username, name: user.name };
+    return { success: true as const, username: user.username, name: user.name };
   },
 });
 

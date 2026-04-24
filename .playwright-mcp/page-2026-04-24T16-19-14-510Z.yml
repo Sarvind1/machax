@@ -1,0 +1,66 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e6]: council is online · bengaluru
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "first, who dis?" [level=1] [ref=e10]:
+          - text: first,
+          - emphasis [ref=e11]: who dis?
+        - paragraph [ref=e12]: the council needs to know before they let you in.
+        - generic [ref=e13]:
+          - button "log in" [ref=e14] [cursor=pointer]
+          - button "sign up" [active] [ref=e15] [cursor=pointer]
+      - generic [ref=e16]:
+        - generic [ref=e18]:
+          - generic [ref=e19]:
+            - generic [ref=e20]:
+              - generic [ref=e21]: name
+              - textbox "name" [ref=e106]:
+                - /placeholder: first name is fine
+            - generic [ref=e23]:
+              - generic [ref=e24]: email
+              - textbox "email" [ref=e107]:
+                - /placeholder: you@example.com
+            - generic [ref=e108]:
+              - generic [ref=e109]: city
+              - textbox "city" [ref=e110]:
+                - /placeholder: e.g. bengaluru
+            - generic [ref=e27]:
+              - generic [ref=e111]: age
+              - textbox "age" [ref=e112]:
+                - /placeholder: just a number
+            - generic [ref=e113]:
+              - generic [ref=e114]: username
+              - textbox "username" [ref=e115]:
+                - /placeholder: lowercase, no spaces
+            - generic [ref=e116]:
+              - generic [ref=e117]: password
+              - textbox "password" [ref=e118]:
+                - /placeholder: ••••••••
+            - button "sign up →" [ref=e119] [cursor=pointer]
+          - generic [ref=e30]: or continue with
+          - button "continue with google soon" [disabled] [ref=e31]:
+            - img [ref=e32]
+            - text: continue with google
+            - generic [ref=e37]: soon
+        - generic [ref=e39]:
+          - generic [ref=e40]: live from the lounge
+          - generic [ref=e41]:
+            - generic [ref=e120]:
+              - generic [ref=e121]:
+                - generic [ref=e123]: priya
+                - generic [ref=e124]: the helper
+              - generic [ref=e125]: should i get the macbook or the thinkpad
+            - generic [ref=e126]:
+              - generic [ref=e127]:
+                - generic [ref=e129]: aarushi
+                - generic [ref=e130]: the hype
+              - generic [ref=e131]: macbook. always macbook. this isn't even a question
+            - generic [ref=e132]: noor
+  - button "Open Next.js Dev Tools" [ref=e53] [cursor=pointer]:
+    - img [ref=e54]
+  - alert [ref=e57]
