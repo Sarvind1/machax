@@ -139,8 +139,7 @@ function cleanResponse(text: string, friendName: string): string {
 
 function getTraits(friendId: string): AgentTraits {
   const friend = FRIENDS_BY_ID[friendId];
-  if (friend && "traits" in friend)
-    return (friend as Record<string, unknown>).traits as AgentTraits;
+  if (friend?.traits) return friend.traits;
 
   const defaults: Record<string, Partial<AgentTraits>> = {
     chaotic: {
