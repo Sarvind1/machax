@@ -14,6 +14,13 @@ import "./chat.css";
 
 type ConversationId = Id<"conversations">;
 
+interface ProviderInfo {
+  name: string;
+  label: string;
+  available: boolean;
+  priority: number;
+}
+
 export default function ChatPage() {
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
@@ -23,6 +30,19 @@ export default function ChatPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [typingAgent, setTypingAgent] = useState<string | null>(null);
   const [mobileDecisionOpen, setMobileDecisionOpen] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
+  const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
+
+  // Probe providers on mount
+  useEffect(() => {
+    fetch("/api/providers")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.active) setActiveProvider(data.active.label);
+        if (data.providers) setProviderList(data.providers);
+      })
+      .catch(() => {});
+  }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -117,6 +137,10 @@ export default function ChatPage() {
 
             try {
               const data = JSON.parse(jsonStr);
+
+              if (data.provider) {
+                setActiveProvider(data.provider);
+              }
 
               if (data.from && data.text) {
                 setTypingAgent(null);
@@ -343,6 +367,22 @@ export default function ChatPage() {
               </button>
             ))}
           </div>
+
+          {/* Provider status hint */}
+          {providerList.length > 0 && (
+            <div className="provider-status">
+              {providerList.map((p) => (
+                <span
+                  key={p.name}
+                  className={`provider-dot ${p.available ? "available" : "unavailable"}`}
+                  title={p.available ? `${p.label} — ready` : `${p.label} — not configured`}
+                >
+                  <span className="provider-indicator" />
+                  {p.label}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -397,6 +437,11 @@ export default function ChatPage() {
           {pod.length > 0 && (
             <span className="chat-header-tag">
               {pod.length} friends in the room
+            </span>
+          )}
+          {activeProvider && (
+            <span className="chat-header-provider" title="Active AI provider">
+              via {activeProvider}
             </span>
           )}
         </div>

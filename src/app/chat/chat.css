@@ -643,3 +643,58 @@
     max-width: 88%;
   }
 }
+
+/* ===== Provider Status ===== */
+.provider-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+  justify-content: center;
+}
+
+.provider-dot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.provider-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.provider-dot.available .provider-indicator {
+  background: var(--matcha);
+  box-shadow: 0 0 4px var(--matcha);
+}
+
+.provider-dot.unavailable .provider-indicator {
+  background: var(--ink-faint);
+  opacity: 0.5;
+}
+
+.provider-dot.unavailable {
+  opacity: 0.5;
+}
+
+.chat-header-provider {
+  font-family: var(--font-mono), monospace;
+  font-size: 9.5px;
+  color: var(--matcha);
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  background: rgba(107, 174, 126, 0.1);
+  border-radius: 6px;
+  margin-left: auto;
+}
