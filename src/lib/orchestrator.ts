@@ -118,6 +118,13 @@ async function callAiSdk(
     messages: [{ role: "user", content: userPrompt }],
     maxOutputTokens: maxTokens,
     temperature: 0.7,
+    providerOptions: {
+      google: {
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
+      },
+    },
   });
 
   return result.text;
