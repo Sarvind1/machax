@@ -21,6 +21,15 @@ export default defineSchema({
     timestamp: v.number(),
   }).index("by_conversation", ["conversationId", "timestamp"]),
 
+  users: defineTable({
+    username: v.string(),
+    password: v.string(),
+    name: v.optional(v.string()),
+    city: v.optional(v.string()),
+    age: v.optional(v.number()),
+    createdAt: v.number(),
+  }).index("by_username", ["username"]),
+
   decisions: defineTable({
     conversationId: v.id("conversations"),
     question: v.string(),

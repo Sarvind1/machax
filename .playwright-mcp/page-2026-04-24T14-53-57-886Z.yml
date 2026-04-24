@@ -1,0 +1,57 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e21] [cursor=pointer]:
+    - img [ref=e22]
+  - alert [ref=e46]
+  - generic [ref=e199]:
+    - complementary [ref=e200]:
+      - link "machaX" [ref=e201] [cursor=pointer]:
+        - /url: /
+        - text: macha
+        - emphasis [ref=e202]: X
+      - generic [ref=e203]: recent
+      - generic [ref=e204]:
+        - generic [ref=e205] [cursor=pointer]: Hey everyone, should I buy a car now? I'm in Gurgaon, so it
+        - generic [ref=e206] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e207] [cursor=pointer]: hello all, any outfit ideas for my friend's birthday party t
+        - generic [ref=e208] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e209] [cursor=pointer]: Is it weird to text first after a silent week, we didn't had
+        - generic [ref=e210] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e211] [cursor=pointer]: Hey, I feel a bit low today, like I've not done anything. I
+      - button "+ new chat" [ref=e212] [cursor=pointer]
+    - generic [ref=e213]:
+      - heading "what's on your mind?" [level=1] [ref=e214]
+      - paragraph [ref=e215]: dump your messiest thought. your council of AI friends will hash it out.
+      - generic [ref=e217]:
+        - textbox "type it out..." [ref=e218]
+        - button "Send message" [disabled] [ref=e219]:
+          - img [ref=e220]
+      - generic [ref=e222]:
+        - button "💼 I got an offer but I'm weirdly not excited" [ref=e223] [cursor=pointer]:
+          - generic [ref=e224]: 💼
+          - text: I got an offer but I'm weirdly not excited
+        - button "💬 My friend cancelled plans again. Overreacting?" [ref=e225] [cursor=pointer]:
+          - generic [ref=e226]: 💬
+          - text: My friend cancelled plans again. Overreacting?
+        - button "🛒 iPhone or should I finally try Android" [ref=e227] [cursor=pointer]:
+          - generic [ref=e228]: 🛒
+          - text: iPhone or should I finally try Android
+        - button "🌀 Is it weird to text first after a silent week" [ref=e229] [cursor=pointer]:
+          - generic [ref=e230]: 🌀
+          - text: Is it weird to text first after a silent week
+        - button "🔥 Give me your worst takes on weekend brunch" [ref=e231] [cursor=pointer]:
+          - generic [ref=e232]: 🔥
+          - text: Give me your worst takes on weekend brunch
+        - button "🌧 Feeling flat for no reason. Talk to me" [ref=e233] [cursor=pointer]:
+          - generic [ref=e234]: 🌧
+          - text: Feeling flat for no reason. Talk to me
+        - button "₹ Should I move out or keep saving" [ref=e235] [cursor=pointer]:
+          - generic [ref=e236]: ₹
+          - text: Should I move out or keep saving
+        - button "◐ Everyone's getting married and I'm tired" [ref=e237] [cursor=pointer]:
+          - generic [ref=e238]: ◐
+          - text: Everyone's getting married and I'm tired
+      - generic [ref=e239]:
+        - generic "Claude CLI (Haiku) — ready" [ref=e240]: Claude CLI (Haiku)
+        - generic "Gemini 2.5 Flash — ready" [ref=e242]: Gemini 2.5 Flash
+        - generic "OpenAI (GPT-4o Mini) — not configured" [ref=e244]: OpenAI (GPT-4o Mini)
+        - generic "Anthropic API (Haiku) — not configured" [ref=e246]: Anthropic API (Haiku)

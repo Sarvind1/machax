@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 
@@ -35,6 +36,18 @@ interface ProviderInfo {
 }
 
 export default function ChatPage() {
+  const router = useRouter();
+  const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const user = localStorage.getItem("machax-user");
+    if (!user) {
+      router.push("/");
+    } else {
+      setIsAuthed(true);
+    }
+  }, [router]);
+
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
   const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
@@ -387,6 +400,22 @@ export default function ChatPage() {
   const friendsRecord = Object.fromEntries(
     FRIENDS.map((f) => [f.id, { name: f.name, color: f.color }])
   );
+
+  if (!isAuthed) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#F4F1E8",
+        color: "#5A554A",
+        fontFamily: "var(--font-body), system-ui, sans-serif",
+      }}>
+        <p>redirecting to login...</p>
+      </div>
+    );
+  }
 
   // Landing state
   if (!activeConversation && messages.length === 0) {

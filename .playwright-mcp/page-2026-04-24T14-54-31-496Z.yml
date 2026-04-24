@@ -1,0 +1,42 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e9] [cursor=pointer]:
+    - img [ref=e10]
+  - alert [ref=e13]
+  - generic [ref=e14]:
+    - generic [ref=e15]:
+      - generic [ref=e16]:
+        - text: macha
+        - emphasis [ref=e17]: X
+      - generic [ref=e18]: council is online · bengaluru
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - heading "first, who dis?" [level=1] [ref=e22]:
+          - text: first,
+          - emphasis [ref=e23]: who dis?
+        - paragraph [ref=e24]: the council needs to know before they let you in.
+      - generic [ref=e26]:
+        - generic [ref=e27]:
+          - generic [ref=e28]:
+            - generic [ref=e30]: boss
+            - generic [ref=e31]: the judge
+          - generic [ref=e32]: halt. credentials, please.
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e36]: didi
+            - generic [ref=e37]: the anchor
+          - generic [ref=e38]: don’t mind him. he’s like that with everyone.
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - generic [ref=e42]: didi
+            - generic [ref=e43]: the anchor
+          - generic [ref=e44]: have we met? or is this a first-time thing?
+    - generic [ref=e45]:
+      - generic:
+        - generic:
+          - textbox "waiting for the council..." [disabled]
+          - button "Send" [disabled]: ↑
+        - generic:
+          - generic:
+            - generic: enter
+            - text: to send
+          - button "forgot password?" [disabled]
