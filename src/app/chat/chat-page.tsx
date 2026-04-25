@@ -79,6 +79,9 @@ export default function ChatPage() {
     return "friend";
   }, []);
 
+  // Load user's saved settings from Convex (pod size, character overrides, etc.)
+  const userSettings = useQuery(api.settings.get, userName && userName !== "friend" ? { username: userName } : "skip");
+
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
   const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
@@ -251,6 +254,9 @@ export default function ChatPage() {
               pacing: sessionPacing,
               energy: sessionEnergy,
             },
+            characterOverrides: userSettings?.characterOverrides || null,
+            conversationDepth: userSettings?.conversationDepth || "normal",
+            userEngagementFrequency: userSettings?.userEngagementFrequency ?? 0.4,
           }),
         });
 
@@ -375,7 +381,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     },
-    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy]
+    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings]
   );
 
   const handleSubmit = useCallback(async () => {
@@ -393,14 +399,38 @@ export default function ChatPage() {
     if (!activeConversation) {
       // First message — create conversation
       const tag = STARTERS.find((s) => s.text === text)?.tag ?? "life";
-      const selectedPod = selectPod([tag]);
+
+      // Use user's configured characters if available, otherwise auto-select
+      let podIds: string[];
+      if (userSettings?.characterOverrides) {
+        try {
+          const overrides = JSON.parse(userSettings.characterOverrides);
+          const activeIds = Object.entries(overrides)
+            .filter(([, v]: [string, any]) => (v as any).active !== false)
+            .map(([id]) => id);
+
+          if (activeIds.length > 0) {
+            const maxPod = userSettings.podSize || 7;
+            podIds = activeIds.slice(0, maxPod);
+          } else {
+            const maxPod = userSettings.podSize || 7;
+            podIds = selectPod([tag], maxPod).map(f => f.id);
+          }
+        } catch {
+          podIds = selectPod([tag]).map(f => f.id);
+        }
+      } else {
+        podIds = selectPod([tag]).map(f => f.id);
+      }
+
+      const selectedPod = podIds.map(id => FRIENDS_BY_ID[id]).filter(Boolean);
       setPod(selectedPod);
 
       try {
         const convoId = await createConversation({
           title: text.slice(0, 60),
           tag,
-          podFriendIds: selectedPod.map((f) => f.id),
+          podFriendIds: podIds,
           sessionMood: JSON.stringify({ modes: sessionModes, pacing: sessionPacing, energy: sessionEnergy }),
         });
 
@@ -421,7 +451,7 @@ export default function ChatPage() {
           text,
         });
 
-        await streamChat(text, convoId, selectedPod.map((f) => f.id), []);
+        await streamChat(text, convoId, podIds, []);
       } catch (err) {
         console.error("Failed to create conversation:", err);
         isStreamingRef.current = false;
@@ -463,7 +493,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     }
-  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy]);
+  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings]);
 
   const handleStarterClick = (starterText: string) => {
     setInput(starterText);
@@ -588,46 +618,50 @@ export default function ChatPage() {
 
           {moodOpen && (
             <div className="chat-mood-panel" ref={moodPanelRef}>
-              <div className="chat-mood-label">session mood</div>
-
-              <div className="chat-mood-label" style={{ marginTop: 12 }}>modes</div>
-              <div className="chat-mood-pills">
-                {MODES.map(mode => (
-                  <button
-                    key={mode.id}
-                    className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
-                    onClick={() => toggleMode(mode.id)}
-                    title={mode.desc}
-                  >
-                    {mode.label}
-                  </button>
-                ))}
+              <div className="chat-mood-section">
+                <div className="chat-mood-label">modes</div>
+                <div className="chat-mood-pills">
+                  {MODES.map(mode => (
+                    <button
+                      key={mode.id}
+                      className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
+                      onClick={() => toggleMode(mode.id)}
+                      title={mode.desc}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="chat-mood-label" style={{ marginTop: 12 }}>pacing</div>
-              <div className="chat-mood-segmented">
-                {PACING_OPTIONS.map(opt => (
-                  <button
-                    key={opt}
-                    className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
-                    onClick={() => setSessionPacing(opt)}
-                  >
-                    {opt}
-                  </button>
-                ))}
+              <div className="chat-mood-section">
+                <div className="chat-mood-label">pacing</div>
+                <div className="chat-mood-segmented">
+                  {PACING_OPTIONS.map(opt => (
+                    <button
+                      key={opt}
+                      className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
+                      onClick={() => setSessionPacing(opt)}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="chat-mood-label" style={{ marginTop: 12 }}>energy</div>
-              <div className="chat-mood-segmented">
-                {ENERGY_OPTIONS.map(opt => (
-                  <button
-                    key={opt}
-                    className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
-                    onClick={() => setSessionEnergy(opt)}
-                  >
-                    {opt}
-                  </button>
-                ))}
+              <div className="chat-mood-section">
+                <div className="chat-mood-label">energy</div>
+                <div className="chat-mood-segmented">
+                  {ENERGY_OPTIONS.map(opt => (
+                    <button
+                      key={opt}
+                      className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
+                      onClick={() => setSessionEnergy(opt)}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <button className="chat-mood-done" onClick={() => setMoodOpen(false)}>
@@ -777,46 +811,50 @@ export default function ChatPage() {
 
         {moodOpen && (
           <div className="chat-mood-panel" ref={moodPanelRef}>
-            <div className="chat-mood-label">session mood</div>
-
-            <div className="chat-mood-label" style={{ marginTop: 12 }}>modes</div>
-            <div className="chat-mood-pills">
-              {MODES.map(mode => (
-                <button
-                  key={mode.id}
-                  className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
-                  onClick={() => toggleMode(mode.id)}
-                  title={mode.desc}
-                >
-                  {mode.label}
-                </button>
-              ))}
+            <div className="chat-mood-section">
+              <div className="chat-mood-label">modes</div>
+              <div className="chat-mood-pills">
+                {MODES.map(mode => (
+                  <button
+                    key={mode.id}
+                    className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
+                    onClick={() => toggleMode(mode.id)}
+                    title={mode.desc}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="chat-mood-label" style={{ marginTop: 12 }}>pacing</div>
-            <div className="chat-mood-segmented">
-              {PACING_OPTIONS.map(opt => (
-                <button
-                  key={opt}
-                  className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
-                  onClick={() => setSessionPacing(opt)}
-                >
-                  {opt}
-                </button>
-              ))}
+            <div className="chat-mood-section">
+              <div className="chat-mood-label">pacing</div>
+              <div className="chat-mood-segmented">
+                {PACING_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
+                    onClick={() => setSessionPacing(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="chat-mood-label" style={{ marginTop: 12 }}>energy</div>
-            <div className="chat-mood-segmented">
-              {ENERGY_OPTIONS.map(opt => (
-                <button
-                  key={opt}
-                  className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
-                  onClick={() => setSessionEnergy(opt)}
-                >
-                  {opt}
-                </button>
-              ))}
+            <div className="chat-mood-section">
+              <div className="chat-mood-label">energy</div>
+              <div className="chat-mood-segmented">
+                {ENERGY_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
+                    onClick={() => setSessionEnergy(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button className="chat-mood-done" onClick={() => setMoodOpen(false)}>

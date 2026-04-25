@@ -707,6 +707,7 @@ async function callFriend(
   topicContext: string = "",
   isMinimalPrompt: boolean = false,
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
+  overrides: Record<string, any> = {},
 ): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -714,6 +715,23 @@ async function callFriend(
       entry: { from: friendId, text: "hmm let me think about that..." },
       replyTo: null,
     };
+
+  // Merge user's character overrides with static traits
+  const userOverride = overrides[friendId];
+  const effectiveTraits: AgentTraits = userOverride
+    ? {
+        ...friend.traits,
+        ...(userOverride.agreementBias !== undefined && { agreementBias: userOverride.agreementBias }),
+        ...(userOverride.responseSpeed && { responseSpeed: userOverride.responseSpeed }),
+        ...(userOverride.lurkerChance !== undefined && { lurkerChance: userOverride.lurkerChance }),
+        ...(userOverride.verbosityRange && { verbosityRange: userOverride.verbosityRange }),
+        ...(userOverride.tangentProbability !== undefined && { tangentProbability: userOverride.tangentProbability }),
+        ...(userOverride.attentionWindow !== undefined && { attentionWindow: userOverride.attentionWindow }),
+        ...(userOverride.confidenceLevel !== undefined && { confidenceLevel: userOverride.confidenceLevel }),
+        ...(userOverride.interruptProbability !== undefined && { interruptProbability: userOverride.interruptProbability }),
+        ...(userOverride.mediaSendProbability !== undefined && { mediaSendProbability: userOverride.mediaSendProbability }),
+      }
+    : friend.traits;
 
   // Windowed transcript — agent only sees recent messages per their attention
   const transcript = formatWindowedTranscript(allMessages, attentionWindow, userName);
@@ -730,7 +748,7 @@ async function callFriend(
   }
 
   // Tangent probability — chance of going off-topic instead of replying to the scored message
-  const tangentProb = friend.traits.tangentProbability ?? 0.05;
+  const tangentProb = effectiveTraits.tangentProbability ?? 0.05;
   if (Math.random() < tangentProb) {
     replyToName = null;
     replyToText = null;
@@ -744,7 +762,7 @@ async function callFriend(
     .filter((n): n is string => !!n);
 
   // Pick mode and length
-  const mode = pickRandomMode(friend.traits.agreementBias);
+  const mode = pickRandomMode(effectiveTraits.agreementBias);
   const isClosingOut = energy < 0.2;
   const affinity = computeTopicAffinity(friend.tags, allMessages[0]?.text || "");
   let length;
@@ -791,18 +809,18 @@ async function callFriend(
   const traitHintParts: string[] = [];
 
   // Agreement/stance
-  if (friend.traits.agreementBias < -0.5) {
+  if (effectiveTraits.agreementBias < -0.5) {
     traitHintParts.push("You strongly disagree with most takes. Challenge the premise. Push back hard. 'nah that's wrong' energy.");
-  } else if (friend.traits.agreementBias < -0.2) {
+  } else if (effectiveTraits.agreementBias < -0.2) {
     traitHintParts.push("Play devil's advocate. Question assumptions. Don't just go along with the group.");
-  } else if (friend.traits.agreementBias > 0.5) {
+  } else if (effectiveTraits.agreementBias > 0.5) {
     traitHintParts.push("You're supportive and validating. Build on what others said. 'yes and...' energy. Hype them up.");
-  } else if (friend.traits.agreementBias > 0.2) {
+  } else if (effectiveTraits.agreementBias > 0.2) {
     traitHintParts.push("You tend to agree and add to the conversation. Find common ground.");
   }
 
   // Chattiness / lurker behavior
-  const lurkerChance = friend.traits.lurkerChance ?? 0;
+  const lurkerChance = effectiveTraits.lurkerChance ?? 0;
   if (lurkerChance > 0.4) {
     traitHintParts.push("You only speak when you have something worth saying. Brief when you do.");
   } else if (lurkerChance < 0.1) {
@@ -810,13 +828,13 @@ async function callFriend(
   }
 
   // Tangent tendency
-  const tangentProb2 = friend.traits.tangentProbability ?? 0;
+  const tangentProb2 = effectiveTraits.tangentProbability ?? 0;
   if (tangentProb2 > 0.25) {
     traitHintParts.push("You sometimes go completely off-topic. Tangents are your thing.");
   }
 
   // Confidence
-  const confidence = friend.traits.confidenceLevel ?? 0.5;
+  const confidence = effectiveTraits.confidenceLevel ?? 0.5;
   if (confidence > 0.8) {
     traitHintParts.push("You state opinions as facts. No hedging, no 'maybe'.");
   } else if (confidence < 0.3) {
@@ -824,12 +842,12 @@ async function callFriend(
   }
 
   // Verbosity — reinforce length beyond just the token limit
-  const [, traitMaxWords] = friend.traits.verbosityRange ?? [5, 30];
+  const [, traitMaxWords] = effectiveTraits.verbosityRange ?? [5, 30];
   if (traitMaxWords <= 10) {
     traitHintParts.push("Keep it VERY short. 1-5 words max. You're a person of few words.");
   } else if (traitMaxWords <= 20) {
     traitHintParts.push("Keep it brief. One sentence max.");
-  } else if ((friend.traits.verbosityRange?.[0] ?? 5) >= 15) {
+  } else if ((effectiveTraits.verbosityRange?.[0] ?? 5) >= 15) {
     traitHintParts.push("You tend to elaborate. 2-3 sentences when you have something to say.");
   }
 
@@ -847,7 +865,7 @@ async function callFriend(
     isClosingOut,
     energy,
     participantNames,
-    friend.traits.agreementBias,
+    effectiveTraits.agreementBias,
     userName,
     alreadySaidBlock,
     latestUserMsg,
@@ -861,7 +879,7 @@ async function callFriend(
   );
 
   // ── GIF prompt injection (conditional) ──
-  const shouldOfferGif = Math.random() < (friend.traits.mediaSendProbability ?? 0);
+  const shouldOfferGif = Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
   if (shouldOfferGif) {
     prompt += `\n\nReact with a GIF this time! Write [GIF: search query] using English search terms. Examples: [GIF: mind blown], [GIF: facepalm], [GIF: laughing hard], [GIF: eye roll]. You can write text before or after the GIF tag, or just send the GIF alone.`;
   }
@@ -878,8 +896,8 @@ async function callFriend(
             : 120; // medium default
 
   // Modulate maxTokens by character's verbosityRange (soft clamp — never go below 60)
-  if (friend.traits.verbosityRange) {
-    const [, maxWords] = friend.traits.verbosityRange;
+  if (effectiveTraits.verbosityRange) {
+    const [, maxWords] = effectiveTraits.verbosityRange;
     const charMax = Math.round(maxWords * 1.5);
     // Only clamp DOWN, and never below 60 tokens (enough for a full sentence)
     if (charMax < maxTokens) {
@@ -1034,8 +1052,27 @@ export async function* orchestrateChat(params: {
   history: { from: string; text: string }[];
   userName?: string;
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string };
+  characterOverrides?: string; // JSON string from Convex
+  conversationDepth?: string; // "quick" | "normal" | "deep"
+  userEngagementFrequency?: number; // 0-1
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history, userName = "friend", sessionMood } = params;
+  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency } = params;
+
+  // Parse character overrides once
+  let parsedOverrides: Record<string, any> = {};
+  if (characterOverrides) {
+    try { parsedOverrides = JSON.parse(characterOverrides); } catch {}
+  }
+
+  // Conversation depth → energy decay multiplier
+  let depthMultiplier = 1.0;
+  if (conversationDepth === "quick") depthMultiplier = 1.5; // faster decay
+  if (conversationDepth === "deep") depthMultiplier = 0.6; // slower decay
+
+  // User engagement frequency → threshold for asking user follow-ups
+  const engagementThreshold = userEngagementFrequency !== undefined
+    ? Math.round((1 - userEngagementFrequency) * 6) + 1 // 0.0 → 7 msgs, 1.0 → 1 msg
+    : 3;
 
   const provider = getActiveProvider();
   if (!provider) {
@@ -1194,7 +1231,7 @@ export async function* orchestrateChat(params: {
     }
 
     // ── Determine if an agent should ask the user a follow-up question ──
-    const needsUserEngagement = !userEngaged && roundResponses.length >= 3;
+    const needsUserEngagement = !userEngaged && roundResponses.length >= engagementThreshold;
 
     // ── Call models (parallel within batch) ──
     const results = await Promise.allSettled(
@@ -1219,6 +1256,7 @@ export async function* orchestrateChat(params: {
           filterTopicForCharacter(topicContext, agent.id, message),
           isMinimalPrompt,
           sessionMood,
+          parsedOverrides,
         );
       }),
     );
@@ -1292,6 +1330,7 @@ export async function* orchestrateChat(params: {
 
       // ── Energy decay ──
       let baseDecay = 0.05 + Math.random() * 0.04;
+      baseDecay *= depthMultiplier; // apply conversation depth setting
       if (sessionMood?.pacing === "snappy") baseDecay *= 1.5; // faster decay = shorter convo
       if (sessionMood?.pacing === "slow") baseDecay *= 0.6; // slower decay = longer convo
       const decayAmount = baseDecay;

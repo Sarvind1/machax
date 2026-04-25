@@ -899,6 +899,19 @@
   border-bottom: 1px solid var(--rule);
   box-shadow: 0 4px 16px rgba(30, 28, 22, 0.08);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-mood-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-mood-section:not(:last-child) {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
 }
 
 .chat-mood-label {
@@ -913,7 +926,7 @@
 .chat-mood-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .chat-mood-pill {
@@ -986,22 +999,26 @@
 }
 
 .chat-mood-done {
-  margin-top: 14px;
-  padding: 6px 20px;
-  border: 1px solid var(--rule);
+  margin-top: 12px;
+  padding: 8px 24px;
+  border: 1px solid var(--ink-soft);
+  border-top: 1px solid var(--rule);
   border-radius: 8px;
-  background: transparent;
+  background: var(--ink);
   font-family: var(--font-mono), monospace;
   font-size: 11px;
-  color: var(--ink-soft);
+  color: var(--paper);
   cursor: pointer;
   transition: all 0.15s;
   letter-spacing: 0.06em;
+  font-weight: 600;
+  align-self: flex-start;
 }
 
 .chat-mood-done:hover {
+  background: var(--matcha-deep);
   border-color: var(--matcha-deep);
-  color: var(--matcha-deep);
+  color: #fff;
 }
 
 /* ===== MOOD LANDING & PILLS ===== */
