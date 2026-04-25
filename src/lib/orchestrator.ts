@@ -122,7 +122,7 @@ async function callAiSdk(
     topP: 0.9,
     providerOptions: {
       google: {
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: { thinkingBudget: 128 },
         safetySettings: [
           { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
           { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -456,8 +456,11 @@ function buildPrompt(
   alreadySaidBlock: string = "",
   latestUserMsg: string | null = null,
   hasTopicChanged: boolean = false,
+  contextHint: string = "",
 ): string {
-  const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.`;
+  const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.
+Before responding, internally consider: What is each person actually saying beneath the surface? What angle hasn't been raised yet?
+${contextHint ? `Angle to consider: ${contextHint}` : ""}`;
 
   let contextBlock: string;
   if (isLateJoiner) {
@@ -616,6 +619,23 @@ async function callFriend(
   const latestUserMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1].text : null;
   const hasTopicChanged = userMessages.length > 1;
 
+  // Context analysis for non-impulsive agents — identify missing perspectives
+  let contextHint = "";
+  if (friend.traits.responseSpeed !== "impulsive" && allMessages.length >= 3) {
+    try {
+      const shortTranscript = allMessages.slice(-5).map(m => `[${m.from}] ${m.text}`).join("\n");
+      const analysisPrompt = `Chat:\n${shortTranscript}\n\nIn under 10 words: what angle hasn't been raised yet?`;
+      contextHint = await callModel(
+        "Identify missing perspectives. Reply in under 10 words.",
+        analysisPrompt,
+        provider,
+        20,
+      );
+    } catch {
+      contextHint = "";
+    }
+  }
+
   const prompt = buildPrompt(
     friend.name,
     friend.role,
@@ -633,18 +653,19 @@ async function callFriend(
     alreadySaidBlock,
     latestUserMsg,
     hasTopicChanged,
+    contextHint,
   );
 
   const maxTokens =
     length === "micro"
-      ? 15
+      ? 60
       : length === "short"
-        ? 30
+        ? 100
         : length === "long"
-          ? 80
+          ? 200
           : length === "rant"
-            ? 150
-            : 40; // medium default
+            ? 300
+            : 120; // medium default
 
   try {
     let text = await callModel(
@@ -662,7 +683,7 @@ async function callFriend(
 
     if (isGarbage) {
       const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
-      text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 60));
+      text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150));
       text = cleanResponse(text, friend.name);
 
       // If still garbage after retry, use a safe fallback
