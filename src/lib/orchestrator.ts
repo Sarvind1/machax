@@ -863,7 +863,7 @@ async function callFriend(
   // ── GIF prompt injection (conditional) ──
   const shouldOfferGif = Math.random() < (friend.traits.mediaSendProbability ?? 0);
   if (shouldOfferGif) {
-    prompt += `\n\nIf you want to react with a GIF instead of (or alongside) text, write [GIF: search query] where the search query is in English (e.g., [GIF: mind blown], [GIF: facepalm], [GIF: excited dancing]). Only do this when a GIF genuinely fits — funny reactions, celebrations, or when words aren't enough. Don't overdo it. Use English search terms only.`;
+    prompt += `\n\nReact with a GIF this time! Write [GIF: search query] using English search terms. Examples: [GIF: mind blown], [GIF: facepalm], [GIF: laughing hard], [GIF: eye roll]. You can write text before or after the GIF tag, or just send the GIF alone.`;
   }
 
   let maxTokens =
