@@ -1,0 +1,92 @@
+[
+  {
+    "prompt": "Should I quit my job to start a startup?",
+    "expectedTraits": ["disagreement", "practical-advice", "personal-stories"],
+    "category": "career",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "Pizza or burger?",
+    "expectedTraits": ["casual-banter", "strong-opinions", "humor"],
+    "category": "casual",
+    "difficulty": "easy"
+  },
+  {
+    "prompt": "I think I'm in love with my best friend",
+    "expectedTraits": ["empathy", "varied-perspectives", "personal-advice"],
+    "category": "relationships",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "Is crypto still worth investing in?",
+    "expectedTraits": ["disagreement", "factual-claims", "caution"],
+    "category": "finance",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "My parents want me to do an MBA but I want to be an artist",
+    "expectedTraits": ["empathy", "cultural-context", "disagreement", "personal-stories"],
+    "category": "life",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "Rate my startup idea: Uber for dog walking",
+    "expectedTraits": ["humor", "practical-advice", "constructive-criticism"],
+    "category": "startup",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "bored",
+    "expectedTraits": ["casual-banter", "humor", "engagement"],
+    "category": "minimal",
+    "difficulty": "hard"
+  },
+  {
+    "prompt": "What phone should I buy under 30k?",
+    "expectedTraits": ["specific-recommendations", "disagreement", "practical-advice"],
+    "category": "shopping",
+    "difficulty": "easy"
+  },
+  {
+    "prompt": "I got rejected from my dream college",
+    "expectedTraits": ["empathy", "encouragement", "personal-stories"],
+    "category": "emotional",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "Should I move to Bangalore or stay in my hometown?",
+    "expectedTraits": ["cultural-context", "practical-advice", "varied-perspectives"],
+    "category": "life",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "Hot take: arranged marriages are better than love marriages",
+    "expectedTraits": ["strong-disagreement", "cultural-context", "humor", "heated-debate"],
+    "category": "controversial",
+    "difficulty": "hard"
+  },
+  {
+    "prompt": "I just found out my coworker makes 2x my salary for the same role",
+    "expectedTraits": ["empathy", "practical-advice", "strong-opinions"],
+    "category": "career",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "hi",
+    "expectedTraits": ["engagement", "casual-banter", "not-awkward"],
+    "category": "minimal",
+    "difficulty": "hard"
+  },
+  {
+    "prompt": "Is AI going to take all our jobs?",
+    "expectedTraits": ["varied-perspectives", "factual-claims", "humor", "disagreement"],
+    "category": "tech",
+    "difficulty": "standard"
+  },
+  {
+    "prompt": "I want to learn cooking but I burn everything",
+    "expectedTraits": ["humor", "practical-advice", "encouragement", "personal-stories"],
+    "category": "casual",
+    "difficulty": "easy"
+  }
+]
