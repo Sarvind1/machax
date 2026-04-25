@@ -977,10 +977,13 @@ export async function* orchestrateChat(params: {
     scoredCandidates.sort((a, b) => a.delay - b.delay);
 
     // Take 1-2 agents per iteration (small parallel batch for near-simultaneous)
-    const batchSize = scoredCandidates.length >= 2 &&
-      Math.abs(scoredCandidates[0].delay - scoredCandidates[1].delay) < 3000
-      ? 2
-      : 1;
+    // Claude CLI: serialize to avoid Max plan rate-limit throttling
+    const isCli = provider.name === "claude-cli";
+    const batchSize = isCli ? 1
+      : scoredCandidates.length >= 2 &&
+        Math.abs(scoredCandidates[0].delay - scoredCandidates[1].delay) < 3000
+        ? 2
+        : 1;
     const batch = scoredCandidates.slice(0, batchSize);
 
     // ── Emit typing events ──
