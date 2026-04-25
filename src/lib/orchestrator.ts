@@ -488,6 +488,7 @@ function buildPrompt(
   hasTopicChanged: boolean = false,
   contextHint: string = "",
   shouldAskUser: boolean = false,
+  topicContext: string = "",
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Consider this angle: ${contextHint}` : ""}`;
 
@@ -541,7 +542,13 @@ function buildPrompt(
     topicChangeBlock = `\n⚠️ ${userName}'s LATEST message is: "${latestUserMsg}"\nThe conversation has moved on. Respond to this latest message, not earlier topics.\n`;
   }
 
+  const factsBlock = topicContext
+    ? `\nFACTS (use this knowledge naturally, don't quote it verbatim): ${topicContext}\nIf you don't know about this topic, it's fine to say "idk what that is" or ask what it is.\n`
+    : "";
+
   return `${baseIdentity}${topicChangeBlock} ${contextBlock}
+${factsBlock}
+If someone asks about something you genuinely don't know about, say so naturally — "no idea", "never heard of it", "what's that". Don't fake knowledge.
 
 NEVER say: "Absolutely", "That's a great question", "I'd be happy to", "It's important to note", "delve", "I couldn't agree more", "Certainly", "Indeed", "Furthermore", "I think there's something to be said for", "an endless cycle", "unsustainable", "low-cost high-reward", "it's worth noting". Never hedge. Never explain your reasoning. No formal phrases. No philosophical statements. No business jargon. Talk like you're 22 and texting your friend.
 
@@ -583,6 +590,7 @@ async function callFriend(
   userName: string = "friend",
   shouldAskUser: boolean = false,
   contextHint: string = "",
+  topicContext: string = "",
 ): Promise<{ entry: ChatEntry; replyTo: string | null } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -680,6 +688,7 @@ async function callFriend(
     hasTopicChanged,
     contextHint,
     shouldAskUser,
+    topicContext,
   );
 
   let maxTokens =
@@ -744,6 +753,51 @@ async function callFriend(
   }
 }
 
+// ── Director agent: one-shot topic research ────────────────────────
+
+async function getTopicContext(message: string): Promise<string> {
+  // Only research messages that reference specific things
+  const needsResearch =
+    /\b(played|watched|read|heard|seen|tried|used|know about|what is|who is|have you|anyone tried|does anyone)\b/i.test(
+      message,
+    );
+
+  if (!needsResearch) return "";
+
+  try {
+    const result = await generateText({
+      model: google("gemini-2.5-flash"),
+      tools: {
+        google_search: google.tools.googleSearch({}),
+      },
+      messages: [
+        {
+          role: "user",
+          content: `Group chat message: "${message}"
+
+If this mentions something specific (game, movie, show, app, product, person, event, concept), give a 2-sentence factual summary so friends can discuss it knowledgeably. Include: what it is, current status (released? upcoming?), key facts.
+
+If it's just a casual opinion question (like "pizza or burger" or "should I quit my job"), reply NONE.`,
+        },
+      ],
+      maxOutputTokens: 80,
+      temperature: 0.2,
+      providerOptions: {
+        google: {
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      },
+    });
+
+    const text = result.text.trim();
+    if (!text || text === "NONE" || text.length < 15) return "";
+    return text;
+  } catch (err) {
+    console.error("[director] Topic context failed:", err);
+    return "";
+  }
+}
+
 // ── Main v3 engine ──────────────────────────────────────────────────
 
 export async function* orchestrateChat(params: {
@@ -765,6 +819,9 @@ export async function* orchestrateChat(params: {
   }
 
   yield { type: "provider", label: provider.label };
+
+  // ── Director agent: research the topic once for all agents ──
+  const topicContext = await getTopicContext(message);
 
   // All messages: history + user's new message + round responses
   const baseMessages: ChatEntry[] = [
@@ -930,6 +987,7 @@ export async function* orchestrateChat(params: {
           userName,
           shouldAskUser,
           contextHint,
+          topicContext,
         );
       }),
     );
