@@ -897,15 +897,15 @@
 .chat-mood-panel {
   position: absolute;
   top: 100%;
-  right: 0;
+  left: 0;
   z-index: 100;
-  background: var(--paper, #F4F1E8);
-  border: 1px solid var(--rule);
+  background: #F4F1E8;
+  border: 1px solid rgba(30,28,22,0.12);
   border-radius: 12px;
   box-shadow: 0 8px 24px -8px rgba(30, 28, 22, 0.15);
   padding: 16px 20px;
-  min-width: 320px;
-  max-width: 420px;
+  min-width: 360px;
+  max-width: 500px;
   display: flex;
   flex-direction: column;
   gap: 16px;
