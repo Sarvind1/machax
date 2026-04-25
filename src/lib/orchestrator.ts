@@ -122,7 +122,7 @@ async function callAiSdk(
     topP: 0.9,
     providerOptions: {
       google: {
-        thinkingConfig: { thinkingBudget: 128 },
+        thinkingConfig: { thinkingBudget: 0 },
         safetySettings: [
           { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
           { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -154,6 +154,18 @@ function cleanResponse(text: string, friendName: string): string {
   text = text.trim();
   // Collapse multi-line responses into single line (Gemini sometimes outputs paragraphs)
   text = text.replace(/\n+/g, " ").trim();
+  // Strip HTML tags that Gemini sometimes leaks
+  text = text.replace(/<[^>]+>/g, "").trim();
+  // Strip leaked internal monologue / thinking text
+  text = text.replace(/^(Internal Monologue|INTERNAL|Thinking|THINKING|Context Analysis)[:\s].*?\n*/gi, "").trim();
+  // If the response has multiple sentences and starts with analysis, take only the last sentence
+  if (/^(What|Why|How|The|My|I should|No one|Everyone|Sarvind)/i.test(text) && text.includes(". ")) {
+    const sentences = text.split(/\.\s+/);
+    const lastSentence = sentences[sentences.length - 1];
+    if (lastSentence && lastSentence.length > 5) {
+      text = lastSentence;
+    }
+  }
   if (
     (text.startsWith('"') && text.endsWith('"')) ||
     (text.startsWith("'") && text.endsWith("'"))
@@ -162,7 +174,7 @@ function cleanResponse(text: string, friendName: string): string {
   }
   const namePrefix = new RegExp(`^${friendName}:\\s*`, "i");
   text = text.replace(namePrefix, "");
-  return text;
+  return text.trim();
 }
 
 // ── Agent traits resolution ──────────────────────────────────────────
@@ -457,10 +469,9 @@ function buildPrompt(
   latestUserMsg: string | null = null,
   hasTopicChanged: boolean = false,
   contextHint: string = "",
+  shouldAskUser: boolean = false,
 ): string {
-  const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.
-Before responding, internally consider: What is each person actually saying beneath the surface? What angle hasn't been raised yet?
-${contextHint ? `Angle to consider: ${contextHint}` : ""}`;
+  const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Consider this angle: ${contextHint}` : ""}`;
 
   let contextBlock: string;
   if (isLateJoiner) {
@@ -509,7 +520,7 @@ NEVER say: "Absolutely", "That's a great question", "I'd be happy to", "It's imp
 ${participantBlock}
 The user's name is ${userName} but do NOT use their name in every message. In a real group chat, you rarely say someone's name — just talk naturally. Use their name at most once in the entire conversation, and only if you're directly asking them something important.
 
-You can reply to anyone in the chat — not just ${userName}. React to what other people said. Disagree with someone. Build on their point. Tease them. But remember ${userName} asked the question — circle back to their situation occasionally. Don't forget they're in the chat.
+You can reply to anyone in the chat — not just ${userName}. React to what other people said. Disagree with someone. Build on their point. Tease them. But remember ${userName} started this conversation — make sure they feel included, not like they're watching strangers argue.
 ${fewShotExample}
 
 Keep your message under 10 words. Shorter is always better. One-word reactions are fine.
@@ -523,6 +534,7 @@ Give direct opinions, not questions. When you disagree, say it flat — "that's 
 It's fine to just react: "lmao", "valid", "nah", "true", "💀". Not every message needs a point.
 
 ${alreadySaidBlock}
+${shouldAskUser ? `\nIMPORTANT: The group has been talking but nobody asked ${userName} to elaborate. Ask them a specific follow-up question about their situation — like "wait why?" or "what happened?" or "what's actually bothering you about it?" Keep it short and natural.` : ""}
 ${energyBlock}
 
 DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${stanceHint}
@@ -542,7 +554,8 @@ async function callFriend(
   attentionWindow: number,
   podFriendIds: string[],
   userName: string = "friend",
-): Promise<{ entry: ChatEntry; replyTo: string | null }> {
+  shouldAskUser: boolean = false,
+): Promise<{ entry: ChatEntry; replyTo: string | null } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
     return {
@@ -654,6 +667,7 @@ async function callFriend(
     latestUserMsg,
     hasTopicChanged,
     contextHint,
+    shouldAskUser,
   );
 
   const maxTokens =
@@ -676,9 +690,15 @@ async function callFriend(
     );
     text = cleanResponse(text, friend.name);
 
-    // Validate response quality — retry once if garbage
-    const isGarbage = text.length < 2
-      || (text.length > 5 && !/[.!?…💀😭🤣❤️✨🔥😤🫠)\s]$/.test(text) && /\s/.test(text))
+    // Validate response quality — retry once if garbage or truncated
+    const looksIncomplete = (t: string) => {
+      if (t.length < 3) return true; // too short
+      if (/['\u2019]$/.test(t)) return true; // ends with apostrophe (truncated contraction)
+      if (t.length <= 6 && !/[.!?…💀😭🤣❤️✨🔥😤🫠a-z0-9)]$/i.test(t)) return true; // short + no proper ending
+      if (t.length > 5 && !/[.!?…💀😭🤣❤️✨🔥😤🫠)\s]$/.test(t) && /\s/.test(t)) return true; // multi-word, no ending
+      return false;
+    };
+    const isGarbage = looksIncomplete(text)
       || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase());
 
     if (isGarbage) {
@@ -686,12 +706,9 @@ async function callFriend(
       text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150));
       text = cleanResponse(text, friend.name);
 
-      // If still garbage after retry, use a safe fallback
-      const stillGarbage = text.length < 2
-        || (text.length > 5 && !/[.!?…💀😭🤣❤️✨🔥😤🫠)\s]$/.test(text) && /\s/.test(text))
-        || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase());
-      if (stillGarbage && text.length < 4) {
-        text = "hmm let me think about that";
+      // If still garbage after retry, return null to skip this agent
+      if (looksIncomplete(text) || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase())) {
+        return null;
       }
     }
 
@@ -745,6 +762,9 @@ export async function* orchestrateChat(params: {
 
   // Track how many agents replied to each message index
   const replyCounts = new Map<number, number>();
+
+  // Track whether any agent has engaged the user with a follow-up question
+  let userEngaged = false;
 
   // ── Initialize presence for all agents ──
   const agents: AgentPresence[] = podFriendIds.map((id) => initPresence(id));
@@ -844,11 +864,17 @@ export async function* orchestrateChat(params: {
       yield { type: "typing", agentId: agent.id };
     }
 
+    // ── Determine if an agent should ask the user a follow-up question ──
+    // After 3+ agent messages with no user engagement, nudge the next agent to ask
+    const needsUserEngagement = !userEngaged && roundResponses.length >= 3;
+
     // ── Call models (parallel within batch) ──
     const results = await Promise.allSettled(
-      batch.map(({ agent, target }) => {
+      batch.map(({ agent, target }, batchIdx) => {
         const attentionWindow = getAttentionWindow(agent.traits);
         const isLateJoiner = agent.responseCount === 0 && roundResponses.length >= 2;
+        // Only the first agent in batch gets the "ask user" nudge
+        const shouldAskUser = needsUserEngagement && batchIdx === 0;
 
         return callFriend(
           agent.id,
@@ -860,6 +886,7 @@ export async function* orchestrateChat(params: {
           attentionWindow,
           podFriendIds,
           userName,
+          shouldAskUser,
         );
       }),
     );
@@ -872,6 +899,8 @@ export async function* orchestrateChat(params: {
         continue;
       }
 
+      // Skip null results (garbage that couldn't be retried)
+      if (result.value === null) continue;
       const { entry, replyTo } = result.value;
       const agent = batch[i].agent;
       const target = batch[i].target;
@@ -911,6 +940,11 @@ export async function* orchestrateChat(params: {
       }
 
       roundResponses.push(entry);
+
+      // Track if this message engages the user (contains a question)
+      if (entry.text.includes("?") && (replyTo === "user" || !replyTo)) {
+        userEngaged = true;
+      }
 
       yield {
         type: "message",
