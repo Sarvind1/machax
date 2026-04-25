@@ -236,6 +236,11 @@ export default function ChatPage() {
             podFriendIds: podIds,
             history,
             userName,
+            sessionMood: {
+              modes: sessionModes,
+              pacing: sessionPacing,
+              energy: sessionEnergy,
+            },
           }),
         });
 
@@ -352,7 +357,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     },
-    [sendMessage, upsertDecision, userName]
+    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy]
   );
 
   const handleSubmit = useCallback(async () => {

@@ -547,6 +547,7 @@ function buildPrompt(
   topicContext: string = "",
   isMinimalPrompt: boolean = false,
   traitHints: string = "",
+  sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Consider this angle: ${contextHint}` : ""}`;
 
@@ -607,6 +608,46 @@ function buildPrompt(
     ? `\nFACTS (use this knowledge naturally, don't quote it verbatim): ${topicContext}\n`
     : "";
 
+  let sessionMoodBlock = "";
+  if (sessionMood) {
+    const parts: string[] = [];
+
+    if (sessionMood.modes?.includes("late-night")) {
+      parts.push("The vibe is late-night — soft, vulnerable, honest. 2am energy.");
+    }
+    if (sessionMood.modes?.includes("hot-take")) {
+      parts.push("Hot takes mode — be spicy, oversimplified, provocative. Have fun with it.");
+    }
+    if (sessionMood.modes?.includes("deep-dive")) {
+      parts.push("Deep dive mode — pick one angle and go deep. Unpack it fully.");
+    }
+    if (sessionMood.modes?.includes("devils-advocate")) {
+      parts.push("Devil's advocate mode — push back intentionally. Challenge the premise.");
+    }
+    if (sessionMood.modes?.includes("emotional")) {
+      parts.push("Emotional support mode — mostly listen. Validate. Be gentle.");
+    }
+    if (sessionMood.modes?.includes("roast")) {
+      parts.push("Roast mode — tease the user lovingly. Be funny, not mean.");
+    }
+    if (sessionMood.modes?.includes("hype")) {
+      parts.push("Hype mode — be a cheerleader. Everything is amazing. Gas them up.");
+    }
+    if (sessionMood.modes?.includes("debate-club")) {
+      parts.push("Debate club mode — structured back-and-forth. Take a clear position.");
+    }
+
+    if (sessionMood.energy === "low") {
+      parts.push("Energy is low today. Keep it chill, mellow, no pressure.");
+    } else if (sessionMood.energy === "up") {
+      parts.push("Energy is UP. Be lively, enthusiastic, high energy.");
+    }
+
+    if (parts.length > 0) {
+      sessionMoodBlock = "\n" + parts.join(" ");
+    }
+  }
+
   return `${baseIdentity}${topicChangeBlock} ${contextBlock}
 ${factsBlock}
 If someone asks about something you genuinely don't know about, say so naturally — "no idea", "never heard of it", "what's that". Don't fake knowledge.
@@ -632,7 +673,7 @@ ${alreadySaidBlock}
 ${shouldAskUser ? `\nIMPORTANT: The group has been talking but nobody asked ${userName} to elaborate. Ask them a specific follow-up question about their situation — like "wait why?" or "what happened?" or "what's actually bothering you about it?" Keep it short and natural.` : ""}
 ${isMinimalPrompt ? `\n${userName} sent a very short message. React naturally — ask what's up, tease them, make a joke, or just vibe. Don't overthink a short message.` : ""}
 ${energyBlock}
-
+${sessionMoodBlock}
 DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${traitHints ? `\n${traitHints}` : stanceHint}
 Your reply must be a COMPLETE thought. Never a fragment. Do NOT use quotes around your response. Do NOT prefix with your name.
 CRITICAL: Do NOT repeat or rephrase what someone else already said. Add a NEW perspective, joke, reaction, or opinion.`;
@@ -654,6 +695,7 @@ async function callFriend(
   contextHint: string = "",
   topicContext: string = "",
   isMinimalPrompt: boolean = false,
+  sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
 ): Promise<{ entry: ChatEntry; replyTo: string | null } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -804,6 +846,7 @@ async function callFriend(
     topicContext,
     isMinimalPrompt,
     traitHintsBlock,
+    sessionMood,
   );
 
   let maxTokens =
@@ -952,8 +995,9 @@ export async function* orchestrateChat(params: {
   podFriendIds: string[];
   history: { from: string; text: string }[];
   userName?: string;
+  sessionMood?: { modes?: string[]; pacing?: string; energy?: string };
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history, userName = "friend" } = params;
+  const { message, podFriendIds, history, userName = "friend", sessionMood } = params;
 
   const provider = getActiveProvider();
   if (!provider) {
@@ -995,6 +1039,8 @@ export async function* orchestrateChat(params: {
 
   // ── Conversation energy ──
   let energy = 1.0;
+  if (sessionMood?.energy === "low") energy = 0.7; // starts lower, winds down sooner
+  if (sessionMood?.energy === "up") energy = 1.2; // starts higher, more energetic
   let phase: ConversationPhase = "active";
   let simulatedTimeMs = 0;
   let pendingQuestions = 0; // questions agents asked the user (for soft pressure)
@@ -1131,6 +1177,7 @@ export async function* orchestrateChat(params: {
           "", // contextHint removed — director agent handles context
           filterTopicForCharacter(topicContext, agent.id, message),
           isMinimalPrompt,
+          sessionMood,
         );
       }),
     );
@@ -1198,7 +1245,10 @@ export async function* orchestrateChat(params: {
       };
 
       // ── Energy decay ──
-      const decayAmount = 0.05 + Math.random() * 0.04;
+      let baseDecay = 0.05 + Math.random() * 0.04;
+      if (sessionMood?.pacing === "snappy") baseDecay *= 1.5; // faster decay = shorter convo
+      if (sessionMood?.pacing === "slow") baseDecay *= 0.6; // slower decay = longer convo
+      const decayAmount = baseDecay;
       energy -= decayAmount;
 
       // Questions from agents add a tiny bit of energy back

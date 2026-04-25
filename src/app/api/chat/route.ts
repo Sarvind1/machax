@@ -61,11 +61,12 @@ function iteratorToStream(
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { message, podFriendIds, history, userName } = body as {
+    const { message, podFriendIds, history, userName, sessionMood } = body as {
       message: string;
       podFriendIds: string[];
       history: { from: string; text: string }[];
       userName?: string;
+      sessionMood?: { modes?: string[]; pacing?: string; energy?: string };
     };
 
     if (!message || !podFriendIds?.length) {
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
       podFriendIds,
       history: history || [],
       userName: userName || "friend",
+      sessionMood,
     });
 
     const stream = iteratorToStream(generator);
