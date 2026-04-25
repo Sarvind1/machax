@@ -179,6 +179,7 @@ export default function ChatPage() {
   const sendMessage = useMutation(api.messages.send);
   const upsertDecision = useMutation(api.decisions.upsert);
   const selectDecision = useMutation(api.decisions.select);
+  const saveTrace = useMutation(api.traces.save);
 
   // Load messages from Convex when conversation changes
   const convexMessages = useSafeQuery<any[]>(
@@ -381,6 +382,26 @@ export default function ChatPage() {
                 setIsLoading(false);
                 isStreamingRef.current = false;
               }
+
+              if (data.trace) {
+                try {
+                  await saveTrace({
+                    conversationId: convoId,
+                    prompt: data.trace.prompt,
+                    userName: data.trace.userName,
+                    podFriendIds: data.trace.podFriendIds,
+                    provider: data.trace.provider,
+                    sessionMood: data.trace.sessionMood,
+                    totalTimeMs: data.trace.totalTimeMs,
+                    totalIterations: data.trace.totalIterations,
+                    totalMessages: data.trace.totalMessages,
+                    finalEnergy: data.trace.finalEnergy,
+                    iterations: JSON.stringify(data.trace.iterations),
+                  });
+                } catch {
+                  // Trace save failed — not critical
+                }
+              }
             } catch {
               // Skip malformed JSON lines
             }
@@ -394,7 +415,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     },
-    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings]
+    [sendMessage, upsertDecision, saveTrace, userName, sessionModes, sessionPacing, sessionEnergy, userSettings]
   );
 
   const handleSubmit = useCallback(async () => {
@@ -445,6 +466,7 @@ export default function ChatPage() {
           tag,
           podFriendIds: podIds,
           sessionMood: JSON.stringify({ modes: sessionModes, pacing: sessionPacing, energy: sessionEnergy }),
+          username: settingsUsername || undefined,
         });
 
         setActiveConversation(convoId);
@@ -539,6 +561,7 @@ export default function ChatPage() {
         conversationId: activeConversation,
         optionId,
       });
+      router.push("/decisions");
     } catch (err) {
       console.error("Failed to select decision:", err);
     }
