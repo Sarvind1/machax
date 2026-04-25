@@ -454,6 +454,8 @@ function buildPrompt(
   agreementBias: number,
   userName: string = "friend",
   alreadySaidBlock: string = "",
+  latestUserMsg: string | null = null,
+  hasTopicChanged: boolean = false,
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.`;
 
@@ -491,7 +493,13 @@ Here's what good group chat messages look like (use these as your style guide):
 [${exampleNames[0] || "dev"}] lmao valid
 Notice: 6-8 words each. No explaining. Direct opinions. Casual.`;
 
-  return `${baseIdentity} ${contextBlock}
+  // If the user has sent multiple messages and the topic may have shifted, front-load the latest message
+  let topicChangeBlock = "";
+  if (hasTopicChanged && latestUserMsg) {
+    topicChangeBlock = `\n⚠️ ${userName}'s LATEST message is: "${latestUserMsg}"\nThe conversation has moved on. Respond to this latest message, not earlier topics.\n`;
+  }
+
+  return `${baseIdentity}${topicChangeBlock} ${contextBlock}
 
 NEVER say: "Absolutely", "That's a great question", "I'd be happy to", "It's important to note", "delve", "I couldn't agree more", "Certainly", "Indeed", "Furthermore", "I think there's something to be said for", "an endless cycle", "unsustainable", "low-cost high-reward", "it's worth noting". Never hedge. Never explain your reasoning. No formal phrases. No philosophical statements. No business jargon. Talk like you're 22 and texting your friend.
 
@@ -595,6 +603,19 @@ async function callFriend(
     alreadySaidBlock = `Someone already said: "${agentMessages[0].text.slice(0, 60).replace(/"/g, "")}". Say something DIFFERENT — agree or disagree, but add a new angle.`;
   }
 
+  // What THIS agent already said in the conversation (including history) — prevent self-repetition across rounds
+  const myPreviousMessages = allMessages
+    .filter((m) => m.from === friendId)
+    .map((m) => m.text);
+  if (myPreviousMessages.length > 0) {
+    alreadySaidBlock += `\n\nYou already said these things earlier in this conversation:\n${myPreviousMessages.map((m) => `- "${m}"`).join("\n")}\nDo NOT repeat or rephrase any of these. Say something COMPLETELY different. If you have nothing new to add, just react briefly ("lol", "valid", "💀").`;
+  }
+
+  // Detect topic change — if user has sent multiple messages, the latest one is what matters
+  const userMessages = allMessages.filter((m) => m.from === "user");
+  const latestUserMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1].text : null;
+  const hasTopicChanged = userMessages.length > 1;
+
   const prompt = buildPrompt(
     friend.name,
     friend.role,
@@ -610,6 +631,8 @@ async function callFriend(
     friend.traits.agreementBias,
     userName,
     alreadySaidBlock,
+    latestUserMsg,
+    hasTopicChanged,
   );
 
   const maxTokens =
