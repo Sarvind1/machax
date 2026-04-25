@@ -756,19 +756,17 @@ async function callFriend(
 // ── Director agent: one-shot topic research ────────────────────────
 
 async function getTopicContext(message: string): Promise<string> {
-  // Always run — let the model decide if research is needed (returns "NONE" for casual questions)
+  // Research the topic using Gemini (no Google Search tool — just model knowledge)
+  // Google Search grounding was causing failures on Vercel, so we use plain Gemini
   try {
     const result = await generateText({
       model: google("gemini-2.5-flash"),
-      tools: {
-        google_search: google.tools.googleSearch({}),
-      },
       messages: [
         {
           role: "user",
           content: `Group chat message: "${message}"
 
-If this mentions something specific (game, movie, show, app, product, person, event, concept), give a 2-sentence factual summary so friends can discuss it knowledgeably. Include: what it is, current status (released? upcoming?), key facts.
+If this mentions something specific (game, movie, show, app, product, person, event, concept), give a 2-sentence factual summary. Include: what it is, current status, key facts.
 
 If it's just a casual opinion question (like "pizza or burger" or "should I quit my job"), reply NONE.`,
         },
@@ -814,7 +812,15 @@ export async function* orchestrateChat(params: {
   yield { type: "provider", label: provider.label };
 
   // ── Director agent: research the topic once for all agents ──
-  const topicContext = await getTopicContext(message);
+  // Wrap in timeout so it never blocks the conversation
+  let topicContext = "";
+  try {
+    const contextPromise = getTopicContext(message);
+    const timeoutPromise = new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000));
+    topicContext = await Promise.race([contextPromise, timeoutPromise]);
+  } catch {
+    topicContext = "";
+  }
 
   // All messages: history + user's new message + round responses
   const baseMessages: ChatEntry[] = [
