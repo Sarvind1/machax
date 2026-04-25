@@ -44,17 +44,208 @@ const CRITERIA = [
   "entertainment",
 ];
 
+function ComparisonPanel({
+  runA,
+  runB,
+  resultsA,
+  resultsB,
+}: {
+  runA: any;
+  runB: any;
+  resultsA: any[];
+  resultsB: any[];
+}) {
+  const avgCriteria = (results: any[]) => {
+    const sums: Record<string, { total: number; count: number }> = {};
+    for (const r of results) {
+      try {
+        const scores = JSON.parse(r.scores);
+        for (const key of CRITERIA) {
+          const entry = scores[key];
+          if (entry && typeof entry === "object" && typeof entry.score === "number") {
+            if (!sums[key]) sums[key] = { total: 0, count: 0 };
+            sums[key].total += entry.score;
+            sums[key].count++;
+          }
+        }
+      } catch {}
+    }
+    const avgs: Record<string, number> = {};
+    for (const [key, { total, count }] of Object.entries(sums)) {
+      avgs[key] = count > 0 ? total / count : 0;
+    }
+    return avgs;
+  };
+
+  const avgsA = avgCriteria(resultsA);
+  const avgsB = avgCriteria(resultsB);
+
+  const overallDelta = (runB?.avgScore ?? 0) - (runA?.avgScore ?? 0);
+
+  const promptDeltas = resultsB
+    .map((rb) => {
+      const ra = resultsA.find((a) => a.prompt === rb.prompt);
+      return {
+        prompt: rb.prompt,
+        scoreA: ra?.overallScore ?? null,
+        scoreB: rb.overallScore,
+        delta: ra ? rb.overallScore - ra.overallScore : null,
+      };
+    })
+    .sort((a, b) => (b.delta ?? 0) - (a.delta ?? 0));
+
+  const deltaColor = (d: number) => {
+    if (d > 0.3) return "var(--matcha-deep)";
+    if (d < -0.3) return "#c0392b";
+    return "var(--ink-faint)";
+  };
+
+  const deltaPrefix = (d: number) => (d > 0 ? "+" : "");
+
+  return (
+    <div className="comparison-panel">
+      <h2 className="comparison-title">
+        comparing{" "}
+        <span className="comparison-run-name">{runA?.name}</span>
+        {" vs "}
+        <span className="comparison-run-name">{runB?.name}</span>
+      </h2>
+
+      <div className="comparison-overall" style={{ color: deltaColor(overallDelta) }}>
+        overall: {deltaPrefix(overallDelta)}{overallDelta.toFixed(1)}
+      </div>
+
+      <table className="comparison-table">
+        <thead>
+          <tr>
+            <th>criterion</th>
+            <th>{runA?.name?.slice(-5) ?? "run a"}</th>
+            <th>{runB?.name?.slice(-5) ?? "run b"}</th>
+            <th>delta</th>
+          </tr>
+        </thead>
+        <tbody>
+          {CRITERIA.map((key) => {
+            const a = avgsA[key] ?? 0;
+            const b = avgsB[key] ?? 0;
+            const d = b - a;
+            return (
+              <tr key={key}>
+                <td className="comparison-criterion">{key}</td>
+                <td className="comparison-score">{a.toFixed(1)}</td>
+                <td className="comparison-score">{b.toFixed(1)}</td>
+                <td className="comparison-delta" style={{ color: deltaColor(d) }}>
+                  {deltaPrefix(d)}{d.toFixed(1)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <h3 className="comparison-prompts-title">per prompt</h3>
+      <div className="comparison-prompts">
+        {promptDeltas.map((p) => (
+          <div key={p.prompt} className="comparison-prompt-row">
+            <span className="comparison-prompt-text">{p.prompt}</span>
+            <span className="comparison-prompt-scores">
+              {p.scoreA ?? "—"} → {p.scoreB}
+            </span>
+            {p.delta !== null && (
+              <span className="comparison-prompt-delta" style={{ color: deltaColor(p.delta) }}>
+                {deltaPrefix(p.delta)}{p.delta.toFixed(1)}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function EvalsPage() {
   const runs = useQuery(api.evals.listRuns);
   const [selectedRunId, setSelectedRunId] = useState<Id<"evalRuns"> | null>(
     null
   );
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [isRunning, setIsRunning] = useState(false);
+  const [runProgress, setRunProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [compareIds, setCompareIds] = useState<Set<Id<"evalRuns">>>(new Set());
+
+  const hasRunningRun = runs?.some((r) => r.status === "running") ?? false;
+
+  const compareIdsArray = Array.from(compareIds);
+  const compareResultsA = useQuery(
+    api.evals.getRunResults,
+    compareIdsArray[0] ? { evalRunId: compareIdsArray[0] } : "skip"
+  );
+  const compareResultsB = useQuery(
+    api.evals.getRunResults,
+    compareIdsArray[1] ? { evalRunId: compareIdsArray[1] } : "skip"
+  );
 
   const results = useQuery(
     api.evals.getRunResults,
     selectedRunId ? { evalRunId: selectedRunId } : "skip"
   );
+
+  const handleRunEvals = async () => {
+    setIsRunning(true);
+    setRunProgress(null);
+
+    try {
+      const response = await fetch("/api/run-evals", { method: "POST" });
+      if (!response.ok || !response.body) {
+        throw new Error("Failed to start eval run");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === "progress" || data.type === "error") {
+              setRunProgress({ completed: data.completed, total: data.total });
+            }
+            if (data.type === "done" || data.type === "fatal") {
+              setIsRunning(false);
+              setRunProgress(null);
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.error("Eval run failed:", err);
+    } finally {
+      setIsRunning(false);
+      setRunProgress(null);
+    }
+  };
+
+  const toggleCompare = (id: Id<"evalRuns">, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCompareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else if (next.size < 2) {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const toggleRow = (id: string) => {
     setExpandedRows((prev) => {
@@ -85,7 +276,20 @@ export default function EvalsPage() {
 
   return (
     <div className="evals-page">
-      <h1 className="evals-title">eval runs</h1>
+      <div className="evals-header">
+        <h1 className="evals-title">eval runs</h1>
+        <button
+          className="evals-run-btn"
+          onClick={handleRunEvals}
+          disabled={isRunning || hasRunningRun}
+        >
+          {isRunning && runProgress
+            ? `running... (${runProgress.completed}/${runProgress.total})`
+            : isRunning
+              ? "starting..."
+              : "run evals"}
+        </button>
+      </div>
 
       {/* Run cards */}
       {runs === undefined ? (
@@ -103,6 +307,14 @@ export default function EvalsPage() {
                 setExpandedRows(new Set());
               }}
             >
+              <input
+                type="checkbox"
+                className="eval-compare-check"
+                checked={compareIds.has(run._id)}
+                onChange={() => {}}
+                onClick={(e) => toggleCompare(run._id, e)}
+                disabled={!compareIds.has(run._id) && compareIds.size >= 2}
+              />
               <span className="eval-run-name">{run.name}</span>
               <span
                 className={`eval-run-badge ${run.status === "running" ? "running" : run.status === "complete" ? "complete" : "failed"}`}
@@ -124,6 +336,16 @@ export default function EvalsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Comparison panel */}
+      {compareIds.size === 2 && compareResultsA && compareResultsB && (
+        <ComparisonPanel
+          runA={runs?.find((r) => r._id === compareIdsArray[0])}
+          runB={runs?.find((r) => r._id === compareIdsArray[1])}
+          resultsA={compareResultsA}
+          resultsB={compareResultsB}
+        />
       )}
 
       {/* Results detail */}

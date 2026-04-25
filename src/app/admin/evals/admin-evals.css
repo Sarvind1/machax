@@ -308,3 +308,164 @@
 .transcript-msg-text {
   color: var(--ink);
 }
+
+/* ── Header with run button ───────────────────────────────────────── */
+
+.evals-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.evals-header .evals-title {
+  margin: 0;
+}
+
+.evals-run-btn {
+  background: var(--matcha-deep);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.evals-run-btn:hover:not(:disabled) {
+  background: #2d5e3d;
+}
+
+.evals-run-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Compare checkbox ─────────────────────────────────────────────── */
+
+.eval-compare-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--matcha-deep);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── Comparison panel ─────────────────────────────────────────────── */
+
+.comparison-panel {
+  background: white;
+  border: 2px solid var(--matcha);
+  border-radius: 10px;
+  padding: 24px;
+  margin: 24px 0;
+}
+
+.comparison-title {
+  font-family: var(--font-serif), serif;
+  font-style: italic;
+  font-size: 1.1rem;
+  margin: 0 0 4px;
+}
+
+.comparison-run-name {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.comparison-overall {
+  font-family: var(--font-mono), monospace;
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 8px 0 20px;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+}
+
+.comparison-table th {
+  text-align: left;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.comparison-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 0.85rem;
+}
+
+.comparison-criterion {
+  font-family: var(--font-mono), monospace;
+  text-transform: capitalize;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+.comparison-score {
+  font-family: var(--font-mono), monospace;
+  font-weight: 600;
+}
+
+.comparison-delta {
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+}
+
+.comparison-prompts-title {
+  font-family: var(--font-serif), serif;
+  font-style: italic;
+  font-size: 0.95rem;
+  margin: 0 0 10px;
+}
+
+.comparison-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comparison-prompt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 10px;
+  background: rgba(244, 241, 232, 0.5);
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+.comparison-prompt-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison-prompt-scores {
+  font-family: var(--font-mono), monospace;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
+.comparison-prompt-delta {
+  font-family: var(--font-mono), monospace;
+  font-weight: 700;
+  white-space: nowrap;
+  min-width: 40px;
+  text-align: right;
+}
