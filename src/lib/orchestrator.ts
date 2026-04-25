@@ -546,6 +546,7 @@ function buildPrompt(
   shouldAskUser: boolean = false,
   topicContext: string = "",
   isMinimalPrompt: boolean = false,
+  traitHints: string = "",
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Consider this angle: ${contextHint}` : ""}`;
 
@@ -567,9 +568,12 @@ function buildPrompt(
 
   const participantBlock = `People in this chat: ${participantNames.join(', ')}, and ${userName}. You don't need to address ${userName} by name — they can see the chat.`;
 
-  const stanceHint = agreementBias < -0.2
-    ? `\nYou don't have to agree with anyone. If something sounds off, say so directly.`
-    : "";
+  // Trait hints are now computed in callFriend and passed in.
+  // Keep a minimal fallback for agreementBias if traitHints wasn't provided.
+  let stanceHint = "";
+  if (!traitHints && agreementBias < -0.2) {
+    stanceHint = "\nYou don't have to agree with anyone. If something sounds off, say so directly.";
+  }
 
   // Dynamic few-shot examples matched to the chosen response length
   let fewShotExample = "";
@@ -629,7 +633,7 @@ ${shouldAskUser ? `\nIMPORTANT: The group has been talking but nobody asked ${us
 ${isMinimalPrompt ? `\n${userName} sent a very short message. React naturally — ask what's up, tease them, make a joke, or just vibe. Don't overthink a short message.` : ""}
 ${energyBlock}
 
-DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${stanceHint}
+DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${traitHints ? `\n${traitHints}` : stanceHint}
 Your reply must be a COMPLETE thought. Never a fragment. Do NOT use quotes around your response. Do NOT prefix with your name.
 CRITICAL: Do NOT repeat or rephrase what someone else already said. Add a NEW perspective, joke, reaction, or opinion.`;
 }
@@ -728,6 +732,56 @@ async function callFriend(
   const latestUserMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1].text : null;
   const hasTopicChanged = userMessages.length > 1;
 
+  // ── Build trait-based behavior hints ──
+  // These inject the character's dial settings into the prompt so the model
+  // actually reflects the personality traits in its output, not just scoring.
+  const traitHintParts: string[] = [];
+
+  // Agreement/stance
+  if (friend.traits.agreementBias < -0.5) {
+    traitHintParts.push("You strongly disagree with most takes. Challenge the premise. Push back hard. 'nah that's wrong' energy.");
+  } else if (friend.traits.agreementBias < -0.2) {
+    traitHintParts.push("Play devil's advocate. Question assumptions. Don't just go along with the group.");
+  } else if (friend.traits.agreementBias > 0.5) {
+    traitHintParts.push("You're supportive and validating. Build on what others said. 'yes and...' energy. Hype them up.");
+  } else if (friend.traits.agreementBias > 0.2) {
+    traitHintParts.push("You tend to agree and add to the conversation. Find common ground.");
+  }
+
+  // Chattiness / lurker behavior
+  const lurkerChance = friend.traits.lurkerChance ?? 0;
+  if (lurkerChance > 0.4) {
+    traitHintParts.push("You only speak when you have something worth saying. Brief when you do.");
+  } else if (lurkerChance < 0.1) {
+    traitHintParts.push("You always have something to say. You jump into every thread.");
+  }
+
+  // Tangent tendency
+  const tangentProb2 = friend.traits.tangentProbability ?? 0;
+  if (tangentProb2 > 0.25) {
+    traitHintParts.push("You sometimes go completely off-topic. Tangents are your thing.");
+  }
+
+  // Confidence
+  const confidence = friend.traits.confidenceLevel ?? 0.5;
+  if (confidence > 0.8) {
+    traitHintParts.push("You state opinions as facts. No hedging, no 'maybe'.");
+  } else if (confidence < 0.3) {
+    traitHintParts.push("You're unsure. Qualify your takes with 'idk' or 'maybe'.");
+  }
+
+  // Verbosity — reinforce length beyond just the token limit
+  const [, traitMaxWords] = friend.traits.verbosityRange ?? [5, 30];
+  if (traitMaxWords <= 10) {
+    traitHintParts.push("Keep it VERY short. 1-5 words max. You're a person of few words.");
+  } else if (traitMaxWords <= 20) {
+    traitHintParts.push("Keep it brief. One sentence max.");
+  } else if ((friend.traits.verbosityRange?.[0] ?? 5) >= 15) {
+    traitHintParts.push("You tend to elaborate. 2-3 sentences when you have something to say.");
+  }
+
+  const traitHintsBlock = traitHintParts.length > 0 ? traitHintParts.join(" ") : "";
+
   const prompt = buildPrompt(
     friend.name,
     friend.role,
@@ -749,6 +803,7 @@ async function callFriend(
     shouldAskUser,
     topicContext,
     isMinimalPrompt,
+    traitHintsBlock,
   );
 
   let maxTokens =
