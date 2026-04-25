@@ -11,6 +11,7 @@
 import type * as conversations from "../conversations.js";
 import type * as decisions from "../decisions.js";
 import type * as messages from "../messages.js";
+import type * as settings from "../settings.js";
 import type * as users from "../users.js";
 import type * as waitlist from "../waitlist.js";
 
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   decisions: typeof decisions;
   messages: typeof messages;
+  settings: typeof settings;
   users: typeof users;
   waitlist: typeof waitlist;
 }>;

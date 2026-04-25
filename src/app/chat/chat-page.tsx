@@ -464,6 +464,14 @@ export default function ChatPage() {
           <button className="chat-new-btn" onClick={handleNewChat}>
             + new chat
           </button>
+
+          <a href="/configure" style={{
+            display: "block", padding: "10px 16px", fontSize: 12,
+            color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
+            textDecoration: "none", letterSpacing: "0.06em",
+          }}>
+            ⚙ configure pod
+          </a>
         </aside>
 
         {/* Landing center */}
@@ -578,6 +586,14 @@ export default function ChatPage() {
         <button className="chat-new-btn" onClick={handleNewChat}>
           + new chat
         </button>
+
+        <a href="/configure" style={{
+          display: "block", padding: "10px 16px", fontSize: 12,
+          color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
+          textDecoration: "none", letterSpacing: "0.06em",
+        }}>
+          ⚙ configure pod
+        </a>
       </aside>
 
       {/* Center */}

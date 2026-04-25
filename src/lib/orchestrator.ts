@@ -748,6 +748,7 @@ async function callFriend(
     contextHint,
     shouldAskUser,
     topicContext,
+    isMinimalPrompt,
   );
 
   let maxTokens =
@@ -1074,6 +1075,7 @@ export async function* orchestrateChat(params: {
           shouldAskUser,
           "", // contextHint removed — director agent handles context
           filterTopicForCharacter(topicContext, agent.id, message),
+          isMinimalPrompt,
         );
       }),
     );

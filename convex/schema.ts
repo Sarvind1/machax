@@ -31,6 +31,29 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_username", ["username"]).index("by_email", ["email"]),
 
+  userSettings: defineTable({
+    username: v.string(),
+
+    // Per-character overrides (JSON stringified Record<characterId, overrides>)
+    characterOverrides: v.optional(v.string()),
+
+    // Group settings
+    podSize: v.optional(v.number()),
+    diversity: v.optional(v.string()),
+    conversationDepth: v.optional(v.string()),
+    userEngagementFrequency: v.optional(v.number()),
+
+    // Modes
+    enabledModes: v.optional(v.array(v.string())),
+
+    // Vibe
+    pacing: v.optional(v.string()),
+    creativity: v.optional(v.number()),
+    mood: v.optional(v.string()),
+
+    updatedAt: v.number(),
+  }).index("by_username", ["username"]),
+
   decisions: defineTable({
     conversationId: v.id("conversations"),
     question: v.string(),
