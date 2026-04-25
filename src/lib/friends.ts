@@ -184,7 +184,7 @@ About you: 27F, Bangalore. UX researcher. You wear oversized glasses and look in
 Habits: You say "okay but what you're actually saying is..." a lot. You journal obsessively. You hate small talk.`,
     defaultLength: "medium",
     category: "emotional",
-    traits: { responseSpeed: "normal", interruptProbability: 0.18, agreementBias: 0.35, verbosityRange: [8, 38], confidenceLevel: 0.6, lurkerChance: 0.12 },
+    traits: { responseSpeed: "normal", interruptProbability: 0.18, agreementBias: 0.35, verbosityRange: [8, 38], confidenceLevel: 0.6, lurkerChance: 0.12, mediaSendProbability: 0.30 },
   },
   {
     id: "meera",
@@ -211,7 +211,7 @@ About you: 24F, Delhi. Marketing at a startup. You have the loudest laugh in any
 Habits: You use ALL CAPS when outraged. You always pick fights with auto drivers. You send voice notes when typing is too slow.`,
     defaultLength: "medium",
     category: "emotional",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.2, agreementBias: 0.55, verbosityRange: [6, 40], confidenceLevel: 0.5, lurkerChance: 0.08 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.2, agreementBias: 0.55, verbosityRange: [6, 40], confidenceLevel: 0.5, lurkerChance: 0.08, mediaSendProbability: 0.35 },
   },
   {
     id: "rhea",
@@ -447,7 +447,7 @@ About you: 25M, Pune. Data analyst. You have perpetually messy hair and a coffee
 Habits: You reframe every question into something deeper. You're always the last to arrive at plans. You eat the same lunch every day.`,
     defaultLength: "medium",
     category: "analytical",
-    traits: { responseSpeed: "thoughtful", interruptProbability: 0.12, agreementBias: 0.05, verbosityRange: [12, 50], confidenceLevel: 0.6, lurkerChance: 0.2 },
+    traits: { responseSpeed: "thoughtful", interruptProbability: 0.12, agreementBias: 0.05, verbosityRange: [12, 50], confidenceLevel: 0.6, lurkerChance: 0.2, mediaSendProbability: 0.10 },
   },
   {
     id: "arjun",
@@ -1126,7 +1126,7 @@ About you: 29M, Bangalore. Operations manager. You look like someone who runs ma
 Habits: You skip feelings and go straight to action items. You're impatient with overthinking. You eat the same protein bowl every day.`,
     defaultLength: "short",
     category: "practical",
-    traits: { responseSpeed: "normal", interruptProbability: 0.15, agreementBias: 0.2, verbosityRange: [8, 30], confidenceLevel: 0.75, lurkerChance: 0.1 },
+    traits: { responseSpeed: "normal", interruptProbability: 0.15, agreementBias: 0.2, verbosityRange: [8, 30], confidenceLevel: 0.75, lurkerChance: 0.1, mediaSendProbability: 0.15 },
   },
   {
     id: "lalitha",
@@ -1153,7 +1153,7 @@ About you: 26F, Bangalore. Project manager. You look very put-together at work b
 Habits: You break every problem into steps. You say "okay one thing at a time" constantly. You have color-coded everything in your life except your feelings.`,
     defaultLength: "medium",
     category: "practical",
-    traits: { responseSpeed: "normal", interruptProbability: 0.12, agreementBias: 0.25, verbosityRange: [10, 35], confidenceLevel: 0.7, lurkerChance: 0.12 },
+    traits: { responseSpeed: "normal", interruptProbability: 0.12, agreementBias: 0.25, verbosityRange: [10, 35], confidenceLevel: 0.7, lurkerChance: 0.12, mediaSendProbability: 0.20 },
   },
   {
     id: "neha",
@@ -1194,7 +1194,7 @@ About you: 32M, Chennai. Ex-startup founder, now at a corporate. You're the olde
 Habits: You share personal failure stories as warnings. You start sentences with "when I was..." and the group groans. You've genuinely done everything wrong and learned from it.`,
     defaultLength: "medium",
     category: "practical",
-    traits: { responseSpeed: "normal", interruptProbability: 0.18, agreementBias: 0.2, verbosityRange: [10, 35], confidenceLevel: 0.78, lurkerChance: 0.1 },
+    traits: { responseSpeed: "normal", interruptProbability: 0.18, agreementBias: 0.2, verbosityRange: [10, 35], confidenceLevel: 0.78, lurkerChance: 0.1, mediaSendProbability: 0.12 },
   },
   {
     id: "farida",
@@ -1505,7 +1505,7 @@ About you: 26M, Mumbai. Freelance journalist. You dress like you're going to a p
 Habits: You say "that's what they want you to think" about everything. You only order paneer at non-veg restaurants (running joke). You read the room and then deliberately say the opposite.`,
     defaultLength: "medium",
     category: "provocative",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.4, agreementBias: -0.6, verbosityRange: [5, 25], confidenceLevel: 0.9, lurkerChance: 0.05 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.4, agreementBias: -0.6, verbosityRange: [5, 25], confidenceLevel: 0.9, lurkerChance: 0.05, mediaSendProbability: 0.45 },
   },
   {
     id: "sneha",
@@ -1589,7 +1589,7 @@ About you: 29M, Mumbai. Lawyer. You wear formal shirts even on weekends. You int
 Habits: You only ask questions, never give direct advice. You challenge lazy thinking. You've been "about to start working out" for 2 years.`,
     defaultLength: "medium",
     category: "provocative",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.4, agreementBias: -0.5, verbosityRange: [5, 25], confidenceLevel: 0.88, lurkerChance: 0.07 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.4, agreementBias: -0.5, verbosityRange: [5, 25], confidenceLevel: 0.88, lurkerChance: 0.07, mediaSendProbability: 0.40 },
   },
   {
     id: "pintu",

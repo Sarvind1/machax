@@ -49,6 +49,44 @@ export const get = query({
   },
 });
 
+export const listByUser = query({
+  args: { username: v.string() },
+  handler: async (ctx, { username }) => {
+    // Get all conversations for this user, newest first
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_username", (q) => q.eq("username", username))
+      .order("desc")
+      .take(50);
+
+    // For each conversation, get its decision (if any) that has been selected
+    const results = [];
+    for (const convo of conversations) {
+      const decision = await ctx.db
+        .query("decisions")
+        .withIndex("by_conversation", (q) =>
+          q.eq("conversationId", convo._id)
+        )
+        .first();
+
+      if (decision?.selectedOptionId) {
+        const selectedOption = decision.options.find(
+          (o) => o.id === decision.selectedOptionId
+        );
+        results.push({
+          conversationId: convo._id,
+          conversationTitle: convo.title,
+          question: decision.question,
+          selectedOption: selectedOption ?? null,
+          allOptions: decision.options,
+          decidedAt: decision.selectedAt ?? decision.createdAt,
+        });
+      }
+    }
+    return results;
+  },
+});
+
 export const select = mutation({
   args: {
     conversationId: v.id("conversations"),
@@ -66,6 +104,6 @@ export const select = mutation({
       throw new Error("No decision found for this conversation");
     }
 
-    await ctx.db.patch(decision._id, { selectedOptionId: optionId });
+    await ctx.db.patch(decision._id, { selectedOptionId: optionId, selectedAt: Date.now() });
   },
 });

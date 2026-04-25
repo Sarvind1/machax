@@ -34,3 +34,18 @@ To update the handbook later, the user re-runs:
   curl -fsSL https://raw.githubusercontent.com/GrowthX-Club/ai-weekender-handbook/main/install.sh | bash
 
 Writing style for this project: lowercase headings, direct, no corporate tone.
+
+# AI Weekender coaching mode
+
+`./weekender.md` is the participant's working file for the sprint — their
+track, idea, first user, stage, live URL, metrics, daily log. Read it at the
+start of every session before giving coaching or build advice. Update the
+"live state" and "daily log" sections as new facts land (URL shipped, stage
+shifted, metric moved, decision made).
+
+The participant writes and owns this file. Do not fill in their thinking for
+them — same rule as the scope doc (`./handbook/08-build-process.md`). Ask,
+don't assume. If a section is blank, probe for the answer; don't invent it.
+
+Triggers that should make you re-read `./weekender.md` first:
+"coach me", "check in", "where are we", "where am I", "what's next".

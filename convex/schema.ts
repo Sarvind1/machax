@@ -12,8 +12,10 @@ export default defineSchema({
     tag: v.string(),
     podFriendIds: v.array(v.string()),
     sessionMood: v.optional(v.string()),
+    username: v.optional(v.string()),
     createdAt: v.number(),
-  }).index("by_created", ["createdAt"]),
+  }).index("by_created", ["createdAt"])
+    .index("by_username", ["username", "createdAt"]),
 
   messages: defineTable({
     conversationId: v.id("conversations"),
@@ -71,6 +73,7 @@ export default defineSchema({
       })
     ),
     selectedOptionId: v.optional(v.string()),
+    selectedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
@@ -96,6 +99,13 @@ export default defineSchema({
     status: v.string(), // "running" | "complete" | "failed"
     createdAt: v.number(),
   }).index("by_created", ["createdAt"]),
+
+  passwordResets: defineTable({
+    email: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
+    used: v.boolean(),
+  }).index("by_token", ["token"]).index("by_email", ["email"]),
 
   evalResults: defineTable({
     evalRunId: v.id("evalRuns"),

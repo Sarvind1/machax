@@ -119,6 +119,9 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [victory, setVictory] = useState<{ username: string; isNew: boolean } | null>(null);
   const [navigating, setNavigating] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotStatus, setForgotStatus] = useState<"idle" | "sending" | "sent">("idle");
 
   const bootedRef = useRef(false);
   const abortRef = useRef(0); // incremented on tab switch to cancel in-flight flows
@@ -310,10 +313,26 @@ export default function LoginPage() {
   /* ===== FORGOT PASSWORD ===== */
 
   const handleForgotPassword = useCallback(() => {
-    // For now, just show an alert or a simple message
-    // In the future this will send a reset email
-    alert("Password reset coming soon! For now, try signing up with a new account.");
+    setShowForgotPassword(true);
+    setForgotEmail("");
+    setForgotStatus("idle");
   }, []);
+
+  const handleForgotSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setForgotStatus("sending");
+    try {
+      await fetch("/api/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail.trim() }),
+      });
+    } catch {
+      // swallow — always show success
+    }
+    setForgotStatus("sent");
+  }, [forgotEmail]);
 
   /* ===== AUTO-REDIRECT AFTER VICTORY ===== */
 
@@ -411,6 +430,39 @@ export default function LoginPage() {
                       forgot password?
                     </button>
                   </div>
+                  {showForgotPassword && (
+                    <div style={{ marginTop: 12, padding: "14px 16px", background: "var(--matcha-foam)", borderRadius: 10, border: "1px solid var(--line)" }}>
+                      {forgotStatus === "sent" ? (
+                        <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                          if an account exists with that email, we sent a reset link.
+                          <button type="button" onClick={() => setShowForgotPassword(false)} style={{ display: "block", marginTop: 8, background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 600, fontSize: 13, padding: 0, fontFamily: "inherit" }}>
+                            back to login
+                          </button>
+                        </div>
+                      ) : (
+                        <form onSubmit={handleForgotSubmit} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>enter your email</label>
+                          <input
+                            type="email"
+                            value={forgotEmail}
+                            onChange={(e) => setForgotEmail(e.target.value)}
+                            placeholder="you@example.com"
+                            maxLength={64}
+                            disabled={forgotStatus === "sending"}
+                            style={{ padding: "10px 12px", border: "1.5px solid var(--line)", borderRadius: 8, fontSize: 14, fontFamily: "inherit", background: "var(--card)", color: "var(--ink)", outline: "none" }}
+                          />
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button type="submit" disabled={forgotStatus === "sending"} style={{ flex: 1, padding: "10px 14px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                              {forgotStatus === "sending" ? "sending..." : "send reset link"}
+                            </button>
+                            <button type="button" onClick={() => setShowForgotPassword(false)} style={{ padding: "10px 14px", background: "none", border: "1.5px solid var(--line)", borderRadius: 8, fontSize: 13, cursor: "pointer", color: "var(--muted)", fontFamily: "inherit" }}>
+                              cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                  )}
                 </form>
               ) : (
                 <form onSubmit={handleSignupSubmit} noValidate>

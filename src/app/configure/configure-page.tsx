@@ -49,6 +49,7 @@ interface CharacterOverride {
   verbosityRange?: [number, number];
   tangentProbability?: number;
   attentionWindow?: number;
+  mediaSendProbability?: number;
   tags?: string[];
 }
 
@@ -264,6 +265,7 @@ export default function ConfigurePage({ userName }: { userName: string }) {
   const chattiness = 1 - lurkerChance;
   const verbosityRange = (getTraitValue(tuneChar, overrides, "verbosityRange") ?? [5, 30]) as [number, number];
   const tangentProb = (getTraitValue(tuneChar, overrides, "tangentProbability") ?? tuneChar.traits.tangentProbability ?? 0) as number;
+  const mediaSendProb = (getTraitValue(tuneChar, overrides, "mediaSendProbability") ?? tuneChar.traits.mediaSendProbability ?? 0) as number;
   const attentionNorm = getAttentionNormalized(tuneChar, overrides);
   const activeTags = getOverride(overrides, effectiveTab).tags ?? tuneChar.tags;
 
@@ -504,6 +506,29 @@ export default function ConfigurePage({ userName }: { userName: string }) {
                     <div className="config-slider-ticks">
                       <span>focused</span>
                       <span>tangential</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* gif reactions */}
+                <div className="config-dial">
+                  <div className="config-dial-header">
+                    <p className="config-dial-label">gif reactions</p>
+                    <span className="config-dial-spec">{Math.round(mediaSendProb * 100)}%</span>
+                  </div>
+                  <div className="config-slider-wrap">
+                    <input
+                      type="range"
+                      className="config-slider"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={Math.round(mediaSendProb * 100)}
+                      onChange={(e) => updateOverride(effectiveTab, { mediaSendProbability: parseInt(e.target.value) / 100 })}
+                    />
+                    <div className="config-slider-ticks">
+                      <span>never</span>
+                      <span>always</span>
                     </div>
                   </div>
                 </div>
