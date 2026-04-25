@@ -23,7 +23,7 @@ export default defineSchema({
 
   users: defineTable({
     username: v.string(),
-    email: v.string(),
+    email: v.optional(v.string()),
     password: v.string(),
     name: v.optional(v.string()),
     city: v.optional(v.string()),
