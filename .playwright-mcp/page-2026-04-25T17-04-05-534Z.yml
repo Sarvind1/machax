@@ -1,0 +1,81 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - link "machaX" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e56]: your pod
+      - generic [ref=e57]:
+        - generic [ref=e78]:
+          - generic [ref=e80]: M
+          - generic [ref=e81]: meera
+        - generic [ref=e82]:
+          - generic [ref=e84]: D
+          - generic [ref=e85]: divya
+        - generic [ref=e86]:
+          - generic [ref=e88]: P
+          - generic [ref=e89]: priya
+        - generic [ref=e90]:
+          - generic [ref=e92]: S
+          - generic [ref=e93]: sneha
+        - generic [ref=e94]:
+          - generic [ref=e96]: L
+          - generic [ref=e97]: lalitha
+        - generic [ref=e98]:
+          - generic [ref=e100]: S
+          - generic [ref=e101]: shekhar
+        - generic [ref=e102]:
+          - generic [ref=e104]: A
+          - generic [ref=e105]: arjun
+      - generic [ref=e106]: recent
+      - generic [ref=e107]:
+        - generic [ref=e108] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e109] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e110] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e111] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e112] [cursor=pointer]: Are you guys going to watch the IPL match today?
+        - generic [ref=e113] [cursor=pointer]: Should I go to watch the IPL match today?
+        - generic [ref=e114] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e115] [cursor=pointer]: Everyone's getting married and I'm tired
+        - generic [ref=e116] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e117] [cursor=pointer]: Is it weird to text first after a silent week
+        - generic [ref=e118] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e119] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e120] [cursor=pointer]: Who is the best rapper in the world right now?
+        - generic [ref=e121] [cursor=pointer]: Hey everyone, should I buy a car now? I'm in Gurgaon, so it
+        - generic [ref=e122] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e123] [cursor=pointer]: hello all, any outfit ideas for my friend's birthday party t
+        - generic [ref=e124] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e125] [cursor=pointer]: Is it weird to text first after a silent week, we didn't had
+        - generic [ref=e126] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e127] [cursor=pointer]: Hey, I feel a bit low today, like I've not done anything. I
+      - button "+ new chat" [ref=e128] [cursor=pointer]
+      - link "⚙ configure pod" [ref=e129] [cursor=pointer]:
+        - /url: /configure
+    - generic [ref=e8]:
+      - generic [ref=e130]:
+        - generic [ref=e131]: the lounge
+        - generic [ref=e132]: 7 friends in the room
+        - generic "Active AI provider" [ref=e133]: via Gemini 2.5 Flash
+        - button "set the mood" [ref=e134] [cursor=pointer]: set the mood
+      - generic [ref=e136]:
+        - generic [ref=e139]: Feeling flat for no reason. Talk to me
+        - generic [ref=e140]:
+          - generic [ref=e141]: S
+          - generic [ref=e142]:
+            - generic [ref=e143]: Sneha
+            - generic [ref=e144]: you know why you're flat. you're just not saying it.
+        - generic [ref=e145]:
+          - generic [ref=e146]: M
+          - generic [ref=e147]:
+            - generic [ref=e148]: Meera
+            - generic [ref=e149]: WHAT. WHO did this to you? I will END them.
+      - generic [ref=e150]:
+        - textbox "say something back..." [ref=e151]
+        - button "Send message" [disabled] [ref=e152]:
+          - img [ref=e153]
+    - generic [ref=e156]: decisions will appear here once your friends weigh in
+  - button "Open Next.js Dev Tools" [ref=e51] [cursor=pointer]:
+    - img [ref=e52]
+  - alert [ref=e55]

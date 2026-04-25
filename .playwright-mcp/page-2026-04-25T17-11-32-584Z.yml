@@ -1,0 +1,70 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - link "machaX" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e56]: your pod
+      - generic [ref=e57]:
+        - generic [ref=e78]:
+          - generic [ref=e80]: P
+          - generic [ref=e81]: priya
+        - generic [ref=e82]:
+          - generic [ref=e84]: M
+          - generic [ref=e85]: meera
+        - generic [ref=e86]:
+          - generic [ref=e88]: F
+          - generic [ref=e89]: farhan
+      - generic [ref=e90]: recent
+      - generic [ref=e91]:
+        - generic [ref=e92] [cursor=pointer]: hello
+        - generic [ref=e93] [cursor=pointer]: Testing pod size
+        - generic [ref=e94] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e95] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e96] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e97] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e98] [cursor=pointer]: Are you guys going to watch the IPL match today?
+        - generic [ref=e99] [cursor=pointer]: Should I go to watch the IPL match today?
+        - generic [ref=e100] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e101] [cursor=pointer]: Everyone's getting married and I'm tired
+        - generic [ref=e102] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e103] [cursor=pointer]: Is it weird to text first after a silent week
+        - generic [ref=e104] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e105] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e106] [cursor=pointer]: Who is the best rapper in the world right now?
+        - generic [ref=e107] [cursor=pointer]: Hey everyone, should I buy a car now? I'm in Gurgaon, so it
+        - generic [ref=e108] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e109] [cursor=pointer]: hello all, any outfit ideas for my friend's birthday party t
+        - generic [ref=e110] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e111] [cursor=pointer]: Is it weird to text first after a silent week, we didn't had
+      - button "+ new chat" [ref=e112] [cursor=pointer]
+      - link "⚙ configure pod" [ref=e113] [cursor=pointer]:
+        - /url: /configure
+    - generic [ref=e8]:
+      - generic [ref=e114]:
+        - generic [ref=e115]: the lounge
+        - generic [ref=e116]: 3 friends in the room
+        - generic "Active AI provider" [ref=e117]: via Gemini 2.5 Flash
+        - button "set the mood" [ref=e118] [cursor=pointer]: set the mood
+      - generic [ref=e120]:
+        - generic [ref=e123]: hello
+        - generic [ref=e137]:
+          - generic [ref=e138]: M
+          - generic [ref=e139]:
+            - generic [ref=e140]: Meera
+            - generic [ref=e141]: yo what's up with the random hello sarvind 💀
+        - generic [ref=e142]:
+          - generic [ref=e143]: P
+          - generic [ref=e144]:
+            - generic [ref=e145]: Priya
+            - generic [ref=e146]: fr i thought my phone was glitching for a sec 💀
+        - generic [ref=e129]: farhan and meera are typing...
+      - generic [ref=e130]:
+        - textbox "say something back..." [disabled] [ref=e131]
+        - button "Send message" [disabled] [ref=e132]:
+          - img [ref=e133]
+    - generic [ref=e136]: decisions will appear here once your friends weigh in
+  - button "Open Next.js Dev Tools" [ref=e51] [cursor=pointer]:
+    - img [ref=e52]
+  - alert [ref=e55]

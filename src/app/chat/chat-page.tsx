@@ -68,6 +68,7 @@ export default function ChatPage() {
     }
   }, [router]);
 
+  // userName for display (can be display name)
   const userName = useMemo(() => {
     try {
       const stored = localStorage.getItem("machax-user");
@@ -79,8 +80,20 @@ export default function ChatPage() {
     return "friend";
   }, []);
 
+  // settingsUsername for Convex queries (must match what /configure saves under)
+  const settingsUsername = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("machax-user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return parsed?.username || null;
+      }
+    } catch {}
+    return null;
+  }, []);
+
   // Load user's saved settings from Convex (pod size, character overrides, etc.)
-  const userSettings = useQuery(api.settings.get, userName && userName !== "friend" ? { username: userName } : "skip");
+  const userSettings = useQuery(api.settings.get, settingsUsername ? { username: settingsUsername } : "skip");
 
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
   const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);

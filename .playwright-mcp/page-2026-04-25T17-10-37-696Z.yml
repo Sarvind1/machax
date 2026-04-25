@@ -1,0 +1,182 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - paragraph [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: x
+        - text: · configure your pod
+      - paragraph [ref=e6]: tune the people in your group chat.
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - generic [ref=e9]:
+          - generic [ref=e10]: "01"
+          - heading "pick your pod" [level=2] [ref=e11]
+        - separator [ref=e12]
+        - generic [ref=e13]:
+          - generic [ref=e14] [cursor=pointer]:
+            - generic [ref=e15]:
+              - text: P
+              - generic [ref=e16]: ✓
+            - generic [ref=e17]: priya
+            - generic [ref=e18]: the empath
+          - generic [ref=e19] [cursor=pointer]:
+            - generic [ref=e20]: D
+            - generic [ref=e21]: divya
+            - generic [ref=e22]: the intuitive
+          - generic [ref=e23] [cursor=pointer]:
+            - generic [ref=e24]:
+              - text: M
+              - generic [ref=e25]: ✓
+            - generic [ref=e26]: meera
+            - generic [ref=e27]: the devotee
+          - generic [ref=e28] [cursor=pointer]:
+            - generic [ref=e29]: A
+            - generic [ref=e30]: arjun
+            - generic [ref=e31]: the strategist
+          - generic [ref=e32] [cursor=pointer]:
+            - generic [ref=e33]: T
+            - generic [ref=e34]: tanmay
+            - generic [ref=e35]: the overthinker
+          - generic [ref=e36] [cursor=pointer]:
+            - generic [ref=e37]: "N"
+            - generic [ref=e38]: noor
+            - generic [ref=e39]: the spreadsheet
+          - generic [ref=e40] [cursor=pointer]:
+            - generic [ref=e41]: P
+            - generic [ref=e42]: pradeep
+            - generic [ref=e43]: the fixer
+          - generic [ref=e44] [cursor=pointer]:
+            - generic [ref=e45]: S
+            - generic [ref=e47]: suresh
+            - generic [ref=e48]: the uncle with answers
+          - generic [ref=e49] [cursor=pointer]:
+            - generic [ref=e50]: L
+            - generic [ref=e51]: lalitha
+            - generic [ref=e52]: the organizer
+          - generic [ref=e53] [cursor=pointer]:
+            - generic [ref=e54]:
+              - text: F
+              - generic [ref=e55]: ✓
+            - generic [ref=e56]: farhan
+            - generic [ref=e57]: the contrarian
+          - generic [ref=e58] [cursor=pointer]:
+            - generic [ref=e59]: S
+            - generic [ref=e60]: sneha
+            - generic [ref=e61]: the uncomfortable truth
+          - generic [ref=e62] [cursor=pointer]:
+            - generic [ref=e63]: D
+            - generic [ref=e65]: dev
+            - generic [ref=e66]: the chaos gremlin
+          - generic [ref=e67] [cursor=pointer]:
+            - generic [ref=e68]: S
+            - generic [ref=e69]: shekhar
+            - generic [ref=e70]: the interrogator
+        - generic [ref=e71]:
+          - generic [ref=e72]: "pod size:"
+          - generic [ref=e73]:
+            - button "3" [ref=e74] [cursor=pointer]
+            - button "5" [ref=e75] [cursor=pointer]
+            - button "7" [active] [ref=e76] [cursor=pointer]
+            - button "9" [ref=e77] [cursor=pointer]
+          - generic [ref=e78]: 3/7 selected
+      - generic [ref=e79]:
+        - generic [ref=e80]:
+          - generic [ref=e81]: "02"
+          - heading "tune your people" [level=2] [ref=e82]
+        - separator [ref=e83]
+        - generic [ref=e84]:
+          - button "P Priya" [ref=e85] [cursor=pointer]:
+            - generic [ref=e86]: P
+            - generic [ref=e87]: Priya
+          - button "M Meera" [ref=e91] [cursor=pointer]:
+            - generic [ref=e92]: M
+            - generic [ref=e93]: Meera
+          - button "F Farhan" [ref=e88] [cursor=pointer]:
+            - generic [ref=e89]: F
+            - generic [ref=e90]: Farhan
+        - generic [ref=e100]:
+          - paragraph [ref=e101]:
+            - strong [ref=e102]: Priya
+            - text: — 26F, Mumbai. Content writer.
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e105]:
+                - paragraph [ref=e106]: personality
+                - generic [ref=e107]: "+0.50"
+              - slider [ref=e110] [cursor=pointer]: "0.5"
+              - generic [ref=e111]:
+                - generic [ref=e112]: contrarian
+                - generic [ref=e113]: neutral
+                - generic [ref=e114]: agreeable
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - paragraph [ref=e117]: reply speed
+                - generic [ref=e118]: normal
+              - generic [ref=e119]:
+                - button "impulsive" [ref=e120] [cursor=pointer]
+                - button "normal" [ref=e121] [cursor=pointer]
+                - button "thoughtful" [ref=e122] [cursor=pointer]
+            - generic [ref=e123]:
+              - generic [ref=e124]:
+                - paragraph [ref=e125]: chattiness
+                - generic [ref=e126]: 90%
+              - generic [ref=e127]:
+                - slider [ref=e128] [cursor=pointer]: "0.9"
+                - generic [ref=e129]:
+                  - generic [ref=e130]: quiet
+                  - generic [ref=e131]: talkative
+            - generic [ref=e132]:
+              - generic [ref=e133]:
+                - paragraph [ref=e134]: msg length
+                - generic [ref=e135]: 8-40w
+              - generic [ref=e136]:
+                - slider: "8"
+                - slider: "40"
+              - generic [ref=e139]:
+                - generic [ref=e140]: 1w
+                - generic [ref=e141]: 50w
+            - generic [ref=e142]:
+              - generic [ref=e143]:
+                - paragraph [ref=e144]: tangents
+                - generic [ref=e145]: 35%
+              - generic [ref=e146]:
+                - slider [ref=e147] [cursor=pointer]: "0.35"
+                - generic [ref=e148]:
+                  - generic [ref=e149]: focused
+                  - generic [ref=e150]: tangential
+            - generic [ref=e151]:
+              - generic [ref=e152]:
+                - paragraph [ref=e153]: depth
+                - generic [ref=e154]: 40%
+              - generic [ref=e155]:
+                - slider [ref=e156] [cursor=pointer]: "0.4"
+                - generic [ref=e157]:
+                  - generic [ref=e158]: shallow
+                  - generic [ref=e159]: deep
+          - generic [ref=e160]:
+            - paragraph [ref=e161]: topics
+            - generic [ref=e162]:
+              - button "career" [ref=e163] [cursor=pointer]
+              - button "feelings" [ref=e164] [cursor=pointer]
+              - button "fun" [ref=e165] [cursor=pointer]
+              - button "hot-takes" [ref=e166] [cursor=pointer]
+              - button "life" [ref=e167] [cursor=pointer]
+              - button "money" [ref=e168] [cursor=pointer]
+              - button "relationship" [ref=e169] [cursor=pointer]
+              - button "what-to-buy" [ref=e170] [cursor=pointer]
+      - generic [ref=e171]:
+        - button "▶ 03 group dynamics" [ref=e172] [cursor=pointer]:
+          - generic [ref=e173]: ▶
+          - generic [ref=e174]:
+            - generic [ref=e175]: "03"
+            - heading "group dynamics" [level=2] [ref=e176]
+        - separator [ref=e177]
+    - contentinfo [ref=e178]:
+      - generic [ref=e179]: auto-saved · changes apply to next chat
+      - generic [ref=e180]:
+        - button "reset to defaults" [ref=e181] [cursor=pointer]
+        - link "← back to chat" [ref=e182] [cursor=pointer]:
+          - /url: /chat
+  - button "Open Next.js Dev Tools" [ref=e188] [cursor=pointer]:
+    - img [ref=e189]
+  - alert [ref=e192]

@@ -1,0 +1,99 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - link "machaX" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e56]: your pod
+      - generic [ref=e57]:
+        - generic [ref=e78]:
+          - generic [ref=e80]: P
+          - generic [ref=e81]: priya
+        - generic [ref=e82]:
+          - generic [ref=e84]: M
+          - generic [ref=e85]: meera
+        - generic [ref=e86]:
+          - generic [ref=e88]: F
+          - generic [ref=e89]: farhan
+      - generic [ref=e90]: recent
+      - generic [ref=e91]:
+        - generic [ref=e92] [cursor=pointer]: hello
+        - generic [ref=e93] [cursor=pointer]: Testing pod size
+        - generic [ref=e94] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e95] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e96] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e97] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e98] [cursor=pointer]: Are you guys going to watch the IPL match today?
+        - generic [ref=e99] [cursor=pointer]: Should I go to watch the IPL match today?
+        - generic [ref=e100] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e101] [cursor=pointer]: Everyone's getting married and I'm tired
+        - generic [ref=e102] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e103] [cursor=pointer]: Is it weird to text first after a silent week
+        - generic [ref=e104] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e105] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e106] [cursor=pointer]: Who is the best rapper in the world right now?
+        - generic [ref=e107] [cursor=pointer]: Hey everyone, should I buy a car now? I'm in Gurgaon, so it
+        - generic [ref=e108] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e109] [cursor=pointer]: hello all, any outfit ideas for my friend's birthday party t
+        - generic [ref=e110] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e111] [cursor=pointer]: Is it weird to text first after a silent week, we didn't had
+      - button "+ new chat" [ref=e112] [cursor=pointer]
+      - link "⚙ configure pod" [ref=e113] [cursor=pointer]:
+        - /url: /configure
+    - generic [ref=e8]:
+      - generic [ref=e114]:
+        - generic [ref=e115]: the lounge
+        - generic [ref=e116]: 3 friends in the room
+        - generic "Active AI provider" [ref=e117]: via Gemini 2.5 Flash
+        - button "set the mood" [ref=e118] [cursor=pointer]: set the mood
+      - generic [ref=e120]:
+        - generic [ref=e149]: hello
+        - generic [ref=e150]:
+          - generic [ref=e151]: M
+          - generic [ref=e152]:
+            - generic [ref=e153]: Meera
+            - generic [ref=e154]: yo what's up with the random hello sarvind 💀
+        - generic [ref=e155]:
+          - generic [ref=e156]: P
+          - generic [ref=e157]:
+            - generic [ref=e158]: Priya
+            - generic [ref=e159]: fr i thought my phone was glitching for a sec 💀
+        - generic [ref=e160]:
+          - generic [ref=e161]: F
+          - generic [ref=e162]:
+            - generic [ref=e163]: Farhan
+            - generic [ref=e164]: it's a social experiment. that's what they want you to think.
+      - generic [ref=e130]:
+        - textbox "say something back..." [ref=e131]
+        - button "Send message" [disabled] [ref=e132]:
+          - img [ref=e133]
+    - generic [ref=e135]:
+      - generic [ref=e136]: the drill-down
+      - heading "What is the nature of Sarvind's 'hello' message?" [level=3] [ref=e165]
+      - generic [ref=e166]: only you see this
+      - generic [ref=e167]:
+        - generic [ref=e168] [cursor=pointer]:
+          - generic [ref=e169]: Unexpected/Random
+          - generic [ref=e170]: The 'hello' is out of the blue and seems random, causing confusion.
+          - generic [ref=e171]:
+            - generic [ref=e172]:
+              - generic "Meera" [ref=e173]: M
+              - generic "Priya" [ref=e174]: P
+            - text: loudest from Meera, Priya
+        - generic [ref=e175] [cursor=pointer]:
+          - generic [ref=e176]: Social Experiment
+          - generic [ref=e177]: The 'hello' is part of a deliberate social experiment designed to evoke a certain reaction.
+          - generic [ref=e178]:
+            - generic "Farhan" [ref=e180]: F
+            - text: loudest from Farhan
+        - generic [ref=e181] [cursor=pointer]:
+          - generic [ref=e182]: Potential Glitch
+          - generic [ref=e183]: The unexpected message could be a technical issue or phone glitch.
+          - generic [ref=e184]:
+            - generic "Priya" [ref=e186]: P
+            - text: loudest from Priya
+      - button "pick one" [disabled] [ref=e187]
+  - button "Open Next.js Dev Tools" [ref=e51] [cursor=pointer]:
+    - img [ref=e52]
+  - alert [ref=e55]

@@ -1,0 +1,51 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - complementary [ref=e3]:
+      - link "machaX" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - text: macha
+        - emphasis [ref=e5]: X
+      - button "+ new chat" [ref=e6] [cursor=pointer]
+      - link "⚙ configure pod" [ref=e7] [cursor=pointer]:
+        - /url: /configure
+    - generic [ref=e8]:
+      - heading "what's on your mind?" [level=1] [ref=e9]
+      - paragraph [ref=e10]: dump your messiest thought. your council of AI friends will hash it out.
+      - button "set the mood" [ref=e12] [cursor=pointer]: set the mood
+      - generic [ref=e15]:
+        - textbox "type it out..." [ref=e16]
+        - button "Send message" [disabled] [ref=e17]:
+          - img [ref=e18]
+      - generic [ref=e20]:
+        - button "💼 I got an offer but I'm weirdly not excited" [ref=e21] [cursor=pointer]:
+          - generic [ref=e22]: 💼
+          - text: I got an offer but I'm weirdly not excited
+        - button "💬 My friend cancelled plans again. Overreacting?" [ref=e23] [cursor=pointer]:
+          - generic [ref=e24]: 💬
+          - text: My friend cancelled plans again. Overreacting?
+        - button "🛒 iPhone or should I finally try Android" [ref=e25] [cursor=pointer]:
+          - generic [ref=e26]: 🛒
+          - text: iPhone or should I finally try Android
+        - button "🌀 Is it weird to text first after a silent week" [ref=e27] [cursor=pointer]:
+          - generic [ref=e28]: 🌀
+          - text: Is it weird to text first after a silent week
+        - button "🔥 Give me your worst takes on weekend brunch" [ref=e29] [cursor=pointer]:
+          - generic [ref=e30]: 🔥
+          - text: Give me your worst takes on weekend brunch
+        - button "🌧 Feeling flat for no reason. Talk to me" [ref=e31] [cursor=pointer]:
+          - generic [ref=e32]: 🌧
+          - text: Feeling flat for no reason. Talk to me
+        - button "₹ Should I move out or keep saving" [ref=e33] [cursor=pointer]:
+          - generic [ref=e34]: ₹
+          - text: Should I move out or keep saving
+        - button "◐ Everyone's getting married and I'm tired" [ref=e35] [cursor=pointer]:
+          - generic [ref=e36]: ◐
+          - text: Everyone's getting married and I'm tired
+      - generic [ref=e37]:
+        - generic "Gemini 2.5 Flash — ready" [ref=e38]: Gemini 2.5 Flash
+        - generic "Claude CLI (Haiku) — ready" [ref=e40]: Claude CLI (Haiku)
+        - generic "OpenAI (GPT-4o Mini) — not configured" [ref=e42]: OpenAI (GPT-4o Mini)
+        - generic "Anthropic API (Haiku) — not configured" [ref=e44]: Anthropic API (Haiku)
+  - button "Open Next.js Dev Tools" [ref=e51] [cursor=pointer]:
+    - img [ref=e52]
+  - alert [ref=e55]

@@ -1,0 +1,48 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - text: macha
+        - emphasis [ref=e5]: X
+      - generic [ref=e6]: council is online · bengaluru
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - heading "first, who dis?" [level=1] [ref=e10]:
+          - text: first,
+          - emphasis [ref=e11]: who dis?
+        - paragraph [ref=e12]: the council needs to know before they let you in.
+        - generic [ref=e13]:
+          - button "log in" [ref=e14] [cursor=pointer]
+          - button "sign up" [ref=e15] [cursor=pointer]
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]:
+            - generic [ref=e19]:
+              - generic [ref=e20]:
+                - generic [ref=e21]: username or email
+                - textbox "username or email" [ref=e22]: sarvind3
+              - generic [ref=e23]:
+                - generic [ref=e24]: password
+                - textbox "password" [ref=e25]:
+                  - /placeholder: ••••••••
+                  - text: sarvind3
+              - button "log in →" [ref=e95] [cursor=pointer]
+              - button "forgot password?" [ref=e28] [cursor=pointer]
+            - generic [ref=e30]: or continue with
+            - button "continue with google soon" [disabled] [ref=e31]:
+              - img [ref=e32]
+              - text: continue with google
+              - generic [ref=e37]: soon
+          - generic [ref=e96]:
+            - heading "welcome back, sarvind3." [level=2] [ref=e97]:
+              - text: welcome back,
+              - emphasis [ref=e98]: sarvind3
+              - text: .
+            - paragraph [ref=e99]: the council is seated. whenever you're ready — dump the messy thought.
+            - button "open chat →" [ref=e100] [cursor=pointer]
+        - generic [ref=e39]:
+          - generic [ref=e40]: live from the lounge
+          - generic [ref=e101]: fomo
+  - button "Open Next.js Dev Tools" [ref=e53] [cursor=pointer]:
+    - img [ref=e54]
+  - alert [ref=e57]
