@@ -73,4 +73,38 @@ export default defineSchema({
     selectedOptionId: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
+
+  traces: defineTable({
+    conversationId: v.optional(v.id("conversations")),
+    prompt: v.string(),
+    userName: v.string(),
+    podFriendIds: v.array(v.string()),
+    provider: v.string(),
+    sessionMood: v.optional(v.string()),
+    totalTimeMs: v.number(),
+    totalIterations: v.number(),
+    totalMessages: v.number(),
+    finalEnergy: v.number(),
+    iterations: v.string(), // JSON stringified array of iteration trace objects
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  evalRuns: defineTable({
+    name: v.string(),
+    promptCount: v.number(),
+    avgScore: v.optional(v.number()),
+    status: v.string(), // "running" | "complete" | "failed"
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"]),
+
+  evalResults: defineTable({
+    evalRunId: v.id("evalRuns"),
+    prompt: v.string(),
+    messages: v.string(), // JSON stringified message array
+    scores: v.string(), // JSON stringified score object
+    overallScore: v.number(),
+    totalTimeMs: v.number(),
+    messageCount: v.number(),
+    createdAt: v.number(),
+  }).index("by_run", ["evalRunId"]),
 });
