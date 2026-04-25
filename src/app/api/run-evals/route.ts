@@ -89,9 +89,10 @@ export async function POST() {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
       };
 
+      let runId: string | undefined;
       try {
         const runName = `eval-${new Date().toISOString().slice(0, 16)}`;
-        const runId = await client.mutation(api.evals.createRun, {
+        runId = await client.mutation(api.evals.createRun, {
           name: runName,
           promptCount: EVAL_PROMPTS.length,
         });
@@ -100,6 +101,7 @@ export async function POST() {
 
         let totalScore = 0;
         let completed = 0;
+        let successCount = 0;
 
         for (const evalPrompt of EVAL_PROMPTS) {
           try {
@@ -167,6 +169,7 @@ export async function POST() {
               typeof scores.overall === "number" ? scores.overall : 5;
             totalScore += overallScore;
             completed++;
+            successCount++;
 
             await client.mutation(api.evals.saveResult, {
               evalRunId: runId,
@@ -199,7 +202,7 @@ export async function POST() {
         }
 
         const avgScore =
-          completed > 0 ? parseFloat((totalScore / completed).toFixed(1)) : 0;
+          successCount > 0 ? parseFloat((totalScore / successCount).toFixed(1)) : 0;
         await client.mutation(api.evals.completeRun, {
           id: runId,
           avgScore,
@@ -208,6 +211,16 @@ export async function POST() {
 
         send({ type: "done", avgScore, completed });
       } catch (err) {
+        // Mark run as failed so the button doesn't stay disabled forever
+        if (runId) {
+          try {
+            await client.mutation(api.evals.completeRun, {
+              id: runId as any,
+              avgScore: 0,
+              status: "failed",
+            });
+          } catch {}
+        }
         send({
           type: "fatal",
           error: err instanceof Error ? err.message : "unknown error",
