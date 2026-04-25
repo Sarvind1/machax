@@ -79,15 +79,20 @@ export default function TracesPage() {
 
 interface Iteration {
   iteration: number;
-  energyBefore: number;
+  energy: number;
+  candidateCount: number;
   energyAfter: number;
-  selected: {
+  selectedAgents: {
     agentId: string;
     score: number;
-    target?: { name: string; text: string };
-    response?: string;
+    targetFrom: string;
+    targetText: string;
+    delay: number;
+    responseText?: string;
+    responseTimeMs?: number;
+    failed?: boolean;
   }[];
-  skipped?: string[];
+  skippedAgents: { agentId: string; reason: string }[];
 }
 
 function TraceDetail({ trace }: { trace: Record<string, unknown> }) {
@@ -158,13 +163,13 @@ function TraceDetail({ trace }: { trace: Record<string, unknown> }) {
             <div className="trace-energy-bar-bg">
               <div
                 className="trace-energy-bar-fill"
-                style={{ width: `${Math.max(0, Math.min(100, iter.energyAfter))}%` }}
+                style={{ width: `${Math.max(0, Math.min(100, iter.energyAfter * 100))}%` }}
               />
             </div>
-            <span className="trace-energy-value">{iter.energyAfter}%</span>
+            <span className="trace-energy-value">{(iter.energyAfter * 100).toFixed(0)}%</span>
           </div>
 
-          {iter.selected?.map((agent, i) => {
+          {iter.selectedAgents?.map((agent, i) => {
             const friend = FRIENDS_BY_ID[agent.agentId];
             return (
               <div key={i} className="trace-agent">
@@ -177,29 +182,30 @@ function TraceDetail({ trace }: { trace: Record<string, unknown> }) {
                     {friend?.name ?? agent.agentId}
                   </span>
                   <span className="trace-agent-score">
-                    {agent.score.toFixed(1)}
+                    score: {agent.score}
                   </span>
+                  {agent.failed && <span className="trace-agent-failed">failed</span>}
                 </div>
-                {agent.target && (
+                {agent.targetFrom && (
                   <p className="trace-agent-target">
-                    replying to {agent.target.name}:{" "}
-                    {agent.target.text.length > 80
-                      ? agent.target.text.slice(0, 80) + "..."
-                      : agent.target.text}
+                    replying to {FRIENDS_BY_ID[agent.targetFrom]?.name ?? agent.targetFrom}:{" "}
+                    {agent.targetText.length > 80
+                      ? agent.targetText.slice(0, 80) + "..."
+                      : agent.targetText}
                   </p>
                 )}
-                {agent.response && (
-                  <p className="trace-agent-response">{agent.response}</p>
+                {agent.responseText && (
+                  <p className="trace-agent-response">{agent.responseText}</p>
                 )}
               </div>
             );
           })}
 
-          {iter.skipped && iter.skipped.length > 0 && (
+          {iter.skippedAgents && iter.skippedAgents.length > 0 && (
             <div className="trace-skipped">
               skipped:{" "}
-              {iter.skipped
-                .map((id) => FRIENDS_BY_ID[id]?.name ?? id)
+              {iter.skippedAgents
+                .map((s) => FRIENDS_BY_ID[s.agentId]?.name ?? s.agentId)
                 .join(", ")}
             </div>
           )}

@@ -1,9 +1,18 @@
 .traces-page {
+  --paper: #F4F1E8;
+  --ink: #1E1C16;
+  --ink-soft: #5A554A;
+  --ink-faint: #8A8374;
+  --matcha: #6BAE7E;
+  --matcha-deep: #3E7A50;
+  --rule: rgba(30, 28, 22, 0.12);
+
   display: grid;
   grid-template-columns: 340px 1fr;
   height: 100vh;
   background: var(--paper);
   color: var(--ink);
+  font-family: var(--font-body), system-ui, sans-serif;
 }
 
 /* ── Left panel ─────────────────────────────────────────────────────── */

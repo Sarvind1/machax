@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -154,9 +154,8 @@ export default function EvalsPage() {
                   const timeSec = (result.totalTimeMs / 1000).toFixed(1);
 
                   return (
-                    <>
+                    <Fragment key={result._id}>
                       <tr
-                        key={result._id}
                         className="result-row"
                         onClick={() => toggleRow(result._id)}
                       >
@@ -300,7 +299,7 @@ export default function EvalsPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   );
                 })}
               </tbody>
