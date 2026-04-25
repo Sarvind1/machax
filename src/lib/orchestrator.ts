@@ -1117,6 +1117,11 @@ export async function* orchestrateChat(params: {
   if (sessionMood?.energy === "low") energy = 0.7; // starts lower, winds down sooner
   if (sessionMood?.energy === "up") energy = 1.2; // starts higher, more energetic
   console.log("[engine] Starting with energy:", energy, "podSize:", podFriendIds.length, "sessionMood:", sessionMood);
+
+  // ── Trace collection ──
+  const traceIterations: import("./engine-types").IterationTrace[] = [];
+  const traceStartTime = Date.now();
+
   let phase: ConversationPhase = "active";
   let simulatedTimeMs = 0;
   let pendingQuestions = 0; // questions agents asked the user (for soft pressure)
@@ -1144,6 +1149,15 @@ export async function* orchestrateChat(params: {
 
   while (energy > ENERGY_FLOOR && iterations < MAX_ITERATIONS) {
     iterations++;
+
+    const iterTrace: import("./engine-types").IterationTrace = {
+      iteration: iterations,
+      energy: parseFloat(energy.toFixed(3)),
+      candidateCount: 0,
+      selectedAgents: [],
+      skippedAgents: [],
+      energyAfter: 0,
+    };
 
     // ── Logging for iteration start ──
     const candidatesForLog = agents.filter(a => a.state === "active" || a.state === "lurking" || a.state === "fading");
@@ -1201,6 +1215,14 @@ export async function* orchestrateChat(params: {
       scoredCandidates.push({ agent, target, delay });
     }
 
+    iterTrace.candidateCount = candidates.length;
+    // Track which candidates didn't score high enough
+    for (const agent of candidates) {
+      if (!scoredCandidates.some(sc => sc.agent.id === agent.id)) {
+        iterTrace.skippedAgents.push({ agentId: agent.id, reason: "low-score-or-dropout" });
+      }
+    }
+
     if (scoredCandidates.length === 0) {
       // Nobody wants to respond — small energy decay (silence shouldn't drain much)
       console.log("[engine] No scored candidates this iteration, energy decaying by 0.02");
@@ -1230,6 +1252,16 @@ export async function* orchestrateChat(params: {
         ? 2
         : 1;
     const batch = scoredCandidates.slice(0, batchSize);
+
+    for (const { agent, target, delay } of batch) {
+      iterTrace.selectedAgents.push({
+        agentId: agent.id,
+        score: target.score,
+        targetFrom: target.from,
+        targetText: target.text.slice(0, 80),
+        delay: Math.round(delay),
+      });
+    }
 
     // ── Emit typing events ──
     for (const { agent } of batch) {
@@ -1272,6 +1304,8 @@ export async function* orchestrateChat(params: {
       const result = results[i];
       if (result.status !== "fulfilled") {
         console.error("[engine] Agent call failed:", result.reason);
+        const failedAgent = iterTrace.selectedAgents.find(a => a.agentId === batch[i].agent.id);
+        if (failedAgent) failedAgent.failed = true;
         continue;
       }
 
@@ -1323,6 +1357,13 @@ export async function* orchestrateChat(params: {
 
       roundResponses.push(entry);
 
+      // Update trace with response
+      const traceAgent = iterTrace.selectedAgents.find(a => a.agentId === agent.id);
+      if (traceAgent) {
+        traceAgent.responseText = entry.text.slice(0, 120);
+        traceAgent.responseTimeMs = Date.now() - traceStartTime;
+      }
+
       // Track if this message engages the user (contains a question)
       if (entry.text.includes("?") && (replyTo === "user" || !replyTo)) {
         userEngaged = true;
@@ -1366,6 +1407,9 @@ export async function* orchestrateChat(params: {
     if (simulatedTimeMs > 15000 * pendingQuestions) {
       pendingQuestions = Math.max(0, pendingQuestions - 1);
     }
+
+    iterTrace.energyAfter = parseFloat(energy.toFixed(3));
+    traceIterations.push(iterTrace);
   }
 
   console.log("[engine] Loop ended. energy:", energy.toFixed(2), "iterations:", iterations, "messages:", roundResponses.length);
@@ -1412,4 +1456,21 @@ export async function* orchestrateChat(params: {
     };
     yield { type: "decision", decision: fallbackDecision };
   }
+
+  // ── Yield trace data ──
+  yield {
+    type: "trace",
+    data: {
+      prompt: message,
+      userName,
+      podFriendIds,
+      provider: provider.label,
+      sessionMood: sessionMood ? JSON.stringify(sessionMood) : undefined,
+      totalTimeMs: Date.now() - traceStartTime,
+      totalIterations: iterations,
+      totalMessages: roundResponses.length,
+      finalEnergy: parseFloat(energy.toFixed(3)),
+      iterations: traceIterations,
+    },
+  };
 }

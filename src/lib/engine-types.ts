@@ -27,6 +27,7 @@ export type EngineEvent =
   | { type: "nudge" } // soft pressure — user was asked a question
   | { type: "winding-down" }
   | { type: "decision"; decision: import("./types").Decision }
+  | { type: "trace"; data: ConversationTrace }
   | { type: "done" };
 
 // Conversation state
@@ -45,3 +46,35 @@ export const ATTENTION_WINDOWS: Record<AgentTraits["responseSpeed"], number> = {
   normal: 8,
   thoughtful: 999,
 };
+
+// Trace data collected during a conversation run
+export interface IterationTrace {
+  iteration: number;
+  energy: number;
+  candidateCount: number;
+  selectedAgents: {
+    agentId: string;
+    score: number;
+    targetFrom: string;
+    targetText: string;
+    delay: number;
+    responseText?: string;
+    responseTimeMs?: number;
+    failed?: boolean;
+  }[];
+  skippedAgents: { agentId: string; reason: string }[];
+  energyAfter: number;
+}
+
+export interface ConversationTrace {
+  prompt: string;
+  userName: string;
+  podFriendIds: string[];
+  provider: string;
+  sessionMood?: string;
+  totalTimeMs: number;
+  totalIterations: number;
+  totalMessages: number;
+  finalEnergy: number;
+  iterations: IterationTrace[];
+}

@@ -36,6 +36,8 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
       return { windingDown: true };
     case "decision":
       return { decision: event.decision };
+    case "trace":
+      return { trace: event.data };
     case "done":
       return { done: true };
   }
