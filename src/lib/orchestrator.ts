@@ -37,15 +37,26 @@ function formatTranscript(messages: ChatEntry[], userName: string = "friend"): s
     .join("\n");
 }
 
-/** Windowed transcript — only the last N messages visible to this agent */
+/** Windowed transcript — only the last N messages visible to this agent.
+ *  ALWAYS includes all user messages regardless of window size,
+ *  so agents never lose the user's questions/context. */
 function formatWindowedTranscript(
   allMessages: ChatEntry[],
   windowSize: number,
   userName: string = "friend",
 ): string {
-  const visible = windowSize >= allMessages.length
-    ? allMessages
-    : allMessages.slice(-windowSize);
+  if (windowSize >= allMessages.length) {
+    return formatTranscript(allMessages, userName);
+  }
+  // Keep all user messages + last N agent messages
+  const userMessages = allMessages.filter(m => m.from === "user");
+  const recentWindow = allMessages.slice(-windowSize);
+  // Merge: user messages that got cut off + the recent window
+  const cutoffUserMsgs = userMessages.filter(
+    um => !recentWindow.some(rm => rm === um)
+  );
+  // Reconstruct in chronological order
+  const visible = [...cutoffUserMsgs, ...recentWindow];
   return formatTranscript(visible, userName);
 }
 
@@ -882,7 +893,12 @@ export async function* orchestrateChat(params: {
     let contextHint = "";
     if (roundResponses.length >= 3) {
       try {
-        const recentMsgs = allMessages().slice(-5).map(m => `[${m.from}] ${m.text}`).join("\n");
+        // Include all user messages + last 5 agent messages for context
+        const all = allMessages();
+        const userMsgs = all.filter(m => m.from === "user");
+        const agentMsgs = all.filter(m => m.from !== "user").slice(-5);
+        const contextMsgs = [...userMsgs, ...agentMsgs].sort((a, b) => all.indexOf(a) - all.indexOf(b));
+        const recentMsgs = contextMsgs.map(m => `[${m.from}] ${m.text}`).join("\n");
         contextHint = await callModel(
           "Identify missing perspectives. Reply in under 10 words.",
           `Chat:\n${recentMsgs}\n\nIn under 10 words: what angle hasn't been raised yet?`,

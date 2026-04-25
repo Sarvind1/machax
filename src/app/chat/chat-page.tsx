@@ -361,7 +361,6 @@ export default function ChatPage() {
       }
 
       const history = messages.map((m) => ({ from: m.from, text: m.text }));
-      history.push({ from: "user", text });
 
       try {
         await streamChat(
