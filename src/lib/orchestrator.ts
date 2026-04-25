@@ -61,11 +61,67 @@ function formatWindowedTranscript(
 }
 
 // ── Claude CLI call (async — supports parallel execution) ──
+// When BRIDGE_URL is set, routes through the HTTP bridge (for Vercel prod).
+// Otherwise, spawns claude -p locally (for dev).
 async function callClaudeCli(
   system: string,
   userPrompt: string,
   model: string,
   maxTokens: number,
+): Promise<string> {
+  const bridgeUrl = process.env.BRIDGE_URL;
+  const bridgeSecret = process.env.BRIDGE_SECRET;
+
+  if (bridgeUrl && bridgeSecret) {
+    return callClaudeViaBridge(bridgeUrl, bridgeSecret, system, userPrompt, model);
+  }
+  return callClaudeLocal(system, userPrompt, model);
+}
+
+async function callClaudeViaBridge(
+  bridgeUrl: string,
+  bridgeSecret: string,
+  system: string,
+  userPrompt: string,
+  model: string,
+): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+
+  try {
+    const res = await fetch(new URL("/chat", bridgeUrl).toString(), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bridge-secret": bridgeSecret,
+      },
+      body: JSON.stringify({ prompt: userPrompt, systemPrompt: system, model }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`bridge returned ${res.status}: ${body}`);
+    }
+
+    const data = await res.json();
+    return data.text || "";
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "bridge request failed";
+    if (message.includes("aborted")) {
+      throw new Error("Bridge timed out. Is your laptop awake and tunnel up?");
+    }
+    throw new Error(`Bridge unreachable: ${message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callClaudeLocal(
+  system: string,
+  userPrompt: string,
+  model: string,
 ): Promise<string> {
   const tmpFile = join(
     tmpdir(),
@@ -755,34 +811,24 @@ async function callFriend(
 
 // ── Director agent: one-shot topic research ────────────────────────
 
-async function getTopicContext(message: string): Promise<string> {
-  // Research the topic using Gemini (no Google Search tool — just model knowledge)
-  // Google Search grounding was causing failures on Vercel, so we use plain Gemini
-  try {
-    const result = await generateText({
-      model: google("gemini-2.5-flash"),
-      messages: [
-        {
-          role: "user",
-          content: `Group chat message: "${message}"
+async function getTopicContext(message: string, provider: ProviderConfig): Promise<string> {
+  const topicPrompt = `Group chat message: "${message}"
 
 If this mentions something specific (game, movie, show, app, product, person, event, concept), give a 2-sentence factual summary. Include: what it is, current status, key facts.
 
-If it's just a casual opinion question (like "pizza or burger" or "should I quit my job"), reply NONE.`,
-        },
-      ],
-      maxOutputTokens: 80,
-      temperature: 0.2,
-      providerOptions: {
-        google: {
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      },
-    });
+If it's just a casual opinion question (like "pizza or burger" or "should I quit my job"), reply NONE.`;
 
-    const text = result.text.trim();
-    if (!text || text === "NONE" || text.length < 15) return "";
-    return text;
+  try {
+    const text = await callModel(
+      "You are a research assistant. Give brief factual context about topics. Reply NONE for casual questions.",
+      topicPrompt,
+      { ...provider, model: provider.synthesisModel },
+      80,
+    );
+
+    const cleaned = text.trim();
+    if (!cleaned || cleaned === "NONE" || cleaned.length < 15) return "";
+    return cleaned;
   } catch (err) {
     console.error("[director] Topic context failed:", err);
     return "";
@@ -815,7 +861,7 @@ export async function* orchestrateChat(params: {
   // Wrap in timeout so it never blocks the conversation
   let topicContext = "";
   try {
-    const contextPromise = getTopicContext(message);
+    const contextPromise = getTopicContext(message, provider);
     const timeoutPromise = new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000));
     topicContext = await Promise.race([contextPromise, timeoutPromise]);
   } catch {

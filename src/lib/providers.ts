@@ -31,18 +31,23 @@ const PROVIDER_PRIORITY: ProviderName[] = [
 ];
 
 function checkClaudeCli(): { available: boolean; reason?: string } {
+  // Bridge mode: BRIDGE_URL means we route through the HTTP bridge to a laptop running claude
+  if (process.env.BRIDGE_URL && process.env.BRIDGE_SECRET) {
+    return { available: true };
+  }
+
+  // Local mode: check if claude binary exists on this machine
   try {
     const result = execSync("which claude", {
       timeout: 3000,
       stdio: ["pipe", "pipe", "pipe"],
     });
     if (result.toString().trim()) {
-      // Quick sanity check — can it respond?
       return { available: true };
     }
     return { available: false, reason: "claude binary not found" };
   } catch {
-    return { available: false, reason: "claude CLI not installed" };
+    return { available: false, reason: "claude CLI not installed and BRIDGE_URL not set" };
   }
 }
 
