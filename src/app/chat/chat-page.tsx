@@ -17,7 +17,13 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import type { ChatMessage as ChatMessageType, Decision } from "@/lib/types";
 import { FRIENDS, FRIENDS_BY_ID, STARTERS, selectPod, type Friend } from "@/lib/friends";
 
-type ChatMessageWithReply = ChatMessageType & { replyTo?: string };
+type ChatMessageWithReply = ChatMessageType & {
+  replyTo?: string;
+  mediaType?: "gif" | "sticker" | "meme";
+  mediaUrl?: string;
+  mediaThumbnailUrl?: string;
+  mediaAltText?: string;
+};
 
 import ChatMessage from "./components/chat-message";
 import ChatComposer from "./components/chat-composer";
@@ -175,6 +181,10 @@ export default function ChatPage() {
           id: m._id,
           conversationId: m.conversationId as string,
           from: m.from,
+          mediaType: m.mediaType,
+          mediaUrl: m.mediaUrl,
+          mediaThumbnailUrl: m.mediaThumbnailUrl,
+          mediaAltText: m.mediaAltText,
           text: m.text,
           timestamp: m.timestamp,
         }))
@@ -304,6 +314,10 @@ export default function ChatPage() {
                   from: data.from,
                   text: data.text,
                   replyTo: data.replyTo || undefined,
+                  mediaType: data.mediaType,
+                  mediaUrl: data.mediaUrl,
+                  mediaThumbnailUrl: data.mediaThumbnailUrl,
+                  mediaAltText: data.mediaAltText,
                   timestamp: Date.now(),
                 };
                 setMessages((prev) => [...prev, newMsg]);
@@ -314,6 +328,10 @@ export default function ChatPage() {
                     conversationId: convoId,
                     from: data.from,
                     text: data.text,
+                    ...(data.mediaType ? { mediaType: data.mediaType } : {}),
+                    ...(data.mediaUrl ? { mediaUrl: data.mediaUrl } : {}),
+                    ...(data.mediaThumbnailUrl ? { mediaThumbnailUrl: data.mediaThumbnailUrl } : {}),
+                    ...(data.mediaAltText ? { mediaAltText: data.mediaAltText } : {}),
                   });
                 } catch {
                   // Convex save failed — message still shows in UI
@@ -815,6 +833,10 @@ export default function ChatPage() {
               text={m.text}
               isUser={m.from === "user"}
               replyTo={m.replyTo}
+              mediaType={m.mediaType}
+              mediaUrl={m.mediaUrl}
+              mediaThumbnailUrl={m.mediaThumbnailUrl}
+              mediaAltText={m.mediaAltText}
             />
           ))}
 

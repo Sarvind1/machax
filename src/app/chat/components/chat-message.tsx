@@ -7,9 +7,13 @@ interface ChatMessageProps {
   text: string;
   isUser: boolean;
   replyTo?: string;
+  mediaType?: "gif" | "sticker" | "meme";
+  mediaUrl?: string;
+  mediaThumbnailUrl?: string;
+  mediaAltText?: string;
 }
 
-export default function ChatMessage({ from, text, isUser, replyTo }: ChatMessageProps) {
+export default function ChatMessage({ from, text, isUser, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText }: ChatMessageProps) {
   // System messages (joins, events)
   if (from === "system") {
     return (
@@ -32,6 +36,8 @@ export default function ChatMessage({ from, text, isUser, replyTo }: ChatMessage
   }
 
   const replyFriend = replyTo ? FRIENDS_BY_ID[replyTo] : null;
+  const isGifOnly = mediaUrl && text.startsWith("[sent a GIF");
+  const showText = !isGifOnly && text;
 
   return (
     <div className="chat-bubble-row friend">
@@ -65,7 +71,21 @@ export default function ChatMessage({ from, text, isUser, replyTo }: ChatMessage
             color: friend?.tintInk ?? "#333",
           }}
         >
-          {text}
+          {showText && <span>{text}</span>}
+          {mediaUrl && (
+            <img
+              src={mediaUrl}
+              alt={mediaAltText || "GIF"}
+              loading="lazy"
+              style={{
+                maxWidth: 250,
+                maxHeight: 200,
+                borderRadius: 8,
+                marginTop: showText ? 6 : 0,
+                display: "block",
+              }}
+            />
+          )}
         </div>
       </div>
     </div>
