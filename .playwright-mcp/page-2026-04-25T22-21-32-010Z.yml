@@ -1,0 +1,60 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - alert [ref=e11]
+  - generic [ref=e12]:
+    - complementary [ref=e13]:
+      - link "machaX" [ref=e14] [cursor=pointer]:
+        - /url: /
+        - text: macha
+        - emphasis [ref=e15]: X
+      - generic [ref=e56]: your pod
+      - generic [ref=e57]:
+        - generic [ref=e213]:
+          - generic [ref=e215]: P
+          - generic [ref=e216]: priya
+        - generic [ref=e217]:
+          - generic [ref=e219]: M
+          - generic [ref=e220]: meera
+        - generic [ref=e221]:
+          - generic [ref=e223]: A
+          - generic [ref=e224]: arjun
+      - generic [ref=e225]: recent
+      - generic [ref=e226]:
+        - generic [ref=e227] [cursor=pointer]: haha who makes the best chai, fight me
+        - generic [ref=e228] [cursor=pointer]: lol who would win in a fight, batman or spiderman
+        - generic [ref=e229] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e230] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e231] [cursor=pointer]: Is it weird to text first after a silent week
+        - generic [ref=e232] [cursor=pointer]: hello
+        - generic [ref=e233] [cursor=pointer]: Testing pod size
+        - generic [ref=e234] [cursor=pointer]: Feeling flat for no reason. Talk to me
+        - generic [ref=e235] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e236] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e237] [cursor=pointer]: iPhone or should I finally try Android
+        - generic [ref=e238] [cursor=pointer]: Are you guys going to watch the IPL match today?
+        - generic [ref=e239] [cursor=pointer]: Should I go to watch the IPL match today?
+        - generic [ref=e240] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e241] [cursor=pointer]: Everyone's getting married and I'm tired
+        - generic [ref=e242] [cursor=pointer]: Give me your worst takes on weekend brunch
+        - generic [ref=e243] [cursor=pointer]: Is it weird to text first after a silent week
+        - generic [ref=e244] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e245] [cursor=pointer]: My friend cancelled plans again. Overreacting?
+        - generic [ref=e246] [cursor=pointer]: Who is the best rapper in the world right now?
+      - button "+ new chat" [ref=e247] [cursor=pointer]
+      - link "⚙ configure pod" [ref=e248] [cursor=pointer]:
+        - /url: /configure
+    - generic [ref=e18]:
+      - generic [ref=e249]:
+        - generic [ref=e250]: the lounge
+        - generic [ref=e251]: 3 friends in the room
+        - generic "Active AI provider" [ref=e252]: via Gemini 2.5 Flash
+        - button "set the mood" [ref=e253] [cursor=pointer]: set the mood
+      - generic [ref=e255]:
+        - generic [ref=e258]: haha who makes the best chai, fight me
+        - generic [ref=e264]: meera and priya are typing...
+      - generic [ref=e265]:
+        - textbox "say something back..." [disabled] [ref=e266]
+        - button "Send message" [disabled] [ref=e267]:
+          - img [ref=e268]
+    - generic [ref=e271]: decisions will appear here once your friends weigh in
