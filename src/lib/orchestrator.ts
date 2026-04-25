@@ -436,9 +436,9 @@ function scoreMessagesForAgent(
       score += Math.round(Math.abs(traits.agreementBias) * 2);
     }
 
-    // +1 if it's the user's original message — slight preference but agents should also talk to each other
+    // +2 if it's the user's original message — agents should engage with the user
     if (msg.from === "user") {
-      score += 1;
+      score += 2;
     }
 
     // +1 if it's recent (last 2 messages)
@@ -545,6 +545,7 @@ function buildPrompt(
   contextHint: string = "",
   shouldAskUser: boolean = false,
   topicContext: string = "",
+  isMinimalPrompt: boolean = false,
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Consider this angle: ${contextHint}` : ""}`;
 
@@ -599,7 +600,7 @@ function buildPrompt(
   }
 
   const factsBlock = topicContext
-    ? `\nFACTS (use this knowledge naturally, don't quote it verbatim): ${topicContext}\nIf you don't know about this topic, it's fine to say "idk what that is" or ask what it is.\n`
+    ? `\nFACTS (use this knowledge naturally, don't quote it verbatim): ${topicContext}\n`
     : "";
 
   return `${baseIdentity}${topicChangeBlock} ${contextBlock}
@@ -625,6 +626,7 @@ It's fine to just react: "lmao", "valid", "nah", "true", "💀". Not every messa
 
 ${alreadySaidBlock}
 ${shouldAskUser ? `\nIMPORTANT: The group has been talking but nobody asked ${userName} to elaborate. Ask them a specific follow-up question about their situation — like "wait why?" or "what happened?" or "what's actually bothering you about it?" Keep it short and natural.` : ""}
+${isMinimalPrompt ? `\n${userName} sent a very short message. React naturally — ask what's up, tease them, make a joke, or just vibe. Don't overthink a short message.` : ""}
 ${energyBlock}
 
 DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${stanceHint}
@@ -647,6 +649,7 @@ async function callFriend(
   shouldAskUser: boolean = false,
   contextHint: string = "",
   topicContext: string = "",
+  isMinimalPrompt: boolean = false,
 ): Promise<{ entry: ChatEntry; replyTo: string | null } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -819,6 +822,29 @@ If this mentions something specific (game, movie, show, app, product, person, ev
 If it's just a casual opinion question (like "pizza or burger" or "should I quit my job"), reply NONE.`;
 
   try {
+    // Use Gemini with Google Search when available for real-time research
+    if (provider.name === "gemini") {
+      const result = await generateText({
+        model: google(provider.synthesisModel),
+        tools: {
+          google_search: google.tools.googleSearch({}),
+        },
+        messages: [{ role: "user", content: topicPrompt }],
+        maxOutputTokens: 80,
+        temperature: 0.2,
+        providerOptions: {
+          google: {
+            thinkingConfig: { thinkingBudget: 0 },
+          },
+        },
+      });
+
+      const cleaned = result.text.trim();
+      if (!cleaned || cleaned === "NONE" || cleaned.length < 15) return "";
+      return cleaned;
+    }
+
+    // Fallback for non-Gemini providers: use model's training knowledge
     const text = await callModel(
       "You are a research assistant. Give brief factual context about topics. Reply NONE for casual questions.",
       topicPrompt,
@@ -833,6 +859,34 @@ If it's just a casual opinion question (like "pizza or burger" or "should I quit
     console.error("[director] Topic context failed:", err);
     return "";
   }
+}
+
+// ── Per-character topic context filter (information asymmetry) ────
+// Characters with high topic affinity get full facts.
+// Characters with medium affinity get a vague impression.
+// Characters with low affinity get nothing — they genuinely don't know.
+
+function filterTopicForCharacter(
+  topicContext: string,
+  friendId: string,
+  userMessage: string,
+): string {
+  if (!topicContext) return "";
+  const friend = FRIENDS_BY_ID[friendId];
+  if (!friend) return "";
+
+  const affinity = computeTopicAffinity(friend.tags, userMessage);
+
+  // High affinity: full facts — this character knows this domain
+  if (affinity > 0.5) return topicContext;
+
+  // Medium affinity: vague awareness — heard of it, fuzzy details
+  if (affinity > 0.2) {
+    return "You've vaguely heard of this but don't know the details. You might have a slightly wrong impression.";
+  }
+
+  // Low affinity: no facts — genuinely doesn't know
+  return "";
 }
 
 // ── Main v3 engine ──────────────────────────────────────────────────
@@ -867,6 +921,11 @@ export async function* orchestrateChat(params: {
   } catch {
     topicContext = "";
   }
+
+  // ── Minimal-prompt hint ──
+  // For very short/vague inputs ("bored", "idk", "hi"), give agents a hint
+  // so they have something to work with instead of discarding their responses
+  const isMinimalPrompt = message.trim().split(/\s+/).length <= 2;
 
   // All messages: history + user's new message + round responses
   const baseMessages: ChatEntry[] = [
@@ -1014,7 +1073,7 @@ export async function* orchestrateChat(params: {
           userName,
           shouldAskUser,
           "", // contextHint removed — director agent handles context
-          topicContext,
+          filterTopicForCharacter(topicContext, agent.id, message),
         );
       }),
     );

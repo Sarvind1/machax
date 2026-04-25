@@ -23,9 +23,10 @@ export interface ProviderConfig {
 }
 
 // The priority order — edit this array to change preference
+// Gemini first: 1-3s per call vs Claude CLI's 15-20s
 const PROVIDER_PRIORITY: ProviderName[] = [
-  "claude-cli",
   "gemini",
+  "claude-cli",
   "openai",
   "anthropic",
 ];
