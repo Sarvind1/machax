@@ -118,12 +118,17 @@ async function callAiSdk(
     system,
     messages: [{ role: "user", content: userPrompt }],
     maxOutputTokens: maxTokens,
-    temperature: 0.7,
+    temperature: 1.2,
+    topP: 0.9,
     providerOptions: {
       google: {
-        thinkingConfig: {
-          thinkingBudget: 0,
-        },
+        thinkingConfig: { thinkingBudget: 0 },
+        safetySettings: [
+          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+        ],
       },
     },
   });
@@ -147,6 +152,8 @@ async function callModel(
 // ── Clean up model response ──
 function cleanResponse(text: string, friendName: string): string {
   text = text.trim();
+  // Collapse multi-line responses into single line (Gemini sometimes outputs paragraphs)
+  text = text.replace(/\n+/g, " ").trim();
   if (
     (text.startsWith('"') && text.endsWith('"')) ||
     (text.startsWith("'") && text.endsWith("'"))
@@ -279,7 +286,7 @@ function updatePresenceState(
 
   if (prev === "active") {
     // Fade after responding enough times and energy is declining
-    if (agent.responseCount >= agent.fadeAfter && energy < 0.6) {
+    if (agent.responseCount >= agent.fadeAfter && energy < 0.4) {
       return "fading";
     }
     return "active";
@@ -343,9 +350,9 @@ function scoreMessagesForAgent(
       score += Math.round(Math.abs(traits.agreementBias) * 2);
     }
 
-    // +3 if it's the user's original message — prioritize engaging the user
+    // +1 if it's the user's original message — slight preference but agents should also talk to each other
     if (msg.from === "user") {
-      score += 3;
+      score += 1;
     }
 
     // +1 if it's recent (last 2 messages)
@@ -365,11 +372,6 @@ function scoreMessagesForAgent(
     // -2 if this agent broadly agrees and has nothing new to add
     if (traits.agreementBias > 0.3 && replies >= 1) {
       score -= 2;
-    }
-
-    // -1 penalty for replying to other agents (prefer user engagement)
-    if (msg.from !== "user") {
-      score -= 1;
     }
 
     scored.push({ index: i, from: msg.from, text: msg.text, score });
@@ -393,7 +395,7 @@ function shouldRespond(
   if (bestScore === null || bestScore <= 0) return false;
 
   // Lurker check — lurkers need a decent trigger to chime in
-  if (agent.state === "lurking" && bestScore < 2) {
+  if (agent.state === "lurking" && bestScore < 1) {
     return false;
   }
 
@@ -412,16 +414,16 @@ function shouldRespond(
   const agentResponses = roundResponses.filter((r) => r.from === agent.id);
   if (agentResponses.length >= 2) return false;
 
-  // Random dropout: 15% base "didn't reply" rate + character-specific lurker chance
-  let dropoutProb = 0.15 + agent.traits.lurkerChance;
+  // Random dropout: 8% base "didn't reply" rate + half of character-specific lurker chance
+  let dropoutProb = 0.08 + agent.traits.lurkerChance * 0.5;
 
   // After several agents have responded, increase dropout for remaining agents
-  if (roundResponses.length >= 7) {
-    dropoutProb = 0.9; // almost certainly stop after 7 messages
+  if (roundResponses.length >= 8) {
+    dropoutProb = 0.9; // almost certainly stop after 8 messages
+  } else if (roundResponses.length >= 6) {
+    dropoutProb *= 2.5;
   } else if (roundResponses.length >= 5) {
-    dropoutProb *= 3;
-  } else if (roundResponses.length >= 3) {
-    dropoutProb *= 2;
+    dropoutProb *= 1.5;
   }
 
   if (Math.random() < dropoutProb) return false;
@@ -451,6 +453,7 @@ function buildPrompt(
   participantNames: string[],
   agreementBias: number,
   userName: string = "friend",
+  alreadySaidBlock: string = "",
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.`;
 
@@ -470,35 +473,50 @@ function buildPrompt(
     energyBlock = `\nThe conversation is losing steam. Keep it short, don't introduce new topics.`;
   }
 
-  const participantBlock = `People in this chat: ${participantNames.join(', ')}, and ${userName}.`;
+  const participantBlock = `People in this chat: ${participantNames.join(', ')}, and ${userName}. You don't need to address ${userName} by name — they can see the chat.`;
 
   const stanceHint = agreementBias < -0.2
     ? `\nYou don't have to agree with anyone. If something sounds off, say so directly.`
     : "";
 
+  // Build few-shot example using actual participant names
+  const exampleNames = participantNames.slice(0, 5);
+  const fewShotExample = `
+Here's what good group chat messages look like (use these as your style guide):
+[${exampleNames[0] || "dev"}] wait it's the same phone every year
+[${exampleNames[1] || "priya"}] what phone are you on rn?
+[${exampleNames[2] || "reeva"}] if your battery sucks just upgrade
+[${exampleNames[3] || "arjun"}] or if camera matters to you
+[${exampleNames[4] || "tanmay"}] depends if you're paying or parents are
+[${exampleNames[0] || "dev"}] lmao valid
+Notice: 6-8 words each. No explaining. Direct opinions. Casual.`;
+
   return `${baseIdentity} ${contextBlock}
 
+NEVER say: "Absolutely", "That's a great question", "I'd be happy to", "It's important to note", "delve", "I couldn't agree more", "Certainly", "Indeed", "Furthermore", "I think there's something to be said for", "an endless cycle", "unsustainable", "low-cost high-reward", "it's worth noting". Never hedge. Never explain your reasoning. No formal phrases. No philosophical statements. No business jargon. Talk like you're 22 and texting your friend.
+
 ${participantBlock}
-You can respond to specific people by name. You can ask ${userName} directly what they think.
+The user's name is ${userName} but do NOT use their name in every message. In a real group chat, you rarely say someone's name — just talk naturally. Use their name at most once in the entire conversation, and only if you're directly asking them something important.
 
-Reply like you actually would in a real WhatsApp group chat. Think: how would a real person thumb-type this on their phone?
+You can reply to anyone in the chat — not just ${userName}. React to what other people said. Disagree with someone. Build on their point. Tease them. But remember ${userName} asked the question — circle back to their situation occasionally. Don't forget they're in the chat.
+${fewShotExample}
 
+Keep your message under 10 words. Shorter is always better. One-word reactions are fine.
 ${lengthInstruction}
 ${modeInstruction}
 
-STYLE RULES:
-- Type like you text. Lowercase. Abbreviations. "rn" "ngl" "fr" "tbh" "lol" "omg"
-- No formal language. No philosophical phrasing. No "underlying desire" type stuff.
-- You can react, joke, disagree, tease, ask a question, go off-topic, or just send an emoji
-- Keep it SHORT. Most group chat messages are one line. Don't write paragraphs.
-- If you disagree, just say it bluntly
-- Reference ${userName} by name sometimes
+Type like a 22-year-old texting. No capitals. No periods. Abbreviations. "lmao", "bro what", "nah", "that's so dumb" are all valid. Tease people. Roast bad takes.
 
+Give direct opinions, not questions. When you disagree, say it flat — "that's cap", "hard disagree", "nah." Don't hedge.
+
+It's fine to just react: "lmao", "valid", "nah", "true", "💀". Not every message needs a point.
+
+${alreadySaidBlock}
 ${energyBlock}
 
 DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${stanceHint}
 Your reply must be a COMPLETE thought. Never a fragment. Do NOT use quotes around your response. Do NOT prefix with your name.
-CRITICAL: Do NOT repeat or rephrase what someone else already said. If someone already asked "what happened" don't ask the same thing. Add a NEW perspective, joke, reaction, or opinion.`;
+CRITICAL: Do NOT repeat or rephrase what someone else already said. Add a NEW perspective, joke, reaction, or opinion.`;
 }
 
 // ── Call a friend with v3 engine context ────────────────────────────
@@ -565,6 +583,18 @@ async function callFriend(
     ? `[MODE: ${mode.name}] ${mode.promptOverlay}`
     : "";
 
+  // Build "already said" context so this agent doesn't repeat others
+  const agentMessages = allMessages.filter((m) => m.from !== "user" && m.from !== friendId);
+  let alreadySaidBlock = "";
+  if (agentMessages.length >= 2) {
+    const keyPhrases = agentMessages
+      .map((m) => m.text.slice(0, 60).replace(/"/g, ""))
+      .join('", "');
+    alreadySaidBlock = `Others already said: "${keyPhrases}". DON'T repeat these. If everyone agrees on something, disagree or bring a totally different angle. Real friend groups argue — don't pile on.`;
+  } else if (agentMessages.length === 1) {
+    alreadySaidBlock = `Someone already said: "${agentMessages[0].text.slice(0, 60).replace(/"/g, "")}". Say something DIFFERENT — agree or disagree, but add a new angle.`;
+  }
+
   const prompt = buildPrompt(
     friend.name,
     friend.role,
@@ -579,18 +609,19 @@ async function callFriend(
     participantNames,
     friend.traits.agreementBias,
     userName,
+    alreadySaidBlock,
   );
 
   const maxTokens =
     length === "micro"
-      ? 30
+      ? 15
       : length === "short"
-        ? 60
+        ? 30
         : length === "long"
-          ? 150
+          ? 80
           : length === "rant"
-            ? 250
-            : 80; // medium
+            ? 150
+            : 40; // medium default
 
   try {
     let text = await callModel(
@@ -608,7 +639,7 @@ async function callFriend(
 
     if (isGarbage) {
       const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
-      text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150));
+      text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 60));
       text = cleanResponse(text, friend.name);
 
       // If still garbage after retry, use a safe fallback
@@ -744,6 +775,16 @@ export async function* orchestrateChat(params: {
       continue;
     }
 
+    // ── Boost new voices: if fewer than 5 unique speakers, prioritize agents who haven't spoken ──
+    const uniqueSpeakers = new Set(roundResponses.map(r => r.from));
+    if (uniqueSpeakers.size < 5) {
+      for (const sc of scoredCandidates) {
+        if (sc.agent.responseCount === 0) {
+          sc.delay *= 0.3; // new voices jump ahead in queue
+        }
+      }
+    }
+
     // ── Sort by delay (fastest first) — process 1-2 at a time ──
     scoredCandidates.sort((a, b) => a.delay - b.delay);
 
@@ -792,11 +833,23 @@ export async function* orchestrateChat(params: {
       const target = batch[i].target;
 
       // Deduplication: skip if this message is too similar to an existing one
-      const isDuplicate = roundResponses.some(
-        (r) => r.text.toLowerCase() === entry.text.toLowerCase()
-          || (r.text.length > 15 && entry.text.length > 15
-            && r.text.toLowerCase().includes(entry.text.toLowerCase().slice(0, 20)))
-      );
+      const entryLower = entry.text.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+      const entryWords = entryLower.split(/\s+/);
+      const isDuplicate = roundResponses.some((r) => {
+        const rLower = r.text.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+        // Exact match
+        if (rLower === entryLower) return true;
+        // Substring match for longer messages
+        if (rLower.length > 15 && entryLower.length > 15
+          && (rLower.includes(entryLower.slice(0, 20)) || entryLower.includes(rLower.slice(0, 20)))) return true;
+        // Word overlap: if 60%+ of words match, it's too similar
+        if (entryWords.length >= 3) {
+          const rWords = new Set(rLower.split(/\s+/));
+          const overlap = entryWords.filter(w => rWords.has(w)).length;
+          if (overlap / entryWords.length > 0.6) return true;
+        }
+        return false;
+      });
       if (isDuplicate) continue;
 
       // Update reply counts
@@ -823,7 +876,7 @@ export async function* orchestrateChat(params: {
       };
 
       // ── Energy decay ──
-      const decayAmount = 0.08 + Math.random() * 0.05;
+      const decayAmount = 0.05 + Math.random() * 0.04;
       energy -= decayAmount;
 
       // Questions from agents add a tiny bit of energy back

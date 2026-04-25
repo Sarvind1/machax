@@ -44,12 +44,10 @@ function loadEnvFile(filePath: string) {
 const projectRoot = resolve(import.meta.dirname ?? __dirname, "..");
 loadEnvFile(resolve(projectRoot, ".env.local"));
 
-// Force Gemini provider — claude CLI's --max-tokens flag is incompatible with
-// the current claude binary, causing all calls to fail with fallback garbage.
-// We remove claude's directory from PATH so the provider checker falls through
-// to Gemini (which works via GOOGLE_GENERATIVE_AI_API_KEY).
-// Set FORCE_GEMINI=0 to use claude CLI instead.
-if (process.env.FORCE_GEMINI !== "0") {
+// Provider selection:
+// - By default, uses Claude CLI if available (matches local dev server behavior)
+// - Set FORCE_GEMINI=1 to force Gemini (matches Vercel production behavior)
+if (process.env.FORCE_GEMINI === "1") {
   try {
     const claudeBin = execSync("which claude", { encoding: "utf-8" }).trim();
     if (claudeBin) {
