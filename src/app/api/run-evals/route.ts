@@ -172,7 +172,7 @@ export async function POST() {
             successCount++;
 
             await client.mutation(api.evals.saveResult, {
-              evalRunId: runId,
+              evalRunId: runId as any,
               prompt: evalPrompt.prompt,
               messages: JSON.stringify(messages),
               scores: JSON.stringify(scores),
@@ -204,7 +204,7 @@ export async function POST() {
         const avgScore =
           successCount > 0 ? parseFloat((totalScore / successCount).toFixed(1)) : 0;
         await client.mutation(api.evals.completeRun, {
-          id: runId,
+          id: runId as any,
           avgScore,
           status: "complete",
         });
