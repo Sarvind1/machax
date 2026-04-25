@@ -35,6 +35,20 @@ interface ProviderInfo {
   priority: number;
 }
 
+const MODES = [
+  { id: "late-night", label: "late night", desc: "soft, 2am energy" },
+  { id: "hot-take", label: "hot takes", desc: "spicy, fun" },
+  { id: "deep-dive", label: "deep dive", desc: "fully unpacked" },
+  { id: "devils-advocate", label: "devil's advocate", desc: "pushback" },
+  { id: "emotional", label: "emotional support", desc: "mostly listening" },
+  { id: "roast", label: "lovingly roast", desc: "tease, gently" },
+  { id: "hype", label: "hype mode", desc: "cheerleader" },
+  { id: "debate-club", label: "debate club", desc: "back-and-forth" },
+];
+
+const PACING_OPTIONS = ["snappy", "natural", "slow"];
+const ENERGY_OPTIONS = ["low", "settled", "up"];
+
 export default function ChatPage() {
   const router = useRouter();
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
@@ -73,6 +87,55 @@ export default function ChatPage() {
   const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
   const [isWindingDown, setIsWindingDown] = useState(false);
   const [activeAgentIds, setActiveAgentIds] = useState<Set<string>>(new Set());
+
+  // Session mood state
+  const [moodOpen, setMoodOpen] = useState(false);
+  const [sessionModes, setSessionModes] = useState<string[]>([]);
+  const [sessionPacing, setSessionPacing] = useState<string>("natural");
+  const [sessionEnergy, setSessionEnergy] = useState<string>("settled");
+  const moodPanelRef = useRef<HTMLDivElement>(null);
+  const moodTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // Load session mood from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("machax-session-mood");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setSessionModes(parsed.modes || []);
+        setSessionPacing(parsed.pacing || "natural");
+        setSessionEnergy(parsed.energy || "settled");
+      }
+    } catch {}
+  }, []);
+
+  // Save session mood to localStorage
+  useEffect(() => {
+    localStorage.setItem("machax-session-mood", JSON.stringify({
+      modes: sessionModes, pacing: sessionPacing, energy: sessionEnergy,
+    }));
+  }, [sessionModes, sessionPacing, sessionEnergy]);
+
+  // Close mood panel on click outside
+  useEffect(() => {
+    if (!moodOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        moodPanelRef.current && !moodPanelRef.current.contains(e.target as Node) &&
+        moodTriggerRef.current && !moodTriggerRef.current.contains(e.target as Node)
+      ) {
+        setMoodOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [moodOpen]);
+
+  const toggleMode = useCallback((modeId: string) => {
+    setSessionModes(prev =>
+      prev.includes(modeId) ? prev.filter(m => m !== modeId) : [...prev, modeId]
+    );
+  }, []);
 
   // Probe providers on mount
   useEffect(() => {
@@ -610,7 +673,65 @@ export default function ChatPage() {
               via {activeProvider}
             </span>
           )}
+          <button
+            ref={moodTriggerRef}
+            className="chat-mood-trigger"
+            onClick={() => setMoodOpen(!moodOpen)}
+            title="Session mood"
+          >
+            🎛
+          </button>
         </div>
+
+        {moodOpen && (
+          <div className="chat-mood-panel" ref={moodPanelRef}>
+            <div className="chat-mood-label">session mood</div>
+
+            <div className="chat-mood-label" style={{ marginTop: 12 }}>modes</div>
+            <div className="chat-mood-pills">
+              {MODES.map(mode => (
+                <button
+                  key={mode.id}
+                  className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
+                  onClick={() => toggleMode(mode.id)}
+                  title={mode.desc}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="chat-mood-label" style={{ marginTop: 12 }}>pacing</div>
+            <div className="chat-mood-segmented">
+              {PACING_OPTIONS.map(opt => (
+                <button
+                  key={opt}
+                  className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
+                  onClick={() => setSessionPacing(opt)}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+
+            <div className="chat-mood-label" style={{ marginTop: 12 }}>energy</div>
+            <div className="chat-mood-segmented">
+              {ENERGY_OPTIONS.map(opt => (
+                <button
+                  key={opt}
+                  className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
+                  onClick={() => setSessionEnergy(opt)}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+
+            <button className="chat-mood-done" onClick={() => setMoodOpen(false)}>
+              done
+            </button>
+          </div>
+        )}
 
         <div className="chat-messages" ref={chatContainerRef}>
           {messages.map((m) => (

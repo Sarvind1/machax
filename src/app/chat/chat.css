@@ -868,3 +868,138 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+/* ===== SESSION MOOD DRAWER ===== */
+.chat-mood-trigger {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.chat-mood-trigger:hover {
+  background: rgba(107, 174, 126, 0.08);
+  border-color: var(--matcha);
+}
+
+/* When provider badge has margin-left:auto, mood trigger shouldn't also */
+.chat-header-provider + .chat-mood-trigger {
+  margin-left: 0;
+}
+
+.chat-mood-panel {
+  padding: 16px 20px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  box-shadow: 0 4px 16px rgba(30, 28, 22, 0.08);
+  flex-shrink: 0;
+}
+
+.chat-mood-label {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 8px;
+}
+
+.chat-mood-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-mood-pill {
+  padding: 5px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: #fff;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.chat-mood-pill:hover {
+  border-color: var(--matcha);
+  color: var(--ink);
+}
+
+.chat-mood-pill--active {
+  background: var(--matcha-deep);
+  color: #fff;
+  border-color: var(--matcha-deep);
+}
+
+.chat-mood-pill--active:hover {
+  background: var(--matcha);
+  border-color: var(--matcha);
+  color: #fff;
+}
+
+.chat-mood-segmented {
+  display: inline-flex;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.chat-mood-segment {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.chat-mood-segment:not(:last-child) {
+  border-right: 1px solid var(--rule);
+}
+
+.chat-mood-segment:hover {
+  background: rgba(107, 174, 126, 0.06);
+  color: var(--ink);
+}
+
+.chat-mood-segment--active {
+  background: var(--matcha-deep);
+  color: #fff;
+}
+
+.chat-mood-segment--active:hover {
+  background: var(--matcha);
+  color: #fff;
+}
+
+.chat-mood-done {
+  margin-top: 14px;
+  padding: 6px 20px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: transparent;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.06em;
+}
+
+.chat-mood-done:hover {
+  border-color: var(--matcha-deep);
+  color: var(--matcha-deep);
+}
