@@ -125,6 +125,7 @@
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+  position: relative;
 }
 
 .chat-header-title {
@@ -894,11 +895,17 @@
 }
 
 .chat-mood-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 100;
+  background: var(--paper, #F4F1E8);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -8px rgba(30, 28, 22, 0.15);
   padding: 16px 20px;
-  background: var(--paper);
-  border-bottom: 1px solid var(--rule);
-  box-shadow: 0 4px 16px rgba(30, 28, 22, 0.08);
-  flex-shrink: 0;
+  min-width: 320px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1027,6 +1034,7 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 12px;
+  position: relative;
 }
 
 .chat-mood-dot {

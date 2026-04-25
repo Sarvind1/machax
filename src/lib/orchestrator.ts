@@ -1116,6 +1116,7 @@ export async function* orchestrateChat(params: {
   let energy = 1.0;
   if (sessionMood?.energy === "low") energy = 0.7; // starts lower, winds down sooner
   if (sessionMood?.energy === "up") energy = 1.2; // starts higher, more energetic
+  console.log("[engine] Starting with energy:", energy, "podSize:", podFriendIds.length, "sessionMood:", sessionMood);
   let phase: ConversationPhase = "active";
   let simulatedTimeMs = 0;
   let pendingQuestions = 0; // questions agents asked the user (for soft pressure)
@@ -1143,6 +1144,10 @@ export async function* orchestrateChat(params: {
 
   while (energy > ENERGY_FLOOR && iterations < MAX_ITERATIONS) {
     iterations++;
+
+    // ── Logging for iteration start ──
+    const candidatesForLog = agents.filter(a => a.state === "active" || a.state === "lurking" || a.state === "fading");
+    console.log("[engine] Iteration", iterations, "energy:", energy.toFixed(2), "candidates:", candidatesForLog.length, "roundResponses:", roundResponses.length);
 
     // ── Advance simulated time ──
     // Base tick: fastest agent's delay. Modified by soft pressure.
@@ -1198,6 +1203,7 @@ export async function* orchestrateChat(params: {
 
     if (scoredCandidates.length === 0) {
       // Nobody wants to respond — small energy decay (silence shouldn't drain much)
+      console.log("[engine] No scored candidates this iteration, energy decaying by 0.02");
       energy -= 0.02;
       continue;
     }
@@ -1265,12 +1271,15 @@ export async function* orchestrateChat(params: {
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       if (result.status !== "fulfilled") {
-        console.error("Agent call failed:", result.reason);
+        console.error("[engine] Agent call failed:", result.reason);
         continue;
       }
 
       // Skip null results (garbage that couldn't be retried)
-      if (result.value === null) continue;
+      if (result.value === null) {
+        console.log("[engine] Skipped null result from agent", batch[i].agent.id);
+        continue;
+      }
       const { entry, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText } = result.value;
       const agent = batch[i].agent;
       const target = batch[i].target;
@@ -1293,7 +1302,10 @@ export async function* orchestrateChat(params: {
         }
         return false;
       });
-      if (isDuplicate) continue;
+      if (isDuplicate) {
+        console.log("[engine] Deduped message from", entry.from, ":", entry.text.slice(0, 40));
+        continue;
+      }
 
       // Update reply counts
       replyCounts.set(target.index, (replyCounts.get(target.index) ?? 0) + 1);
@@ -1355,6 +1367,8 @@ export async function* orchestrateChat(params: {
       pendingQuestions = Math.max(0, pendingQuestions - 1);
     }
   }
+
+  console.log("[engine] Loop ended. energy:", energy.toFixed(2), "iterations:", iterations, "messages:", roundResponses.length);
 
   // ── Synthesis pass — extract decision options ──────────────────────
 

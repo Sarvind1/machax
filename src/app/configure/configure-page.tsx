@@ -118,11 +118,18 @@ export default function ConfigurePage({ userName }: { userName: string }) {
   const initializing = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load from Convex once
+  // Load from Convex once (savedSettings can be null for first-time users — that's fine, use defaults)
   useEffect(() => {
-    if (!savedSettings || loaded.current) return;
+    if (loaded.current) return;
+    // For Convex useQuery: undefined means still loading, null means no record found
+    if (savedSettings === undefined) return; // still loading, wait
     loaded.current = true;
     initializing.current = true;
+    if (!savedSettings) {
+      // First-time user — use defaults, enable auto-save
+      setTimeout(() => { initializing.current = false; }, 0);
+      return;
+    }
 
     let ovs: Record<string, CharacterOverride> = {};
     if (savedSettings.characterOverrides) {
