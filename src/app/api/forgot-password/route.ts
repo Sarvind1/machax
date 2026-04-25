@@ -3,7 +3,12 @@ import { api } from "../../../../convex/_generated/api";
 import { Resend } from "resend";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-const resend = new Resend(process.env.RESEND_API_KEY);
+
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key || key === "re_placeholder_key") return null;
+  return new Resend(key);
+}
 
 export async function POST(request: Request) {
   try {
@@ -22,6 +27,11 @@ export async function POST(request: Request) {
         process.env.NEXT_PUBLIC_APP_URL || "https://machax.xyz";
       const resetUrl = `${baseUrl}/reset-password?token=${result.token}`;
 
+      const resend = getResend();
+      if (!resend) {
+        console.warn("RESEND_API_KEY not configured, skipping email");
+        return Response.json({ success: true });
+      }
       await resend.emails.send({
         from: "MachaX <noreply@machax.xyz>",
         to: email.trim(),
