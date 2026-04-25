@@ -5,6 +5,10 @@ export interface ChatMessage {
   conversationId: string;
   from: string; // "user" or friend id like "reeva", "tanmay"
   text: string;
+  mediaType?: "gif" | "sticker" | "meme";
+  mediaUrl?: string;
+  mediaThumbnailUrl?: string;
+  mediaAltText?: string;
   timestamp: number;
 }
 

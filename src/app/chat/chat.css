@@ -1003,3 +1003,36 @@
   border-color: var(--matcha-deep);
   color: var(--matcha-deep);
 }
+
+/* ===== MOOD LANDING & PILLS ===== */
+.chat-mood-landing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.chat-mood-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--matcha);
+  margin-right: 4px;
+}
+
+.chat-mood-active-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chat-mood-active-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--matcha);
+  color: white;
+  letter-spacing: 0.04em;
+}

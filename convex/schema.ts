@@ -11,6 +11,7 @@ export default defineSchema({
     title: v.string(),
     tag: v.string(),
     podFriendIds: v.array(v.string()),
+    sessionMood: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_created", ["createdAt"]),
 
@@ -18,6 +19,10 @@ export default defineSchema({
     conversationId: v.id("conversations"),
     from: v.string(),
     text: v.string(),
+    mediaType: v.optional(v.union(v.literal("gif"), v.literal("sticker"), v.literal("meme"))),
+    mediaUrl: v.optional(v.string()),
+    mediaThumbnailUrl: v.optional(v.string()),
+    mediaAltText: v.optional(v.string()),
     timestamp: v.number(),
   }).index("by_conversation", ["conversationId", "timestamp"]),
 

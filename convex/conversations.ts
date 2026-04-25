@@ -6,12 +6,14 @@ export const create = mutation({
     title: v.string(),
     tag: v.string(),
     podFriendIds: v.array(v.string()),
+    sessionMood: v.optional(v.string()),
   },
-  handler: async (ctx, { title, tag, podFriendIds }) => {
+  handler: async (ctx, { title, tag, podFriendIds, sessionMood }) => {
     const id = await ctx.db.insert("conversations", {
       title,
       tag,
       podFriendIds,
+      sessionMood,
       createdAt: Date.now(),
     });
     return id;

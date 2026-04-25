@@ -15,7 +15,15 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
     case "typing-stop":
       return { typingStop: event.agentId };
     case "message":
-      return { from: event.from, text: event.text, ...(event.replyTo ? { replyTo: event.replyTo } : {}) };
+      return {
+        from: event.from,
+        text: event.text,
+        ...(event.replyTo ? { replyTo: event.replyTo } : {}),
+        ...(event.mediaType ? { mediaType: event.mediaType } : {}),
+        ...(event.mediaUrl ? { mediaUrl: event.mediaUrl } : {}),
+        ...(event.mediaThumbnailUrl ? { mediaThumbnailUrl: event.mediaThumbnailUrl } : {}),
+        ...(event.mediaAltText ? { mediaAltText: event.mediaAltText } : {}),
+      };
     case "joined":
       return { joined: event.agentId };
     case "lurking":

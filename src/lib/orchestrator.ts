@@ -21,6 +21,7 @@ import type {
   PresenceState,
 } from "./engine-types";
 import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
+import { searchGif } from "./gif-service";
 
 const execAsync = promisify(exec);
 
@@ -249,6 +250,16 @@ function cleanResponse(text: string, friendName: string): string {
   const namePrefix = new RegExp(`^${friendName}:\\s*`, "i");
   text = text.replace(namePrefix, "");
   return text.trim();
+}
+
+// ── Media marker extraction ─────────────────────────────────────────
+
+function extractMediaMarker(text: string): { query: string; remainingText: string } | null {
+  const match = text.match(/\[GIF:\s*(.+?)\]/i);
+  if (!match) return null;
+  const query = match[1].trim();
+  const remainingText = text.replace(match[0], '').trim();
+  return { query, remainingText };
 }
 
 // ── Agent traits resolution ──────────────────────────────────────────
@@ -696,7 +707,7 @@ async function callFriend(
   topicContext: string = "",
   isMinimalPrompt: boolean = false,
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
-): Promise<{ entry: ChatEntry; replyTo: string | null } | null> {
+): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
     return {
@@ -824,7 +835,7 @@ async function callFriend(
 
   const traitHintsBlock = traitHintParts.length > 0 ? traitHintParts.join(" ") : "";
 
-  const prompt = buildPrompt(
+  let prompt = buildPrompt(
     friend.name,
     friend.role,
     transcript,
@@ -848,6 +859,12 @@ async function callFriend(
     traitHintsBlock,
     sessionMood,
   );
+
+  // ── GIF prompt injection (conditional) ──
+  const shouldOfferGif = Math.random() < (friend.traits.mediaSendProbability ?? 0);
+  if (shouldOfferGif) {
+    prompt += `\n\nIf you want to react with a GIF instead of (or alongside) text, write [GIF: search query] where the search query is in English (e.g., [GIF: mind blown], [GIF: facepalm], [GIF: excited dancing]). Only do this when a GIF genuinely fits — funny reactions, celebrations, or when words aren't enough. Don't overdo it. Use English search terms only.`;
+  }
 
   let maxTokens =
     length === "micro"
@@ -879,6 +896,27 @@ async function callFriend(
     );
     text = cleanResponse(text, friend.name);
 
+    // ── Extract GIF marker and resolve ──
+    let mediaType: "gif" | "sticker" | "meme" | undefined;
+    let mediaUrl: string | undefined;
+    let mediaThumbnailUrl: string | undefined;
+    let mediaAltText: string | undefined;
+
+    const marker = extractMediaMarker(text);
+    if (marker) {
+      const gifResult = await searchGif(marker.query);
+      if (gifResult && gifResult.url) {
+        mediaType = "gif";
+        mediaUrl = gifResult.url;
+        mediaThumbnailUrl = gifResult.thumbnailUrl;
+        mediaAltText = gifResult.altText;
+        text = marker.remainingText || "[sent a GIF]";
+      } else {
+        // GIF API failed — strip marker, keep remaining text
+        text = marker.remainingText || text.replace(/\[GIF:\s*.+?\]/i, '').trim();
+      }
+    }
+
     // Validate response quality — retry once if garbage or truncated
     const looksIncomplete = (t: string) => {
       if (t.length < 3) return true; // too short
@@ -901,7 +939,7 @@ async function callFriend(
       }
     }
 
-    return { entry: { from: friendId, text }, replyTo: replyToId };
+    return { entry: { from: friendId, text }, replyTo: replyToId, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText };
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
     return {
@@ -1048,6 +1086,9 @@ export async function* orchestrateChat(params: {
   // Track how many agents replied to each message index
   const replyCounts = new Map<number, number>();
 
+  // Track media messages for rate cap (max 2 GIFs per conversation round)
+  let mediaMessageCount = 0;
+
   // Track whether any agent has engaged the user with a follow-up question
   let userEngaged = false;
 
@@ -1192,7 +1233,7 @@ export async function* orchestrateChat(params: {
 
       // Skip null results (garbage that couldn't be retried)
       if (result.value === null) continue;
-      const { entry, replyTo } = result.value;
+      const { entry, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText } = result.value;
       const agent = batch[i].agent;
       const target = batch[i].target;
 
@@ -1237,11 +1278,16 @@ export async function* orchestrateChat(params: {
         userEngaged = true;
       }
 
+      // Apply media rate cap: max 2 GIFs per conversation round
+      const includeMedia = mediaType && mediaUrl && mediaMessageCount < 2;
+      if (includeMedia) mediaMessageCount++;
+
       yield {
         type: "message",
         from: entry.from,
         text: entry.text,
         replyTo: replyTo ?? undefined,
+        ...(includeMedia ? { mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText } : {}),
       };
 
       // ── Energy decay ──

@@ -9,6 +9,7 @@ export interface AgentTraits {
   lurkerChance: number; // 0-1, chance of reading but not responding
   tangentProbability?: number; // 0-1, chance of going off-topic instead of replying to the scored message
   attentionWindow?: number; // how many recent messages the agent reads before replying (default derived from responseSpeed)
+  mediaSendProbability?: number; // 0-1, chance of including a GIF/sticker reaction
 }
 
 // Presence lifecycle states
@@ -19,7 +20,7 @@ export type EngineEvent =
   | { type: "provider"; label: string }
   | { type: "typing"; agentId: string }
   | { type: "typing-stop"; agentId: string }
-  | { type: "message"; from: string; text: string; replyTo?: string }
+  | { type: "message"; from: string; text: string; replyTo?: string; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string }
   | { type: "joined"; agentId: string }
   | { type: "lurking"; agentId: string }
   | { type: "presence"; agentId: string; state: PresenceState }

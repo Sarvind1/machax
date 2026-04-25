@@ -383,6 +383,7 @@ export default function ChatPage() {
           title: text.slice(0, 60),
           tag,
           podFriendIds: selectedPod.map((f) => f.id),
+          sessionMood: JSON.stringify({ modes: sessionModes, pacing: sessionPacing, energy: sessionEnergy }),
         });
 
         setActiveConversation(convoId);
@@ -444,7 +445,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     }
-  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat]);
+  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy]);
 
   const handleStarterClick = (starterText: string) => {
     setInput(starterText);
@@ -548,6 +549,74 @@ export default function ChatPage() {
           <p className="chat-landing-sub">
             dump your messiest thought. your council of AI friends will hash it out.
           </p>
+
+          <div className="chat-mood-landing">
+            <button
+              ref={moodTriggerRef}
+              className="chat-mood-trigger"
+              onClick={() => setMoodOpen(!moodOpen)}
+              title="Session mood"
+            >
+              <span className="chat-mood-dot" /> set the mood
+            </button>
+            {sessionModes.length > 0 && (
+              <div className="chat-mood-active-pills">
+                {sessionModes.map(m => (
+                  <span key={m} className="chat-mood-active-pill">{m.replace("-", " ")}</span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {moodOpen && (
+            <div className="chat-mood-panel" ref={moodPanelRef}>
+              <div className="chat-mood-label">session mood</div>
+
+              <div className="chat-mood-label" style={{ marginTop: 12 }}>modes</div>
+              <div className="chat-mood-pills">
+                {MODES.map(mode => (
+                  <button
+                    key={mode.id}
+                    className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
+                    onClick={() => toggleMode(mode.id)}
+                    title={mode.desc}
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="chat-mood-label" style={{ marginTop: 12 }}>pacing</div>
+              <div className="chat-mood-segmented">
+                {PACING_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
+                    onClick={() => setSessionPacing(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+
+              <div className="chat-mood-label" style={{ marginTop: 12 }}>energy</div>
+              <div className="chat-mood-segmented">
+                {ENERGY_OPTIONS.map(opt => (
+                  <button
+                    key={opt}
+                    className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
+                    onClick={() => setSessionEnergy(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+
+              <button className="chat-mood-done" onClick={() => setMoodOpen(false)}>
+                done
+              </button>
+            </div>
+          )}
 
           <div className="chat-landing-composer">
             <ChatComposer
@@ -684,7 +753,7 @@ export default function ChatPage() {
             onClick={() => setMoodOpen(!moodOpen)}
             title="Session mood"
           >
-            🎛
+            <span className="chat-mood-dot" /> set the mood
           </button>
         </div>
 
