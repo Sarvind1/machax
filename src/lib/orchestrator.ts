@@ -756,14 +756,7 @@ async function callFriend(
 // ── Director agent: one-shot topic research ────────────────────────
 
 async function getTopicContext(message: string): Promise<string> {
-  // Only research messages that reference specific things
-  const needsResearch =
-    /\b(played|watched|read|heard|seen|tried|used|know about|what is|who is|have you|anyone tried|does anyone)\b/i.test(
-      message,
-    );
-
-  if (!needsResearch) return "";
-
+  // Always run — let the model decide if research is needed (returns "NONE" for casual questions)
   try {
     const result = await generateText({
       model: google("gemini-2.5-flash"),
@@ -946,27 +939,6 @@ export async function* orchestrateChat(params: {
     // ── Determine if an agent should ask the user a follow-up question ──
     const needsUserEngagement = !userEngaged && roundResponses.length >= 3;
 
-    // ── Compute context hint ONCE per iteration (shared across batch) ──
-    let contextHint = "";
-    if (roundResponses.length >= 3) {
-      try {
-        // Include all user messages + last 5 agent messages for context
-        const all = allMessages();
-        const userMsgs = all.filter(m => m.from === "user");
-        const agentMsgs = all.filter(m => m.from !== "user").slice(-5);
-        const contextMsgs = [...userMsgs, ...agentMsgs].sort((a, b) => all.indexOf(a) - all.indexOf(b));
-        const recentMsgs = contextMsgs.map(m => `[${m.from}] ${m.text}`).join("\n");
-        contextHint = await callModel(
-          "Identify missing perspectives. Reply in under 10 words.",
-          `Chat:\n${recentMsgs}\n\nIn under 10 words: what angle hasn't been raised yet?`,
-          provider,
-          20,
-        );
-      } catch {
-        contextHint = "";
-      }
-    }
-
     // ── Call models (parallel within batch) ──
     const results = await Promise.allSettled(
       batch.map(({ agent, target }, batchIdx) => {
@@ -986,7 +958,7 @@ export async function* orchestrateChat(params: {
           podFriendIds,
           userName,
           shouldAskUser,
-          contextHint,
+          "", // contextHint removed — director agent handles context
           topicContext,
         );
       }),
