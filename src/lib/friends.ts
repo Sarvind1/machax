@@ -1705,9 +1705,45 @@ const LENGTH_WEIGHTS: Record<ResponseLength, number> = {
 
 const LENGTH_ORDER: ResponseLength[] = ["micro", "short", "medium", "long", "rant"];
 
+export function computeTopicAffinity(friendTags: string[], userMessage: string): number {
+  const msgLower = userMessage.toLowerCase();
+  // Map common keywords to tags
+  const keywordToTag: Record<string, string[]> = {
+    "job": ["career"], "work": ["career"], "quit": ["career"], "salary": ["career", "money"],
+    "interview": ["career"], "promotion": ["career"], "boss": ["career"],
+    "relationship": ["relationship"], "dating": ["relationship"], "ex": ["relationship"],
+    "boyfriend": ["relationship"], "girlfriend": ["relationship"], "crush": ["relationship"],
+    "text": ["relationship"], "situationship": ["relationship"],
+    "money": ["money"], "save": ["money"], "invest": ["money"], "loan": ["money"],
+    "rent": ["money"], "buy": ["money"], "car": ["money", "life"],
+    "food": ["food", "hot-takes"], "pizza": ["food", "hot-takes"], "burger": ["food", "hot-takes"],
+    "biryani": ["food", "hot-takes"], "chai": ["food", "hot-takes"], "coffee": ["food", "hot-takes"],
+    "feel": ["feelings"], "sad": ["feelings"], "happy": ["feelings"], "anxious": ["feelings"],
+    "tired": ["feelings"], "stressed": ["feelings"], "lonely": ["feelings"],
+    "move": ["life"], "city": ["life"], "parents": ["life", "family"],
+    "gym": ["life"], "health": ["life"], "sleep": ["life"],
+    "mba": ["career", "life"], "study": ["career"],
+    "flatmate": ["life"], "roommate": ["life"],
+    "ipl": ["hot-takes"], "cricket": ["hot-takes"],
+  };
+
+  const matchedTags = new Set<string>();
+  for (const [keyword, tags] of Object.entries(keywordToTag)) {
+    if (msgLower.includes(keyword)) {
+      tags.forEach(t => matchedTags.add(t));
+    }
+  }
+
+  if (matchedTags.size === 0) return 0.5; // neutral affinity for unknown topics
+
+  const overlap = friendTags.filter(t => matchedTags.has(t)).length;
+  return Math.min(1.0, overlap / Math.max(matchedTags.size, 1));
+}
+
 export function pickResponseLength(
   defaultLength: Friend["defaultLength"],
-  mode?: ConversationMode
+  mode?: ConversationMode,
+  affinity?: number,
 ): ResponseLength {
   // Start with base weights
   const weights = { ...LENGTH_WEIGHTS };
@@ -1730,6 +1766,17 @@ export function pickResponseLength(
     }
   }
 
+  // Topic affinity modulation — characters who care about the topic go longer
+  if (affinity !== undefined) {
+    if (affinity > 0.6) {
+      weights.long *= 3;
+      weights.rant *= 2;
+    } else if (affinity < 0.3) {
+      weights.micro *= 3;
+      weights.short *= 2;
+    }
+  }
+
   // Weighted random selection
   const total = Object.values(weights).reduce((a, b) => a + b, 0);
   let r = Math.random() * total;
@@ -1742,11 +1789,11 @@ export function pickResponseLength(
 
 export function lengthToInstruction(length: ResponseLength): string {
   switch (length) {
-    case "micro": return "Reply in 1-5 words. 'lol', 'nah', 'bruh no way', '💀'. Complete thought, not a fragment.";
-    case "short": return "Max 8 words. One quick text.";
-    case "medium": return "Max 12 words. One sentence, like a real text.";
-    case "long": return "Max 20 words. 1-2 sentences. You have opinions.";
-    case "rant": return "Go off. 2-3 sentences max. Nobody asked but here you go.";
+    case "micro": return "1-3 words max. A reaction: 'lol', 'nah', '💀', 'valid'. Nothing more.";
+    case "short": return "One quick text. 5-8 words max.";
+    case "medium": return "1 sentence. 10-15 words. A real take.";
+    case "long": return "1-2 sentences. You have something to say about this. 15-30 words.";
+    case "rant": return "Go off. 2-4 sentences. You feel strongly about this. Share a story or strong opinion.";
   }
 }
 

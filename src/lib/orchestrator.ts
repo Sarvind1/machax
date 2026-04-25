@@ -10,6 +10,7 @@ import {
   pickRandomMode,
   pickResponseLength,
   lengthToInstruction,
+  computeTopicAffinity,
 } from "./friends";
 import { getActiveProvider, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
@@ -152,26 +153,32 @@ async function callModel(
 // ── Clean up model response ──
 function cleanResponse(text: string, friendName: string): string {
   text = text.trim();
-  // Collapse multi-line responses into single line (Gemini sometimes outputs paragraphs)
+  // Collapse multi-line to single line
   text = text.replace(/\n+/g, " ").trim();
-  // Strip HTML tags that Gemini sometimes leaks
+  // Strip HTML tags
   text = text.replace(/<[^>]+>/g, "").trim();
-  // Strip leaked internal monologue / thinking text
-  text = text.replace(/^(Internal Monologue|INTERNAL|Thinking|THINKING|Context Analysis)[:\s].*?\n*/gi, "").trim();
-  // If the response has multiple sentences and starts with analysis, take only the last sentence
-  if (/^(What|Why|How|The|My|I should|No one|Everyone|Sarvind)/i.test(text) && text.includes(". ")) {
-    const sentences = text.split(/\.\s+/);
-    const lastSentence = sentences[sentences.length - 1];
-    if (lastSentence && lastSentence.length > 5) {
-      text = lastSentence;
+  // Strip leaked internal monologue/thinking (Gemini sometimes outputs its reasoning)
+  text = text.replace(/^(Internal Monologue|INTERNAL|Thinking|THINKING|Context Analysis|My angle)[:\s].*?(?=\b[a-z])/gi, "").trim();
+  // If still starts with analysis-like text before actual response, find the actual response
+  // Look for a transition from analysis to response (lowercase casual text after formal analysis)
+  const monologuePattern = /^.*?(?:I should|My angle|No one's|The real|What's missing|Missing angle)[^.]*\.\s*/;
+  if (monologuePattern.test(text) && text.length > 100) {
+    // Try to find where the actual casual response starts
+    const parts = text.split(/\.\s+/);
+    // Find the first part that looks like casual chat (starts lowercase, under 15 words)
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+      if (part && /^[a-z💀🤣😭🔥]/.test(part) && part.split(/\s+/).length <= 15) {
+        text = parts.slice(i).join(". ");
+        break;
+      }
     }
   }
-  if (
-    (text.startsWith('"') && text.endsWith('"')) ||
-    (text.startsWith("'") && text.endsWith("'"))
-  ) {
+  // Remove surrounding quotes
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
     text = text.slice(1, -1);
   }
+  // Remove name prefix
   const namePrefix = new RegExp(`^${friendName}:\\s*`, "i");
   text = text.replace(namePrefix, "");
   return text.trim();
@@ -495,17 +502,27 @@ function buildPrompt(
     ? `\nYou don't have to agree with anyone. If something sounds off, say so directly.`
     : "";
 
-  // Build few-shot example using actual participant names
-  const exampleNames = participantNames.slice(0, 5);
-  const fewShotExample = `
-Here's what good group chat messages look like (use these as your style guide):
-[${exampleNames[0] || "dev"}] wait it's the same phone every year
-[${exampleNames[1] || "priya"}] what phone are you on rn?
-[${exampleNames[2] || "reeva"}] if your battery sucks just upgrade
-[${exampleNames[3] || "arjun"}] or if camera matters to you
-[${exampleNames[4] || "tanmay"}] depends if you're paying or parents are
-[${exampleNames[0] || "dev"}] lmao valid
-Notice: 6-8 words each. No explaining. Direct opinions. Casual.`;
+  // Dynamic few-shot examples matched to the chosen response length
+  let fewShotExample = "";
+  switch (true) {
+    case lengthInstruction.includes("1-3 words"):
+      fewShotExample = `Examples of this style: "lol", "nah", "valid", "💀", "bruh"`;
+      break;
+    case lengthInstruction.includes("5-8 words"):
+      fewShotExample = `Examples: "depends if you're paying or parents are", "if your battery sucks just upgrade"`;
+      break;
+    case lengthInstruction.includes("10-15 words"):
+      fewShotExample = `Examples: "honestly i'd just wait for the next model, this one barely changes anything"`;
+      break;
+    case lengthInstruction.includes("15-30 words"):
+      fewShotExample = `Example: "okay but here's the thing — i switched last year and the camera is better but everything else is the same. save your money unless camera is your thing"`;
+      break;
+    case lengthInstruction.includes("2-4 sentences"):
+      fewShotExample = `Example: "nah bro listen. i did this exact thing two years ago. quit my job, thought i'd figure it out. spent three months on the couch applying to random stuff. get your interviews lined up FIRST. trust me on this one."`;
+      break;
+    default:
+      fewShotExample = `Examples: "depends if you're paying or parents are", "nah", "if your battery sucks just upgrade"`;
+  }
 
   // If the user has sent multiple messages and the topic may have shifted, front-load the latest message
   let topicChangeBlock = "";
@@ -523,7 +540,6 @@ The user's name is ${userName} but do NOT use their name in every message. In a 
 You can reply to anyone in the chat — not just ${userName}. React to what other people said. Disagree with someone. Build on their point. Tease them. But remember ${userName} started this conversation — make sure they feel included, not like they're watching strangers argue.
 ${fewShotExample}
 
-Keep your message under 10 words. Shorter is always better. One-word reactions are fine.
 ${lengthInstruction}
 ${modeInstruction}
 
@@ -555,6 +571,7 @@ async function callFriend(
   podFriendIds: string[],
   userName: string = "friend",
   shouldAskUser: boolean = false,
+  contextHint: string = "",
 ): Promise<{ entry: ChatEntry; replyTo: string | null } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -594,13 +611,14 @@ async function callFriend(
   // Pick mode and length
   const mode = pickRandomMode(friend.traits.agreementBias);
   const isClosingOut = energy < 0.2;
+  const affinity = computeTopicAffinity(friend.tags, allMessages[0]?.text || "");
   let length;
   if (isClosingOut) {
     length = Math.random() < 0.5 ? ("micro" as const) : ("short" as const);
   } else if (energy < 0.35) {
     length = Math.random() < 0.25 ? ("short" as const) : ("medium" as const);
   } else {
-    length = pickResponseLength(friend.defaultLength, mode ?? undefined);
+    length = pickResponseLength(friend.defaultLength, mode ?? undefined, affinity);
   }
   const lengthInstruction = lengthToInstruction(length);
   const modeInstruction = mode
@@ -632,23 +650,6 @@ async function callFriend(
   const latestUserMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1].text : null;
   const hasTopicChanged = userMessages.length > 1;
 
-  // Context analysis for non-impulsive agents — identify missing perspectives
-  let contextHint = "";
-  if (friend.traits.responseSpeed !== "impulsive" && allMessages.length >= 3) {
-    try {
-      const shortTranscript = allMessages.slice(-5).map(m => `[${m.from}] ${m.text}`).join("\n");
-      const analysisPrompt = `Chat:\n${shortTranscript}\n\nIn under 10 words: what angle hasn't been raised yet?`;
-      contextHint = await callModel(
-        "Identify missing perspectives. Reply in under 10 words.",
-        analysisPrompt,
-        provider,
-        20,
-      );
-    } catch {
-      contextHint = "";
-    }
-  }
-
   const prompt = buildPrompt(
     friend.name,
     friend.role,
@@ -670,7 +671,7 @@ async function callFriend(
     shouldAskUser,
   );
 
-  const maxTokens =
+  let maxTokens =
     length === "micro"
       ? 60
       : length === "short"
@@ -680,6 +681,16 @@ async function callFriend(
           : length === "rant"
             ? 300
             : 120; // medium default
+
+  // Modulate maxTokens by character's verbosityRange (soft clamp — never go below 60)
+  if (friend.traits.verbosityRange) {
+    const [, maxWords] = friend.traits.verbosityRange;
+    const charMax = Math.round(maxWords * 1.5);
+    // Only clamp DOWN, and never below 60 tokens (enough for a full sentence)
+    if (charMax < maxTokens) {
+      maxTokens = Math.max(60, charMax);
+    }
+  }
 
   try {
     let text = await callModel(
@@ -865,8 +876,23 @@ export async function* orchestrateChat(params: {
     }
 
     // ── Determine if an agent should ask the user a follow-up question ──
-    // After 3+ agent messages with no user engagement, nudge the next agent to ask
     const needsUserEngagement = !userEngaged && roundResponses.length >= 3;
+
+    // ── Compute context hint ONCE per iteration (shared across batch) ──
+    let contextHint = "";
+    if (roundResponses.length >= 3) {
+      try {
+        const recentMsgs = allMessages().slice(-5).map(m => `[${m.from}] ${m.text}`).join("\n");
+        contextHint = await callModel(
+          "Identify missing perspectives. Reply in under 10 words.",
+          `Chat:\n${recentMsgs}\n\nIn under 10 words: what angle hasn't been raised yet?`,
+          provider,
+          20,
+        );
+      } catch {
+        contextHint = "";
+      }
+    }
 
     // ── Call models (parallel within batch) ──
     const results = await Promise.allSettled(
@@ -887,6 +913,7 @@ export async function* orchestrateChat(params: {
           podFriendIds,
           userName,
           shouldAskUser,
+          contextHint,
         );
       }),
     );
