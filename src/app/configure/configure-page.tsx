@@ -170,7 +170,7 @@ export default function ConfigurePage({ userName }: { userName: string }) {
     return next;
   }, []);
 
-  // Auto-save (debounced)
+  // Auto-save (debounced) — flush on unmount so navigating away never loses changes
   const doSave = useCallback(() => {
     const ovsWithActive = syncOverridesWithPod(selectedPod, characterOverrides);
     saveSettings({
@@ -182,11 +182,23 @@ export default function ConfigurePage({ userName }: { userName: string }) {
     });
   }, [saveSettings, userName, characterOverrides, selectedPod, groupSettings, syncOverridesWithPod]);
 
+  // Keep a ref to the latest doSave so the unmount cleanup always calls the
+  // most recent version (with the latest state), not a stale closure.
+  const doSaveRef = useRef(doSave);
+  useEffect(() => { doSaveRef.current = doSave; }, [doSave]);
+
   useEffect(() => {
     if (!loaded.current || initializing.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(doSave, 500);
-    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+        // Flush: save immediately so navigating away doesn't lose changes
+        doSaveRef.current();
+      }
+    };
   }, [doSave]);
 
   // ── Updaters ──────────────────────────────────────────────────────

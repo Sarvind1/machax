@@ -65,7 +65,7 @@ Keep messages under 20 words. Shorter is better. One-word or emoji reactions are
 Don't use the user's name in every message. Just talk naturally like in a group chat.`,
     defaultLength: "medium",
     category: "emotional",
-    traits: { responseSpeed: "normal", interruptProbability: 0.18, agreementBias: 0.35, verbosityRange: [8, 35], confidenceLevel: 0.55, lurkerChance: 0.12, mediaSendProbability: 0.18 },
+    traits: { responseSpeed: "normal", interruptProbability: 0.18, agreementBias: 0.35, verbosityRange: [8, 35], confidenceLevel: 0.55, lurkerChance: 0.12, mediaSendProbability: 0.90 },
   },
   {
     id: "aarushi",
@@ -102,7 +102,7 @@ Keep messages under 20 words. Shorter is better. One-word or emoji reactions are
 Don't use the user's name in every message. Just talk naturally like in a group chat.`,
     defaultLength: "medium",
     category: "emotional",
-    traits: { responseSpeed: "normal", interruptProbability: 0.1, agreementBias: 0.55, verbosityRange: [5, 35], confidenceLevel: 0.4, lurkerChance: 0.15, mediaSendProbability: 0.20 },
+    traits: { responseSpeed: "normal", interruptProbability: 0.1, agreementBias: 0.55, verbosityRange: [5, 35], confidenceLevel: 0.4, lurkerChance: 0.15, mediaSendProbability: 0.90 },
   },
   {
     id: "priya",
@@ -420,7 +420,7 @@ About you: 27F, Hyderabad. Finance analyst. You look like you have your life tog
 Habits: You immediately ask about numbers/cost/savings in any decision. You track everything in spreadsheets including friendships. You hate when people say "money isn't everything."`,
     defaultLength: "medium",
     category: "analytical",
-    traits: { responseSpeed: "thoughtful", interruptProbability: 0.1, agreementBias: -0.05, verbosityRange: [10, 45], confidenceLevel: 0.7, lurkerChance: 0.18, mediaSendProbability: 0.04 },
+    traits: { responseSpeed: "thoughtful", interruptProbability: 0.1, agreementBias: -0.05, verbosityRange: [10, 45], confidenceLevel: 0.7, lurkerChance: 0.18, mediaSendProbability: 0.90 },
   },
   {
     id: "tanmay",
@@ -476,7 +476,7 @@ About you: 28M, Bangalore. Product manager. You always look like you just came f
 Habits: You think in frameworks. You say "strategically speaking" unironically. You've made a spreadsheet for every major life decision.`,
     defaultLength: "medium",
     category: "analytical",
-    traits: { responseSpeed: "thoughtful", interruptProbability: 0.08, agreementBias: 0.0, verbosityRange: [10, 45], confidenceLevel: 0.8, lurkerChance: 0.15, mediaSendProbability: 0.03 },
+    traits: { responseSpeed: "thoughtful", interruptProbability: 0.08, agreementBias: 0.0, verbosityRange: [10, 45], confidenceLevel: 0.8, lurkerChance: 0.15, mediaSendProbability: 0.90 },
   },
   {
     id: "karan",
@@ -703,7 +703,7 @@ About you: 25M, Bangalore. Backend developer. You look permanently unimpressed. 
 Habits: You say the thing everyone is thinking but won't say. You respond to drama with one word. Your legendary dal is referenced whenever anyone talks about cooking.`,
     defaultLength: "short",
     category: "chaotic",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.45, agreementBias: -0.4, verbosityRange: [2, 20], confidenceLevel: 0.85, lurkerChance: 0.05, tangentProbability: 0.2, mediaSendProbability: 0.35 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.45, agreementBias: -0.4, verbosityRange: [2, 20], confidenceLevel: 0.85, lurkerChance: 0.05, tangentProbability: 0.2, mediaSendProbability: 0.95 },
   },
   {
     id: "mira",
@@ -731,7 +731,7 @@ Habits: You say the thing everyone is thinking but won't say. You respond to dra
     systemPrompt: `You are Sid — completely unpredictable. You might agree, might derail, might say something oddly profound. Nobody knows. Use lowercase. No AI disclaimers.`,
     defaultLength: "micro",
     category: "chaotic",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.38, agreementBias: -0.3, verbosityRange: [2, 18], confidenceLevel: 0.9, lurkerChance: 0.1, mediaSendProbability: 0.30 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.38, agreementBias: -0.3, verbosityRange: [2, 18], confidenceLevel: 0.9, lurkerChance: 0.1, mediaSendProbability: 0.90 },
   },
   {
     id: "kunal",
@@ -745,7 +745,7 @@ Habits: You say the thing everyone is thinking but won't say. You respond to dra
     systemPrompt: `You are Kunal — maximum energy, zero filter. You hype everything up and your enthusiasm is contagious even when it shouldn't be. Use lowercase. No AI disclaimers.`,
     defaultLength: "short",
     category: "chaotic",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.42, agreementBias: -0.3, verbosityRange: [3, 25], confidenceLevel: 0.88, lurkerChance: 0.05, mediaSendProbability: 0.40 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.42, agreementBias: -0.3, verbosityRange: [3, 25], confidenceLevel: 0.88, lurkerChance: 0.05, mediaSendProbability: 0.95 },
   },
   {
     id: "bunty",
@@ -1532,7 +1532,7 @@ About you: 28F, Delhi. Therapist (the irony). You dress simply but everyone says
 Habits: You say "and how does that make you feel" as a joke. You never back down from your take. People come to you when they actually want real advice.`,
     defaultLength: "short",
     category: "provocative",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.35, agreementBias: -0.5, verbosityRange: [3, 20], confidenceLevel: 0.88, lurkerChance: 0.08, mediaSendProbability: 0.25 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.35, agreementBias: -0.5, verbosityRange: [3, 20], confidenceLevel: 0.88, lurkerChance: 0.08, mediaSendProbability: 0.90 },
   },
   {
     id: "veer",
@@ -1546,7 +1546,7 @@ Habits: You say "and how does that make you feel" as a joke. You never back down
     systemPrompt: `You are Veer — you challenge people to be braver than they think they can be. You don't accept "I can't" easily. Use lowercase. No AI disclaimers.`,
     defaultLength: "short",
     category: "provocative",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.42, agreementBias: -0.55, verbosityRange: [3, 22], confidenceLevel: 0.92, lurkerChance: 0.06, mediaSendProbability: 0.30 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.42, agreementBias: -0.55, verbosityRange: [3, 22], confidenceLevel: 0.92, lurkerChance: 0.06, mediaSendProbability: 0.90 },
   },
   {
     id: "madhu",
@@ -1560,7 +1560,7 @@ Habits: You say "and how does that make you feel" as a joke. You never back down
     systemPrompt: `You are Madhu — you break frameworks on purpose to see what's underneath. Comfortable answers bore you. Use lowercase. No AI disclaimers.`,
     defaultLength: "medium",
     category: "provocative",
-    traits: { responseSpeed: "impulsive", interruptProbability: 0.38, agreementBias: -0.65, verbosityRange: [5, 25], confidenceLevel: 0.85, lurkerChance: 0.08, mediaSendProbability: 0.35 },
+    traits: { responseSpeed: "impulsive", interruptProbability: 0.38, agreementBias: -0.65, verbosityRange: [5, 25], confidenceLevel: 0.85, lurkerChance: 0.08, mediaSendProbability: 0.90 },
   },
   {
     id: "shekhar",

@@ -19,11 +19,11 @@
 
 /* ===== LEFT SIDEBAR ===== */
 .chat-sidebar {
-  width: 260px;
+  width: 280px;
   border-right: 1px solid var(--rule);
   display: flex;
   flex-direction: column;
-  padding: 20px 16px;
+  padding: 20px 18px;
   flex-shrink: 0;
   overflow-y: auto;
 }
@@ -49,15 +49,15 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink-faint);
-  margin-bottom: 10px;
-  margin-top: 20px;
+  margin-bottom: 12px;
+  margin-top: 22px;
 }
 
 .chat-pod-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 18px;
 }
 
 .chat-history-list {
@@ -69,15 +69,20 @@
 }
 
 .chat-history-item {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   font-size: 13px;
+  line-height: 1.4;
   color: var(--ink-soft);
   cursor: pointer;
   transition: background 0.15s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
 }
 
 .chat-history-item:hover {
@@ -834,10 +839,10 @@
 .friend-pill-presence {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 10px 3px 6px;
+  gap: 6px;
+  padding: 4px 11px 4px 7px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   transition: opacity 0.4s;
 }
 
