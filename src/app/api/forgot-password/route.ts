@@ -33,7 +33,7 @@ export async function POST(request: Request) {
         return Response.json({ success: true });
       }
       await resend.emails.send({
-        from: "MachaX <noreply@machax.xyz>",
+        from: "MachaX <onboarding@resend.dev>",
         to: email.trim(),
         subject: "Reset your MachaX password",
         text: `Hey,\n\nSomeone requested a password reset for your MachaX account.\n\nClick here to reset: ${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.\n\n— machax`,

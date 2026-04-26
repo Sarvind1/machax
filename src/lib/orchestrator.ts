@@ -417,11 +417,16 @@ function scoreMessagesForAgent(
   allMessages: ChatEntry[],
   replyCounts: Map<number, number>,
   traits: AgentTraits,
+  podFriendIds: string[] = [],
 ): ScoredMessage | null {
   const friend = FRIENDS_BY_ID[agentId];
   if (!friend) return null;
 
   const agentName = friend.name.toLowerCase();
+  const podFriendNames = podFriendIds
+    .filter(id => id !== agentId)
+    .map(id => FRIENDS_BY_ID[id]?.name?.toLowerCase())
+    .filter((n): n is string => !!n);
   const scored: ScoredMessage[] = [];
 
   for (let i = 0; i < allMessages.length; i++) {
@@ -469,6 +474,15 @@ function scoreMessagesForAgent(
     // -2 if this agent broadly agrees and has nothing new to add
     if (traits.agreementBias > 0.3 && replies >= 1) {
       score -= 2;
+    }
+
+    // -3 if user asked a question directed at another agent (not this one)
+    if (msg.from === "user" && textLower.includes("?")) {
+      const mentionsOther = podFriendNames.some(name => textLower.includes(name));
+      const mentionsMe = textLower.includes(agentName);
+      if (mentionsOther && !mentionsMe) {
+        score -= 3;
+      }
     }
 
     scored.push({ index: i, from: msg.from, text: msg.text, score });
@@ -686,6 +700,7 @@ ${isMinimalPrompt ? `\n${userName} sent a very short message. React naturally �
 ${energyBlock}
 ${sessionMoodBlock}
 DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${traitHints ? `\n${traitHints}` : stanceHint}
+NEVER reference specific past events, conversations, or memories that aren't in the transcript above. You have personality and opinions but you don't invent shared history.
 Your reply must be a COMPLETE thought. Never a fragment. Do NOT use quotes around your response. Do NOT prefix with your name.
 CRITICAL: Do NOT repeat or rephrase what someone else already said. Add a NEW perspective, joke, reaction, or opinion.`;
 }
@@ -1086,16 +1101,12 @@ export async function* orchestrateChat(params: {
 
   yield { type: "provider", label: provider.label };
 
-  // ── Director agent: research the topic once for all agents ──
-  // Wrap in timeout so it never blocks the conversation
+  // ── Director agent: research the topic (runs parallel with first batch) ──
   let topicContext = "";
-  try {
-    const contextPromise = getTopicContext(message, provider);
-    const timeoutPromise = new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000));
-    topicContext = await Promise.race([contextPromise, timeoutPromise]);
-  } catch {
-    topicContext = "";
-  }
+  const topicContextPromise = Promise.race([
+    getTopicContext(message, provider).catch(() => ""),
+    new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000)),
+  ]);
 
   // ── Minimal-prompt hint ──
   // For very short/vague inputs ("bored", "idk", "hi"), give agents a hint
@@ -1199,17 +1210,32 @@ export async function* orchestrateChat(params: {
     const msgs = allMessages();
     const scoredCandidates: { agent: AgentPresence; target: ScoredMessage; delay: number }[] = [];
 
+    const latestUserMsg = msgs.filter(m => m.from === "user").pop();
     for (const agent of candidates) {
-      const target = scoreMessagesForAgent(
+      const agentName = FRIENDS_BY_ID[agent.id]?.name?.toLowerCase();
+      const isMentioned = !!(latestUserMsg && agentName && latestUserMsg.text.toLowerCase().includes(agentName));
+
+      let target = scoreMessagesForAgent(
         agent.id,
         msgs,
         replyCounts,
         agent.traits,
+        podFriendIds,
       );
 
-      if (!target) continue;
+      if (isMentioned) {
+        const agentResponsesInRound = roundResponses.filter(r => r.from === agent.id);
+        if (agent.state === "offline" || agentResponsesInRound.length >= 2) continue;
+        if (!target && latestUserMsg) {
+          const userMsgIndex = msgs.lastIndexOf(latestUserMsg);
+          target = { index: userMsgIndex >= 0 ? userMsgIndex : msgs.length - 1, from: latestUserMsg.from, text: latestUserMsg.text, score: 5 };
+        }
+      } else {
+        if (!target) continue;
+        if (!shouldRespond(agent, target.score, roundResponses, energy)) continue;
+      }
 
-      if (!shouldRespond(agent, target.score, roundResponses, energy)) continue;
+      if (!target) continue;
 
       const delay = drawDelay(agent.traits.responseSpeed);
       scoredCandidates.push({ agent, target, delay });
@@ -1243,10 +1269,9 @@ export async function* orchestrateChat(params: {
     // ── Sort by delay (fastest first) — process 1-2 at a time ──
     scoredCandidates.sort((a, b) => a.delay - b.delay);
 
-    // Take 1-2 agents per iteration (small parallel batch for near-simultaneous)
-    // Claude CLI: serialize to avoid Max plan rate-limit throttling
     const isCli = provider.name === "claude-cli";
     const batchSize = isCli ? 1
+      : iterations === 1 ? Math.min(scoredCandidates.length, 5)
       : scoredCandidates.length >= 2 &&
         Math.abs(scoredCandidates[0].delay - scoredCandidates[1].delay) < 3000
         ? 2
@@ -1406,6 +1431,11 @@ export async function* orchestrateChat(params: {
     // Reset pending questions over time (simulated user silence)
     if (simulatedTimeMs > 15000 * pendingQuestions) {
       pendingQuestions = Math.max(0, pendingQuestions - 1);
+    }
+
+    // Await topic research after first iteration so later agents get context
+    if (iterations === 1) {
+      topicContext = await topicContextPromise;
     }
 
     iterTrace.energyAfter = parseFloat(energy.toFixed(3));
