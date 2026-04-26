@@ -478,8 +478,8 @@ function scoreMessagesForAgent(
 
     // -3 if user asked a question directed at another agent (not this one)
     if (msg.from === "user" && textLower.includes("?")) {
-      const mentionsOther = podFriendNames.some(name => textLower.includes(name));
-      const mentionsMe = textLower.includes(agentName);
+      const mentionsOther = podFriendNames.some(name => new RegExp(`\\b${name}\\b`, 'i').test(textLower));
+      const mentionsMe = new RegExp(`\\b${agentName}\\b`, 'i').test(textLower);
       if (mentionsOther && !mentionsMe) {
         score -= 3;
       }
@@ -1213,7 +1213,7 @@ export async function* orchestrateChat(params: {
     const latestUserMsg = msgs.filter(m => m.from === "user").pop();
     for (const agent of candidates) {
       const agentName = FRIENDS_BY_ID[agent.id]?.name?.toLowerCase();
-      const isMentioned = !!(latestUserMsg && agentName && latestUserMsg.text.toLowerCase().includes(agentName));
+      const isMentioned = !!(latestUserMsg && agentName && new RegExp(`\\b${agentName}\\b`, 'i').test(latestUserMsg.text));
 
       let target = scoreMessagesForAgent(
         agent.id,
@@ -1271,7 +1271,7 @@ export async function* orchestrateChat(params: {
 
     const isCli = provider.name === "claude-cli";
     const batchSize = isCli ? 1
-      : iterations === 1 ? Math.min(scoredCandidates.length, 5)
+      : iterations === 1 ? Math.min(scoredCandidates.length, 3)
       : scoredCandidates.length >= 2 &&
         Math.abs(scoredCandidates[0].delay - scoredCandidates[1].delay) < 3000
         ? 2
@@ -1433,8 +1433,8 @@ export async function* orchestrateChat(params: {
       pendingQuestions = Math.max(0, pendingQuestions - 1);
     }
 
-    // Await topic research after first iteration so later agents get context
-    if (iterations === 1) {
+    // Await topic research once resolved so later agents get context
+    if (!topicContext && topicContextPromise) {
       topicContext = await topicContextPromise;
     }
 

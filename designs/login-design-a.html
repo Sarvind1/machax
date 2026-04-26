@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MachaX — your friends are waiting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;1,9..144,400;1,9..144,700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --paper: #F4F1E8;
+  --ink: #1E1C16;
+  --ink-soft: #5A554A;
+  --ink-faint: #8A8374;
+  --card: #ffffff;
+  --matcha: #4a7c59;
+  --matcha-mid: #6BAE7E;
+  --matcha-light: #7db88a;
+  --matcha-foam: #eef6ef;
+  --rule: rgba(30, 28, 22, 0.12);
+  --rule-solid: #dde0d4;
+  --reeva: #6BAE7E;
+  --tanmay: #7BA5C4;
+  --dev: #D4A857;
+  --aarushi: #D28AA8;
+  --mira: #D48A7A;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-body: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-hand: 'Caveat', cursive;
+}
+
+html { font-size: 16px; }
+body {
+  min-height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* paper grain overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--ink) 0.5px, transparent 0.5px);
+  background-size: 20px 20px;
+  opacity: 0.02;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* subtle green gradient bloom top-right */
+body::after {
+  content: "";
+  position: fixed;
+  top: -120px;
+  right: -80px;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(107, 174, 126, 0.12), transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ===== SPLIT LAYOUT ===== */
+.page {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+.left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 40px 32px;
+  max-width: 520px;
+  min-width: 360px;
+}
+
+.right {
+  flex: 1.1;
+  background: var(--ink);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ===== LOGO BAR ===== */
+.logo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 26px;
+  letter-spacing: -0.5px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.wordmark em { font-style: italic; color: var(--matcha); }
+
+.logo-cup {
+  height: 1.1em;
+  width: auto;
+  margin-bottom: -0.05em;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--matcha-mid);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ===== HEADLINE ===== */
+.headline { margin-bottom: 6px; }
+
+.headline h1 {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 36px;
+  line-height: 1.05;
+  letter-spacing: -1.2px;
+  color: var(--ink);
+}
+
+.headline h1 em { font-style: italic; color: var(--matcha); }
+
+.subtitle {
+  font-size: 14px;
+  color: var(--ink-faint);
+  margin-bottom: 24px;
+  max-width: 36ch;
+  line-height: 1.5;
+}
+
+/* ===== PROMPT CHIPS ===== */
+.prompt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 28px;
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 6px 12px;
+  border: 1px solid var(--rule-solid);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: default;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.chip:hover {
+  border-color: var(--matcha-mid);
+  background: var(--matcha-foam);
+}
+
+/* ===== TABS ===== */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 24px;
+}
+
+.tab {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+  background: none;
+  border: none;
+  padding: 8px 20px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+  text-transform: lowercase;
+}
+
+.tab:hover { color: var(--ink-soft); }
+.tab.active { color: var(--ink); border-bottom-color: var(--matcha); }
+
+/* ===== FORM ===== */
+.form-card {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  margin-bottom: 16px;
+}
+
+.field { margin-bottom: 14px; }
+
+.field label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--ink-faint);
+  margin-bottom: 5px;
+}
+
+.field input {
+  width: 100%;
+  padding: 11px 14px;
+  font-size: 14px;
+  font-family: var(--font-body);
+  border: 1.5px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.field input:focus {
+  border-color: var(--matcha-mid);
+  box-shadow: 0 0 0 3px rgba(107, 174, 126, 0.12);
+}
+
+.field input::placeholder { color: var(--ink-faint); }
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.submit-btn {
+  width: 100%;
+  padding: 13px 20px;
+  background: var(--matcha);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s;
+  margin-top: 4px;
+}
+
+.submit-btn:hover { transform: translateY(-1px); background: #3f6e4e; }
+
+.forgot-link { text-align: right; margin-top: 8px; }
+
+.forgot-link a {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--ink-faint);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--rule);
+}
+
+.forgot-link a:hover { color: var(--ink-soft); }
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 14px;
+}
+
+.divider::before, .divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+.divider span {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.google-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 20px;
+  background: rgba(30, 28, 22, 0.03);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.google-btn:hover { background: rgba(30, 28, 22, 0.06); }
+.google-btn svg { flex-shrink: 0; }
+
+.soon-badge {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--rule);
+  color: var(--ink-faint);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 4px;
+}
+
+/* ===== BOTTOM HANDWRITING ===== */
+.bottom-note {
+  margin-top: auto;
+  padding-top: 20px;
+  font-family: var(--font-hand);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--matcha);
+  transform: rotate(-1.5deg);
+}
+
+/* ===== EASTER EGG TOAST ===== */
+.easter-egg {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--ink);
+  color: var(--paper);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  opacity: 0;
+  transition: all 0.35s ease;
+  z-index: 100;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.easter-egg.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ===== RIGHT PANEL ===== */
+.right-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 28px 32px;
+}
+
+.right-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.right-title {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 18px;
+  color: rgba(244, 241, 232, 0.9);
+  letter-spacing: -0.3px;
+}
+
+.right-label {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 232, 0.35);
+}
+
+/* Friend roster */
+.roster {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(244, 241, 232, 0.08);
+}
+
+.roster-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.roster-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  position: relative;
+}
+
+.roster-avatar::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #5cd67b;
+  border: 2px solid var(--ink);
+}
+
+.roster-name {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: rgba(244, 241, 232, 0.5);
+}
+
+/* Question bar */
+.question-bar {
+  background: rgba(244, 241, 232, 0.06);
+  border: 1px solid rgba(244, 241, 232, 0.08);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.question-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 232, 0.3);
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.question-text {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: rgba(244, 241, 232, 0.85);
+  line-height: 1.45;
+}
+
+/* Chat stream */
+.chat-stream {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 20px;
+  mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 3%, black 92%, transparent 100%);
+}
+
+.chat-stream::-webkit-scrollbar { display: none; }
+
+.chat-msg {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: msgFadeIn 0.5s ease forwards;
+}
+
+@keyframes msgFadeIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.msg-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.msg-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.msg-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(244, 241, 232, 0.6);
+  letter-spacing: 0.04em;
+}
+
+.msg-role {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 10px;
+  color: rgba(244, 241, 232, 0.3);
+}
+
+.msg-bubble {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(244, 241, 232, 0.88);
+  padding: 10px 14px;
+  background: rgba(244, 241, 232, 0.06);
+  border: 1px solid rgba(244, 241, 232, 0.08);
+  border-radius: 14px;
+  border-top-left-radius: 4px;
+  max-width: 88%;
+}
+
+/* Typing indicator */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(244, 241, 232, 0.35);
+  padding: 4px 0;
+  animation: msgFadeIn 0.3s ease forwards;
+}
+
+.typing-dots { display: flex; gap: 3px; }
+
+.typing-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(244, 241, 232, 0.35);
+  animation: dotBounce 1.2s ease-in-out infinite;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dotBounce {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+
+.right-hand-note {
+  font-family: var(--font-hand);
+  font-size: 16px;
+  color: rgba(107, 174, 126, 0.5);
+  transform: rotate(-1deg);
+  padding-top: 12px;
+  flex-shrink: 0;
+}
+
+/* ===== FORM PANEL TOGGLE ===== */
+.form-panel { display: none; }
+.form-panel.active { display: block; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 900px) {
+  .page { flex-direction: column; }
+  .left { max-width: 100%; min-width: 0; padding: 24px 20px; }
+  .right { min-height: 420px; border-radius: 20px 20px 0 0; margin: 0 12px; }
+  .right-inner { padding: 24px 20px; }
+  .headline h1 { font-size: 30px; }
+  .roster { overflow-x: auto; }
+}
+
+@media (max-width: 500px) {
+  .left { padding: 20px 16px; }
+  .headline h1 { font-size: 26px; }
+  .field-row { grid-template-columns: 1fr; gap: 0; }
+  .prompt-chips { gap: 5px; }
+  .chip { font-size: 10px; padding: 5px 10px; }
+  .form-card { padding: 18px 16px; }
+  .right-inner { padding: 20px 16px; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+  <!-- ===== LEFT: FORM SIDE ===== -->
+  <div class="left">
+    <div class="logo-bar">
+      <a href="#" class="wordmark">
+        Macha<svg class="logo-cup" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 8 L4 52 Q4 60 12 60 L32 60 Q40 60 40 52 L38 8 Z" fill="var(--matcha)" rx="4"/>
+          <path d="M38 18 Q50 18 50 32 Q50 44 40 44" stroke="var(--matcha)" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M14 4 Q16 0 18 4" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M22 2 Q24 -2 26 2" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <path d="M30 4 Q32 0 34 4" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+          <text x="21" y="44" text-anchor="middle" fill="#fff" font-weight="800" font-size="32" font-family="sans-serif">X</text>
+        </svg>
+      </a>
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        5 friends online
+      </div>
+    </div>
+
+    <div class="headline">
+      <h1>the group chat<br>that actually <em>helps.</em></h1>
+    </div>
+    <p class="subtitle">dump your 3am thoughts. your friends will debate it, cut the noise, and hand you one clear move.</p>
+
+    <div class="prompt-chips">
+      <span class="chip">should i quit my job?</span>
+      <span class="chip">am i settling?</span>
+      <span class="chip">move cities or nah</span>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('login')" id="tab-login">log in</button>
+      <button class="tab" onclick="switchTab('signup')" id="tab-signup">sign up</button>
+    </div>
+
+    <!-- LOGIN FORM -->
+    <div class="form-panel active" id="panel-login">
+      <div class="form-card">
+        <div class="field">
+          <label for="login-user">username or email</label>
+          <input type="text" id="login-user" placeholder="you@example.com" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="login-pass">password</label>
+          <input type="password" id="login-pass" placeholder="something you remember" autocomplete="current-password">
+        </div>
+        <button class="submit-btn" type="button">log in</button>
+        <div class="forgot-link"><a href="#">forgot password?</a></div>
+      </div>
+      <div class="divider"><span>or continue with</span></div>
+      <button class="google-btn" type="button">
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+          <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        continue with google
+        <span class="soon-badge">soon</span>
+      </button>
+    </div>
+
+    <!-- SIGNUP FORM -->
+    <div class="form-panel" id="panel-signup">
+      <div class="form-card">
+        <div class="field">
+          <label for="signup-name">name</label>
+          <input type="text" id="signup-name" placeholder="first name is fine" autocomplete="given-name" oninput="handleNameInput(this.value)">
+        </div>
+        <div class="field">
+          <label for="signup-email">email</label>
+          <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="signup-city">city</label>
+            <input type="text" id="signup-city" placeholder="e.g. bengaluru" autocomplete="address-level2" oninput="handleCityInput(this.value)">
+          </div>
+          <div class="field">
+            <label for="signup-age">age</label>
+            <input type="text" id="signup-age" placeholder="just a number" inputmode="numeric" maxlength="3">
+          </div>
+        </div>
+        <div class="field">
+          <label for="signup-username">username</label>
+          <input type="text" id="signup-username" placeholder="lowercase, no spaces" autocomplete="username">
+        </div>
+        <div class="field">
+          <label for="signup-password">password</label>
+          <input type="password" id="signup-password" placeholder="at least 4 characters" autocomplete="new-password">
+        </div>
+        <button class="submit-btn" type="button">sign up</button>
+      </div>
+      <div class="divider"><span>or continue with</span></div>
+      <button class="google-btn" type="button">
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+          <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        continue with google
+        <span class="soon-badge">soon</span>
+      </button>
+    </div>
+
+    <div class="bottom-note">your friends are already arguing about something...</div>
+  </div>
+
+  <!-- ===== RIGHT: LIVE CHAT PREVIEW ===== -->
+  <div class="right">
+    <div class="right-inner">
+      <div class="right-header">
+        <span class="right-title">live from the group chat</span>
+        <span class="right-label">preview</span>
+      </div>
+
+      <!-- Friend roster with online dots -->
+      <div class="roster">
+        <div class="roster-item">
+          <div class="roster-avatar" style="background: var(--reeva);">R</div>
+          <span class="roster-name">reeva</span>
+        </div>
+        <div class="roster-item">
+          <div class="roster-avatar" style="background: var(--tanmay);">T</div>
+          <span class="roster-name">tanmay</span>
+        </div>
+        <div class="roster-item">
+          <div class="roster-avatar" style="background: var(--dev);">D</div>
+          <span class="roster-name">dev</span>
+        </div>
+        <div class="roster-item">
+          <div class="roster-avatar" style="background: var(--aarushi);">A</div>
+          <span class="roster-name">aarushi</span>
+        </div>
+        <div class="roster-item">
+          <div class="roster-avatar" style="background: var(--mira);">M</div>
+          <span class="roster-name">mira</span>
+        </div>
+      </div>
+
+      <!-- Current topic -->
+      <div class="question-bar" id="question-bar">
+        <span class="question-label">topic</span>
+        <span class="question-text" id="question-text">should i quit my job or is that just monday brain</span>
+      </div>
+
+      <!-- Animated chat stream -->
+      <div class="chat-stream" id="chat-stream"></div>
+
+      <div class="right-hand-note">they never agree, but they always help</div>
+    </div>
+  </div>
+</div>
+
+<!-- Easter egg toast -->
+<div class="easter-egg" id="easter-egg"></div>
+
+<script>
+// ===== TAB SWITCHING =====
+function switchTab(tab) {
+  document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+  document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+  document.getElementById('panel-login').classList.toggle('active', tab === 'login');
+  document.getElementById('panel-signup').classList.toggle('active', tab === 'signup');
+}
+
+// ===== EASTER EGG: friends react to your name/city =====
+var nameReactions = [
+  function(n) { return 'reeva: omg ' + n + '!! come come come'; },
+  function(n) { return 'aarushi: ' + n + '!! finally. we\'ve been WAITING'; },
+  function(n) { return 'dev: yo ' + n + '. pull up a chair.'; },
+  function(n) { return 'tanmay: ' + n + ', huh? let me google that... jk jk'; },
+  function(n) { return 'mira: ' + n + '! we were just talking about you. (we weren\'t)'; },
+];
+
+var cityReactions = [
+  function(c) { return 'tanmay: ' + c + '?? i have SO many opinions about ' + c; },
+  function(c) { return 'reeva: i bet the chai in ' + c + ' is mid. sorry not sorry'; },
+  function(c) { return 'aarushi: ' + c + ' girllll the food better be good'; },
+  function(c) { return 'dev: ' + c + ' rep! respect.'; },
+  function(c) { return 'mira: is ' + c + ' a real place or did you make that up'; },
+];
+
+var eggTimer = null;
+function showEasterEgg(text) {
+  var el = document.getElementById('easter-egg');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(eggTimer);
+  eggTimer = setTimeout(function() { el.classList.remove('show'); }, 2800);
+}
+
+var lastNameLen = 0;
+function handleNameInput(val) {
+  var trimmed = val.trim();
+  if (trimmed.length >= 3 && lastNameLen < 3) {
+    var fn = nameReactions[Math.floor(Math.random() * nameReactions.length)];
+    showEasterEgg(fn(trimmed));
+  }
+  lastNameLen = trimmed.length;
+}
+
+var lastCityLen = 0;
+function handleCityInput(val) {
+  var trimmed = val.trim();
+  if (trimmed.length >= 3 && lastCityLen < 3) {
+    var fn = cityReactions[Math.floor(Math.random() * cityReactions.length)];
+    showEasterEgg(fn(trimmed));
+  }
+  lastCityLen = trimmed.length;
+}
+
+// ===== ANIMATED CHAT PREVIEW =====
+var conversations = [
+  {
+    question: "should i quit my job or is that just monday brain",
+    messages: [
+      { name: "reeva", role: "the empath", color: "var(--reeva)", text: "wait wait wait. is it the job or is it the sunday scaries talking?" },
+      { name: "tanmay", role: "the analyst", color: "var(--tanmay)", text: "ok real talk. savings? runway? do you have 6 months?" },
+      { name: "aarushi", role: "the hype", color: "var(--aarushi)", text: "QUIT. life is too short to be miserable bestie" },
+      { name: "dev", role: "the pragmatist", color: "var(--dev)", text: "counterpoint: don\u2019t quit till you have the next thing lined up. just saying." },
+      { name: "mira", role: "the closer", color: "var(--mira)", text: "ruling: sleep on it. if you still feel this way thursday, we make a plan." },
+      { name: "reeva", role: "the empath", color: "var(--reeva)", text: "but like... what if thursday you is also miserable" },
+      { name: "mira", role: "the closer", color: "var(--mira)", text: "then we talk again thursday. that\u2019s the whole point." },
+    ]
+  },
+  {
+    question: "they left me on read for 6 hours. do i double text?",
+    messages: [
+      { name: "aarushi", role: "the hype", color: "var(--aarushi)", text: "absolutely not. maintain your dignity." },
+      { name: "tanmay", role: "the analyst", color: "var(--tanmay)", text: "what did you send them? context matters here." },
+      { name: "dev", role: "the pragmatist", color: "var(--dev)", text: "a meme about cats, probably. that\u2019s not a conversation starter." },
+      { name: "reeva", role: "the empath", color: "var(--reeva)", text: "send a voice note. voice notes hit different." },
+      { name: "mira", role: "the closer", color: "var(--mira)", text: "or just... wait. 6 hours is nothing. touch some grass." },
+      { name: "aarushi", role: "the hype", color: "var(--aarushi)", text: "ok fine she\u2019s right. but after 24 hours all bets are off." },
+    ]
+  },
+  {
+    question: "i want to move to goa but my parents will lose it",
+    messages: [
+      { name: "tanmay", role: "the analyst", color: "var(--tanmay)", text: "what\u2019s the job situation? remote? same salary?" },
+      { name: "aarushi", role: "the hype", color: "var(--aarushi)", text: "then WHAT are we even discussing. GO." },
+      { name: "dev", role: "the pragmatist", color: "var(--dev)", text: "cost of living comparison first. rent in goa vs your city right now?" },
+      { name: "reeva", role: "the empath", color: "var(--reeva)", text: "have the conversation with your parents. you might be surprised." },
+      { name: "mira", role: "the closer", color: "var(--mira)", text: "try it for 3 months. sublet your current place. reversible decisions are free." },
+      { name: "dev", role: "the pragmatist", color: "var(--dev)", text: "what if goa gets boring after 3 months though" },
+      { name: "mira", role: "the closer", color: "var(--mira)", text: "then you move back and you have a story. beats wondering forever." },
+    ]
+  },
+  {
+    question: "macbook or thinkpad. this is ruining my week.",
+    messages: [
+      { name: "aarushi", role: "the hype", color: "var(--aarushi)", text: "macbook. always macbook. this isn\u2019t even a real question." },
+      { name: "tanmay", role: "the analyst", color: "var(--tanmay)", text: "specs? budget? use case? give me data." },
+      { name: "dev", role: "the pragmatist", color: "var(--dev)", text: "coding + youtube + looking cool at cafes. classic." },
+      { name: "reeva", role: "the empath", color: "var(--reeva)", text: "thinkpad people have a certain vibe and i respect it" },
+      { name: "mira", role: "the closer", color: "var(--mira)", text: "thinkpad for the work. macbook for the ego. pick your fighter." },
+      { name: "aarushi", role: "the hype", color: "var(--aarushi)", text: "EGO IS VALID. macbook final answer." },
+      { name: "mira", role: "the closer", color: "var(--mira)", text: "buy whichever one you won\u2019t return in 3 days. done." },
+    ]
+  },
+];
+
+var stream = document.getElementById('chat-stream');
+var questionText = document.getElementById('question-text');
+var currentConvo = 0;
+var abortToken = 0;
+
+function wait(ms) {
+  return new Promise(function(r) { setTimeout(r, ms); });
+}
+
+function createMsgEl(msg) {
+  var wrapper = document.createElement('div');
+  wrapper.className = 'chat-msg';
+
+  var header = document.createElement('div');
+  header.className = 'msg-header';
+
+  var pip = document.createElement('span');
+  pip.className = 'msg-pip';
+  pip.style.background = msg.color;
+
+  var name = document.createElement('span');
+  name.className = 'msg-name';
+  name.textContent = msg.name;
+
+  var role = document.createElement('span');
+  role.className = 'msg-role';
+  role.textContent = msg.role;
+
+  header.appendChild(pip);
+  header.appendChild(name);
+  header.appendChild(role);
+
+  var bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = msg.text;
+
+  wrapper.appendChild(header);
+  wrapper.appendChild(bubble);
+  return wrapper;
+}
+
+function createTypingEl(msg) {
+  var el = document.createElement('div');
+  el.className = 'typing-indicator';
+  el.innerHTML = '<span class="msg-pip" style="background: ' + msg.color + '"></span>' +
+    msg.name +
+    '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  return el;
+}
+
+async function runConversation() {
+  var token = ++abortToken;
+  var convo = conversations[currentConvo];
+
+  // Update question text
+  questionText.textContent = convo.question;
+  stream.innerHTML = '';
+
+  for (var i = 0; i < convo.messages.length; i++) {
+    if (abortToken !== token) return;
+    var msg = convo.messages[i];
+
+    // Show typing indicator
+    var typingEl = createTypingEl(msg);
+    stream.appendChild(typingEl);
+    stream.scrollTop = stream.scrollHeight;
+    await wait(700 + Math.random() * 500);
+    if (abortToken !== token) return;
+
+    // Replace with actual message
+    stream.removeChild(typingEl);
+    var msgEl = createMsgEl(msg);
+    stream.appendChild(msgEl);
+    stream.scrollTop = stream.scrollHeight;
+
+    // Pause between messages
+    await wait(1800 + Math.random() * 1200);
+  }
+
+  if (abortToken !== token) return;
+
+  // Pause before cycling to next conversation
+  await wait(4000);
+  if (abortToken !== token) return;
+
+  currentConvo = (currentConvo + 1) % conversations.length;
+  runConversation();
+}
+
+// Start the loop
+runConversation();
+</script>
+
+</body>
+</html>

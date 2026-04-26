@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MachaX — Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600;1,9..144,700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --paper: #F4F1E8;
+    --ink: #1E1C16;
+    --muted: #6b6860;
+    --matcha: #4a7c59;
+    --matcha-light: #6BAE7E;
+    --matcha-foam: #eef6ef;
+    --line: #d8d4c8;
+    --card: #fffef9;
+    --shadow: rgba(30, 28, 22, 0.06);
+  }
+
+  html, body {
+    min-height: 100vh;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(800px 600px at 20% 10%, rgba(107, 174, 126, 0.12), transparent 60%),
+      radial-gradient(600px 500px at 80% 80%, rgba(74, 124, 89, 0.08), transparent 60%),
+      radial-gradient(400px 300px at 60% 30%, rgba(107, 174, 126, 0.06), transparent 60%),
+      var(--paper);
+  }
+
+  /* ===== PAGE LAYOUT ===== */
+  .page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+
+  /* ===== LOGO ===== */
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 28px;
+  }
+  .logo-text {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 32px;
+    letter-spacing: -0.5px;
+    color: var(--ink);
+  }
+  .logo-cup {
+    height: 1.1em;
+    width: auto;
+    vertical-align: middle;
+    margin-bottom: -0.05em;
+  }
+
+  /* ===== ROTATING TAGLINE ===== */
+  .tagline-wrap {
+    height: 32px;
+    overflow: hidden;
+    margin-bottom: 32px;
+    text-align: center;
+  }
+  .tagline-track {
+    display: flex;
+    flex-direction: column;
+    animation: tagline-scroll 16s ease-in-out infinite;
+  }
+  .tagline-track span {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--muted);
+    height: 32px;
+    line-height: 32px;
+    white-space: nowrap;
+  }
+
+  @keyframes tagline-scroll {
+    0%, 18%    { transform: translateY(0); }
+    25%, 43%   { transform: translateY(-32px); }
+    50%, 68%   { transform: translateY(-64px); }
+    75%, 93%   { transform: translateY(-96px); }
+    100%       { transform: translateY(-128px); }
+  }
+
+  /* ===== CARD ===== */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 36px 32px 32px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow:
+      0 1px 2px var(--shadow),
+      0 8px 32px var(--shadow);
+  }
+
+  /* ===== TABS ===== */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    background: var(--paper);
+    border-radius: 10px;
+    padding: 3px;
+    margin-bottom: 28px;
+  }
+  .tab {
+    flex: 1;
+    padding: 10px 0;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: var(--muted);
+    transition: all 0.2s ease;
+  }
+  .tab:hover {
+    color: var(--ink);
+  }
+  .tab.active {
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: 0 1px 3px var(--shadow);
+  }
+
+  /* ===== FORM ===== */
+  .form-login, .form-signup {
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .form-login.active, .form-signup.active {
+    display: flex;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    color: var(--muted);
+  }
+  .field input {
+    padding: 12px 14px;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px;
+    background: var(--card);
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus {
+    border-color: var(--matcha);
+  }
+  .field input::placeholder {
+    color: #b5b0a5;
+  }
+
+  /* two-col row for city + age */
+  .field-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 12px;
+  }
+
+  .submit-btn {
+    margin-top: 4px;
+    padding: 13px 20px;
+    background: var(--matcha);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.2s;
+  }
+  .submit-btn:hover {
+    transform: translateY(-1px);
+    background: #3f6d4d;
+  }
+
+  .forgot-link {
+    text-align: center;
+    margin-top: 4px;
+  }
+  .forgot-link a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+  }
+  .forgot-link a:hover {
+    color: var(--matcha);
+  }
+
+  /* ===== DIVIDER ===== */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0 16px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .divider span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #b5b0a5;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+  }
+
+  /* ===== GOOGLE BUTTON ===== */
+  .google-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px;
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: not-allowed;
+    opacity: 0.7;
+    position: relative;
+  }
+  .google-btn .soon-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    background: var(--paper);
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: var(--muted);
+  }
+
+  /* ===== PERSONA DOTS ===== */
+  .persona-lobby {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 32px;
+    position: relative;
+  }
+  .persona-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: default;
+    position: relative;
+    transition: transform 0.2s ease;
+  }
+  .persona-dot:hover {
+    transform: scale(1.5);
+  }
+  .persona-dot .persona-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .persona-dot .persona-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 4px solid transparent;
+    border-top-color: var(--ink);
+  }
+  .persona-dot:hover .persona-tooltip {
+    opacity: 1;
+  }
+
+  .lobby-label {
+    font-family: 'Caveat', cursive;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--matcha-light);
+    margin-left: 6px;
+  }
+
+  /* ===== FOOTER ===== */
+  .page-footer {
+    margin-top: 36px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #b5b0a5;
+  }
+
+  /* ===== RESPONSIVE ===== */
+  @media (max-width: 480px) {
+    .card {
+      padding: 28px 22px 24px;
+    }
+    .tagline-track span {
+      font-size: 15px;
+    }
+    .field-row {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- Logo -->
+  <div class="logo-row">
+    <span class="logo-text">Macha</span>
+    <svg class="logo-cup" viewBox="0 0 52 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 8 L4 52 Q4 60 12 60 L32 60 Q40 60 40 52 L38 8 Z" fill="#4a7c59" rx="4"/>
+      <path d="M38 18 Q50 18 50 32 Q50 44 40 44" stroke="#4a7c59" stroke-width="4" fill="none" stroke-linecap="round"/>
+      <path d="M14 4 Q16 0 18 4" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <path d="M22 2 Q24 -2 26 2" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <path d="M30 4 Q32 0 34 4" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <text x="21" y="44" text-anchor="middle" fill="#fff" font-weight="800" font-size="32" font-family="sans-serif">X</text>
+    </svg>
+  </div>
+
+  <!-- Rotating tagline -->
+  <div class="tagline-wrap">
+    <div class="tagline-track">
+      <span>the group chat that doesn't judge</span>
+      <span>your 3am thoughts deserve better</span>
+      <span>machax = friend in kannada</span>
+      <span>a warm seat at the table</span>
+      <span>the group chat that doesn't judge</span>
+    </div>
+  </div>
+
+  <!-- Card -->
+  <div class="card">
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('login')">log in</button>
+      <button class="tab" onclick="switchTab('signup')">sign up</button>
+    </div>
+
+    <!-- Login Form -->
+    <form class="form-login active">
+      <div class="field">
+        <label for="login-user">username or email</label>
+        <input id="login-user" type="text" placeholder="you@somewhere.com" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="login-pass">password</label>
+        <input id="login-pass" type="password" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" autocomplete="current-password">
+      </div>
+      <button type="button" class="submit-btn">log in &#8594;</button>
+      <div class="forgot-link"><a href="#">forgot password?</a></div>
+
+      <div class="divider"><span>or continue with</span></div>
+      <button type="button" class="google-btn">
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+          <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        continue with google
+        <span class="soon-tag">soon</span>
+      </button>
+    </form>
+
+    <!-- Signup Form -->
+    <form class="form-signup">
+      <div class="field">
+        <label for="signup-name">name</label>
+        <input id="signup-name" type="text" placeholder="first name is fine" autocomplete="given-name">
+      </div>
+      <div class="field">
+        <label for="signup-email">email</label>
+        <input id="signup-email" type="email" placeholder="you@somewhere.com" autocomplete="email">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="signup-city">city</label>
+          <input id="signup-city" type="text" placeholder="e.g. bengaluru" autocomplete="address-level2">
+        </div>
+        <div class="field">
+          <label for="signup-age">age</label>
+          <input id="signup-age" type="text" inputmode="numeric" placeholder="just a number" autocomplete="off" maxlength="3">
+        </div>
+      </div>
+      <div class="field">
+        <label for="signup-user">username</label>
+        <input id="signup-user" type="text" placeholder="lowercase, no spaces" autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="signup-pass">password</label>
+        <input id="signup-pass" type="password" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" autocomplete="new-password">
+      </div>
+      <button type="button" class="submit-btn">sign up &#8594;</button>
+
+      <div class="divider"><span>or continue with</span></div>
+      <button type="button" class="google-btn">
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+          <path d="M3.964 10.706A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.706V4.962H.957A8.997 8.997 0 000 9c0 1.452.348 2.827.957 4.038l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.962L3.964 7.294C4.672 5.166 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        continue with google
+        <span class="soon-tag">soon</span>
+      </button>
+    </form>
+
+  </div>
+
+  <!-- Persona dots (the friends waiting in the lobby) -->
+  <div class="persona-lobby">
+    <div class="persona-dot" style="background: #6BAE7E;">
+      <div class="persona-tooltip">reeva &middot; the empath</div>
+    </div>
+    <div class="persona-dot" style="background: #D28AA8;">
+      <div class="persona-tooltip">aarushi &middot; the hype</div>
+    </div>
+    <div class="persona-dot" style="background: #7BA5C4;">
+      <div class="persona-tooltip">noor &middot; the analyst</div>
+    </div>
+    <div class="persona-dot" style="background: #B8A88A;">
+      <div class="persona-tooltip">ananya &middot; the vibe</div>
+    </div>
+    <div class="persona-dot" style="background: oklch(0.78 0.11 175);">
+      <div class="persona-tooltip">boss &middot; the judge</div>
+    </div>
+    <div class="persona-dot" style="background: oklch(0.88 0.08 130);">
+      <div class="persona-tooltip">didi &middot; the anchor</div>
+    </div>
+    <div class="persona-dot" style="background: oklch(0.82 0.11 25);">
+      <div class="persona-tooltip">fomo &middot; the worrier</div>
+    </div>
+    <div class="persona-dot" style="background: oklch(0.80 0.11 305);">
+      <div class="persona-tooltip">hype &middot; the cheerleader</div>
+    </div>
+    <span class="lobby-label">waiting in the lobby</span>
+  </div>
+
+  <!-- Footer -->
+  <div class="page-footer">
+    a soothing presence. a safe space.
+  </div>
+
+</div>
+
+<script>
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(function(t, i) {
+      t.classList.toggle('active', (tab === 'login' && i === 0) || (tab === 'signup' && i === 1));
+    });
+    document.querySelector('.form-login').classList.toggle('active', tab === 'login');
+    document.querySelector('.form-signup').classList.toggle('active', tab === 'signup');
+  }
+</script>
+
+</body>
+</html>
