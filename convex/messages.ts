@@ -10,8 +10,9 @@ export const send = mutation({
     mediaUrl: v.optional(v.string()),
     mediaThumbnailUrl: v.optional(v.string()),
     mediaAltText: v.optional(v.string()),
+    replyTo: v.optional(v.string()),
   },
-  handler: async (ctx, { conversationId, from, text, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText }) => {
+  handler: async (ctx, { conversationId, from, text, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, replyTo }) => {
     await ctx.db.insert("messages", {
       conversationId,
       from,
@@ -20,6 +21,7 @@ export const send = mutation({
       ...(mediaUrl ? { mediaUrl } : {}),
       ...(mediaThumbnailUrl ? { mediaThumbnailUrl } : {}),
       ...(mediaAltText ? { mediaAltText } : {}),
+      ...(replyTo ? { replyTo } : {}),
       timestamp: Date.now(),
     });
   },

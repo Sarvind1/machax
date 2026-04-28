@@ -202,6 +202,7 @@ export default function ChatPage() {
           mediaUrl: m.mediaUrl,
           mediaThumbnailUrl: m.mediaThumbnailUrl,
           mediaAltText: m.mediaAltText,
+          replyTo: m.replyTo,
           text: m.text,
           timestamp: m.timestamp,
         }))
@@ -352,6 +353,7 @@ export default function ChatPage() {
                     ...(data.mediaUrl ? { mediaUrl: data.mediaUrl } : {}),
                     ...(data.mediaThumbnailUrl ? { mediaThumbnailUrl: data.mediaThumbnailUrl } : {}),
                     ...(data.mediaAltText ? { mediaAltText: data.mediaAltText } : {}),
+                    ...(data.replyTo ? { replyTo: data.replyTo } : {}),
                   });
                 } catch {
                   // Convex save failed — message still shows in UI
@@ -900,19 +902,23 @@ export default function ChatPage() {
         </div>
 
         <div className="chat-messages" ref={chatContainerRef}>
-          {messages.map((m) => (
+          {messages.map((m, idx) => {
+            const replyMsg = m.replyTo ? [...messages].slice(0, idx).reverse().find(prev => prev.from === m.replyTo) : undefined;
+            return (
             <ChatMessage
               key={m.id}
               from={m.from}
               text={m.text}
               isUser={m.from === "user"}
               replyTo={m.replyTo}
+              replyToText={replyMsg?.text}
               mediaType={m.mediaType}
               mediaUrl={m.mediaUrl}
               mediaThumbnailUrl={m.mediaThumbnailUrl}
               mediaAltText={m.mediaAltText}
             />
-          ))}
+            );
+          })}
 
           {typingAgents.length > 0 && (
             <TypingIndicator

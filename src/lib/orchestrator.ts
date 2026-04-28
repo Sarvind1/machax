@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { writeFileSync, unlinkSync } from "fs";
+import { writeFileSync, unlinkSync, appendFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -21,7 +21,12 @@ import type {
   PresenceState,
 } from "./engine-types";
 import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
-import { searchGif } from "./gif-service";
+import { resolveMedia } from "./media-service";
+
+const ENGINE_LOG = join(process.cwd(), "engine-log.jsonl");
+function engineLog(entry: Record<string, unknown>): void {
+  try { appendFileSync(ENGINE_LOG, JSON.stringify(entry) + "\n", "utf-8"); } catch {}
+}
 
 const execAsync = promisify(exec);
 
@@ -255,7 +260,7 @@ function cleanResponse(text: string, friendName: string): string {
 // ── Media marker extraction ─────────────────────────────────────────
 
 function extractMediaMarker(text: string): { query: string; remainingText: string } | null {
-  const match = text.match(/\[GIF:\s*(.+?)\]/i);
+  const match = text.match(/\[(?:REACT|GIF):\s*(.+?)\]/i);
   if (!match) return null;
   const query = match[1].trim();
   const remainingText = text.replace(match[0], '').trim();
@@ -501,6 +506,7 @@ function shouldRespond(
   bestScore: number | null,
   roundResponses: ChatEntry[],
   energy: number,
+  topicAffinity: number = 0.5,
 ): boolean {
   // If nothing scored above 0, don't respond
   if (bestScore === null || bestScore <= 0) return false;
@@ -527,6 +533,19 @@ function shouldRespond(
 
   // Random dropout: 8% base "didn't reply" rate + half of character-specific lurker chance
   let dropoutProb = 0.08 + agent.traits.lurkerChance * 0.5;
+
+  // Affinity-weighted dropout: characters with low topic affinity are more likely to stay quiet.
+  // Guard: don't penalize if the agent hasn't spoken yet and the conversation is well underway
+  // (avoids total silence from a character).
+  const affinityGuard = agent.responseCount === 0 && roundResponses.length >= 4;
+  if (!affinityGuard) {
+    if (topicAffinity < 0.2) {
+      dropoutProb += 0.50; // low/zero affinity → ~58% total skip chance
+    } else if (topicAffinity < 0.5) {
+      dropoutProb += 0.15; // medium affinity → slight increase
+    }
+    // high affinity (>= 0.5) → no change, respond freely
+  }
 
   // After several agents have responded, increase dropout for remaining agents
   if (roundResponses.length >= 8) {
@@ -896,7 +915,7 @@ async function callFriend(
   // ── GIF prompt injection (conditional) ──
   const shouldOfferGif = Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
   if (shouldOfferGif) {
-    prompt += `\n\nReact with a GIF this time! Write [GIF: search query] using English search terms. Examples: [GIF: mind blown], [GIF: facepalm], [GIF: laughing hard], [GIF: eye roll]. You can write text before or after the GIF tag, or just send the GIF alone.`;
+    prompt += `\n\nReact with a visual this time! Write [REACT: 2-4 words describing your reaction to THIS specific moment] — describe what you're actually feeling right now, don't use generic reactions. You can write text before or after the tag, or just send it alone.`;
   }
 
   let maxTokens =
@@ -937,16 +956,28 @@ async function callFriend(
 
     const marker = extractMediaMarker(text);
     if (marker) {
-      const gifResult = await searchGif(marker.query);
-      if (gifResult && gifResult.url) {
-        mediaType = "gif";
-        mediaUrl = gifResult.url;
-        mediaThumbnailUrl = gifResult.thumbnailUrl;
-        mediaAltText = gifResult.altText;
-        text = marker.remainingText || "[sent a GIF]";
-      } else {
-        // GIF API failed — strip marker, keep remaining text
-        text = marker.remainingText || text.replace(/\[GIF:\s*.+?\]/i, '').trim();
+      // ALWAYS strip the marker from text first — regardless of media resolution outcome
+      text = marker.remainingText || text.replace(/\[(?:REACT|GIF):\s*.+?\]/i, '').trim();
+
+      try {
+        const conversationTopic = allMessages.filter(m => m.from === "user").pop()?.text || "";
+        const mediaResult = await resolveMedia(marker.query, conversationTopic);
+        if (mediaResult) {
+          // Map source to mediaType
+          switch (mediaResult.source) {
+            case "klipy-gif": mediaType = "gif"; break;
+            case "klipy-sticker": mediaType = "sticker"; break;
+            case "local-meme": mediaType = "meme"; break;
+            case "imgflip": mediaType = "meme"; break;
+          }
+          mediaUrl = mediaResult.url;
+          mediaThumbnailUrl = mediaResult.thumbnailUrl;
+          mediaAltText = mediaResult.altText;
+          if (!text) text = "[sent a GIF]";
+        }
+      } catch (mediaErr) {
+        console.error(`[media] resolveMedia failed for "${marker.query}":`, mediaErr);
+        // text is already cleaned — just continue with text-only
       }
     }
 
@@ -954,20 +985,22 @@ async function callFriend(
     const looksIncomplete = (t: string) => {
       if (t.length < 3) return true; // too short
       if (/['\u2019]$/.test(t)) return true; // ends with apostrophe (truncated contraction)
-      if (t.length <= 6 && !/[.!?…💀😭🤣❤️✨🔥😤🫠a-z0-9)]$/i.test(t)) return true; // short + no proper ending
-      if (t.length > 5 && !/[.!?…💀😭🤣❤️✨🔥😤🫠)\s]$/.test(t) && /\s/.test(t)) return true; // multi-word, no ending
       return false;
     };
     const isGarbage = looksIncomplete(text)
       || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase());
 
     if (isGarbage) {
+      const reason = text.length < 3 ? "too-short" : allMessages.some(m => m.text.toLowerCase() === text.toLowerCase()) ? "exact-dupe" : "incomplete";
+      engineLog({ ts: new Date().toISOString(), event: "garbage-first", agent: friendId, text: text.slice(0, 120), reason, length: text.length });
       const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
       text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150));
       text = cleanResponse(text, friend.name);
 
       // If still garbage after retry, return null to skip this agent
       if (looksIncomplete(text) || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase())) {
+        const reason2 = text.length < 3 ? "too-short" : allMessages.some(m => m.text.toLowerCase() === text.toLowerCase()) ? "exact-dupe" : "incomplete";
+        engineLog({ ts: new Date().toISOString(), event: "garbage-retry-failed", agent: friendId, text: text.slice(0, 120), reason: reason2, length: text.length });
         return null;
       }
     }
@@ -975,6 +1008,7 @@ async function callFriend(
     return { entry: { from: friendId, text }, replyTo: replyToId, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText };
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
+    engineLog({ ts: new Date().toISOString(), event: "agent-error", agent: friendId, error: String(err).slice(0, 200) });
     return {
       entry: { from: friendId, text: "hmm let me think about that..." },
       replyTo: null,
@@ -1215,6 +1249,10 @@ export async function* orchestrateChat(params: {
       const agentName = FRIENDS_BY_ID[agent.id]?.name?.toLowerCase();
       const isMentioned = !!(latestUserMsg && agentName && new RegExp(`\\b${agentName}\\b`, 'i').test(latestUserMsg.text));
 
+      // Compute topic affinity for this agent
+      const agentFriend = FRIENDS_BY_ID[agent.id];
+      const topicAffinity = agentFriend ? computeTopicAffinity(agentFriend.tags, message) : 0.5;
+
       let target = scoreMessagesForAgent(
         agent.id,
         msgs,
@@ -1232,7 +1270,7 @@ export async function* orchestrateChat(params: {
         }
       } else {
         if (!target) continue;
-        if (!shouldRespond(agent, target.score, roundResponses, energy)) continue;
+        if (!shouldRespond(agent, target.score, roundResponses, energy, topicAffinity)) continue;
       }
 
       if (!target) continue;
@@ -1329,6 +1367,7 @@ export async function* orchestrateChat(params: {
       const result = results[i];
       if (result.status !== "fulfilled") {
         console.error("[engine] Agent call failed:", result.reason);
+        engineLog({ ts: new Date().toISOString(), event: "agent-failed", agent: batch[i].agent.id, reason: String(result.reason).slice(0, 200) });
         const failedAgent = iterTrace.selectedAgents.find(a => a.agentId === batch[i].agent.id);
         if (failedAgent) failedAgent.failed = true;
         continue;
@@ -1337,6 +1376,7 @@ export async function* orchestrateChat(params: {
       // Skip null results (garbage that couldn't be retried)
       if (result.value === null) {
         console.log("[engine] Skipped null result from agent", batch[i].agent.id);
+        engineLog({ ts: new Date().toISOString(), event: "null-response", agent: batch[i].agent.id, iteration: iterations });
         continue;
       }
       const { entry, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText } = result.value;
@@ -1363,6 +1403,7 @@ export async function* orchestrateChat(params: {
       });
       if (isDuplicate) {
         console.log("[engine] Deduped message from", entry.from, ":", entry.text.slice(0, 40));
+        engineLog({ ts: new Date().toISOString(), event: "deduped", agent: entry.from, text: entry.text.slice(0, 80), iteration: iterations });
         continue;
       }
 
@@ -1397,6 +1438,12 @@ export async function* orchestrateChat(params: {
       // Apply media rate cap: max 2 GIFs per conversation round
       const includeMedia = mediaType && mediaUrl && mediaMessageCount < 2;
       if (includeMedia) mediaMessageCount++;
+
+      if (mediaType && mediaUrl && !includeMedia) {
+        engineLog({ ts: new Date().toISOString(), event: "media-rate-capped", agent: entry.from, mediaSource: mediaType, iteration: iterations, mediaMessageCount });
+      }
+
+      engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: entry.from, text: entry.text.slice(0, 80), hasMedia: !!includeMedia, mediaSource: mediaType || null, iteration: iterations, energy: parseFloat(energy.toFixed(3)) });
 
       yield {
         type: "message",
@@ -1443,6 +1490,7 @@ export async function* orchestrateChat(params: {
   }
 
   console.log("[engine] Loop ended. energy:", energy.toFixed(2), "iterations:", iterations, "messages:", roundResponses.length);
+  engineLog({ ts: new Date().toISOString(), event: "conversation-end", finalEnergy: parseFloat(energy.toFixed(3)), iterations, messagesSent: roundResponses.length, reason: energy <= ENERGY_FLOOR ? "energy-depleted" : "max-iterations" });
 
   // ── Synthesis pass — extract decision options ──────────────────────
 

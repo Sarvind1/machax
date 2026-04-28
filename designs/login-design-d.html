@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MachaX — arre, you again?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,300;1,9..144,400;1,9..144,600&family=Space+Grotesk:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #1a1e16;
+  --bg-mid: #1f231a;
+  --bg-dark: #141710;
+  --card-bg: rgba(30, 28, 22, 0.85);
+  --card-border: rgba(107, 174, 126, 0.12);
+  --matcha: #6BAE7E;
+  --matcha-dim: rgba(107, 174, 126, 0.35);
+  --matcha-faint: rgba(107, 174, 126, 0.07);
+  --matcha-glow: rgba(107, 174, 126, 0.2);
+  --text: #e8e4d8;
+  --text-soft: #a09a8a;
+  --text-faint: #6a6358;
+  --rule: rgba(255, 255, 255, 0.06);
+  --reeva: #6BAE7E;
+  --tanmay: #7BA5C4;
+  --dev: #D4A857;
+  --aarushi: #D28AA8;
+  --mira: #D48A7A;
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-body: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-hand: 'Caveat', cursive;
+  --radius: 20px;
+  --radius-sm: 12px;
+  --radius-xs: 8px;
+}
+
+html { font-size: 16px; }
+
+body {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* ── ambient background glows ── */
+.bg-glows {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.22;
+}
+
+.bg-glow-1 {
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, #6BAE7E 0%, transparent 70%);
+  top: -200px;
+  left: -100px;
+  animation: glowDrift1 18s ease-in-out infinite alternate;
+}
+
+.bg-glow-2 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, #7BA5C4 0%, transparent 70%);
+  bottom: -150px;
+  right: -80px;
+  opacity: 0.14;
+  animation: glowDrift2 22s ease-in-out infinite alternate;
+}
+
+.bg-glow-3 {
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, #D4A857 0%, transparent 70%);
+  top: 60%;
+  left: 15%;
+  opacity: 0.08;
+  animation: glowDrift3 28s ease-in-out infinite alternate;
+}
+
+@keyframes glowDrift1 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(60px, 40px) scale(1.15); }
+}
+@keyframes glowDrift2 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-40px, -60px) scale(1.1); }
+}
+@keyframes glowDrift3 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(30px, -50px) scale(1.2); }
+}
+
+/* ── noise grain overlay ── */
+.bg-noise {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* ── floating ambient chat bubbles ── */
+.bubble-field {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+}
+
+.bubble {
+  position: absolute;
+  border-radius: 18px 18px 18px 4px;
+  padding: 8px 14px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+  opacity: 0;
+  border: 1px solid;
+  backdrop-filter: blur(6px);
+  animation: bubbleFloat linear infinite;
+}
+
+.bubble.right {
+  border-radius: 18px 18px 4px 18px;
+}
+
+@keyframes bubbleFloat {
+  0%   { transform: translateY(0px) rotate(-1deg); opacity: 0; }
+  8%   { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateY(-420px) rotate(2deg); opacity: 0; }
+}
+
+/* character-tinted bubbles */
+.bubble.reeva  { background: rgba(107,174,126,0.06); border-color: rgba(107,174,126,0.18); color: #6BAE7E; }
+.bubble.tanmay { background: rgba(123,165,196,0.06); border-color: rgba(123,165,196,0.18); color: #7BA5C4; }
+.bubble.dev    { background: rgba(212,168,87,0.06);  border-color: rgba(212,168,87,0.18);  color: #D4A857; }
+.bubble.aarushi{ background: rgba(210,138,168,0.06); border-color: rgba(210,138,168,0.18); color: #D28AA8; }
+.bubble.mira   { background: rgba(212,138,122,0.06); border-color: rgba(212,138,122,0.18); color: #D48A7A; }
+
+/* ── main layout ── */
+.page {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 28px;
+}
+
+/* ── rotating tagline ── */
+.tagline-wrap {
+  text-align: center;
+  min-height: 28px;
+  position: relative;
+}
+
+.tagline {
+  font-family: var(--font-hand);
+  font-size: 17px;
+  color: var(--text-soft);
+  letter-spacing: 0.01em;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  opacity: 0;
+}
+
+.tagline.active {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0px);
+  position: relative;
+  left: auto;
+  transform: none;
+}
+
+.tagline.entering {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+}
+
+.tagline.exiting {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+/* ── card wrapper (for orbiting dots) ── */
+.card-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+}
+
+/* ── orbiting character dots ── */
+.orbit-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  z-index: 20;
+  animation: orbitPulse 2.8s ease-in-out infinite;
+}
+
+.orbit-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  opacity: 0.35;
+  animation: orbitRing 2.8s ease-in-out infinite;
+}
+
+.orbit-dot.reeva  { background: var(--reeva);  top: -6px;   left: 22%;  animation-delay: 0s;    }
+.orbit-dot.tanmay { background: var(--tanmay); top: -6px;   right: 22%; animation-delay: 0.56s; }
+.orbit-dot.dev    { background: var(--dev);    bottom: -6px; left: 32%; animation-delay: 1.12s; }
+.orbit-dot.aarushi{ background: var(--aarushi);bottom: -6px; right: 30%;animation-delay: 1.68s; }
+.orbit-dot.mira   { background: var(--mira);   top: 42%;    right: -6px;animation-delay: 2.24s; }
+
+.orbit-dot.reeva::after  { background: var(--reeva);  }
+.orbit-dot.tanmay::after { background: var(--tanmay); }
+.orbit-dot.dev::after    { background: var(--dev);    }
+.orbit-dot.aarushi::after{ background: var(--aarushi);}
+.orbit-dot.mira::after   { background: var(--mira);   }
+
+@keyframes orbitPulse {
+  0%, 100% { transform: scale(1);    opacity: 0.8; }
+  50%       { transform: scale(1.5); opacity: 1;   }
+}
+
+@keyframes orbitRing {
+  0%, 100% { transform: scale(1);    opacity: 0.2; }
+  50%       { transform: scale(2.2); opacity: 0.5; }
+}
+
+/* ── the card ── */
+.card {
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 40px 36px 36px;
+  width: 100%;
+  position: relative;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.03),
+    0 8px 32px rgba(0,0,0,0.4),
+    0 0 80px rgba(107,174,126,0.06),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+/* card inner top glow strip */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(107,174,126,0.4), transparent);
+  border-radius: 1px;
+}
+
+/* ── card header ── */
+.card-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.brand-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #6BAE7E 0%, #4a8a5e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: -0.5px;
+  box-shadow: 0 4px 12px rgba(107,174,126,0.3);
+}
+
+.brand-name {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+
+.headline {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 300;
+  font-style: italic;
+  color: var(--text);
+  line-height: 1.15;
+  margin-bottom: 8px;
+  letter-spacing: -0.5px;
+}
+
+.subline {
+  font-size: 14px;
+  color: var(--text-soft);
+  font-weight: 400;
+}
+
+/* ── status pill ── */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(107,174,126,0.09);
+  border: 1px solid rgba(107,174,126,0.2);
+  border-radius: 100px;
+  padding: 5px 12px 5px 10px;
+  font-size: 12px;
+  color: #6BAE7E;
+  font-family: var(--font-mono);
+  margin-bottom: 18px;
+  letter-spacing: 0.02em;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6BAE7E;
+  animation: statusPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 0 rgba(107,174,126,0.6); }
+  50%       { opacity: 0.85; transform: scale(1.1); box-shadow: 0 0 0 4px rgba(107,174,126,0); }
+}
+
+/* ── tabs ── */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-xs);
+  padding: 4px;
+  margin-bottom: 26px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  position: relative;
+  letter-spacing: 0.01em;
+}
+
+.tab-btn.active {
+  background: rgba(107,174,126,0.14);
+  color: var(--matcha);
+  box-shadow: 0 1px 0 rgba(107,174,126,0.3);
+}
+
+.tab-btn:not(.active):hover {
+  color: var(--text-soft);
+  background: rgba(255,255,255,0.04);
+}
+
+/* ── forms ── */
+.form-panel {
+  display: none;
+}
+
+.form-panel.active {
+  display: block;
+  animation: formReveal 0.28s ease-out;
+}
+
+@keyframes formReveal {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+}
+
+.field input {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-xs);
+  padding: 11px 14px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14.5px;
+  font-weight: 400;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+}
+
+.field input::placeholder {
+  color: var(--text-faint);
+  font-weight: 300;
+}
+
+.field input:focus {
+  border-color: rgba(107,174,126,0.45);
+  background: rgba(107,174,126,0.04);
+  box-shadow: 0 0 0 3px rgba(107,174,126,0.1);
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* ── forgot link ── */
+.forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+  margin-bottom: 14px;
+}
+
+.forgot-link {
+  font-size: 12px;
+  color: var(--text-faint);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  transition: color 0.2s;
+}
+
+.forgot-link:hover {
+  color: var(--matcha);
+}
+
+/* ── divider ── */
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rule);
+}
+
+/* ── buttons ── */
+.btn-primary {
+  width: 100%;
+  padding: 13px 20px;
+  background: linear-gradient(135deg, #6BAE7E 0%, #4f9465 100%);
+  border: none;
+  border-radius: var(--radius-xs);
+  color: #fff;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  letter-spacing: 0.01em;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(107,174,126,0.28);
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(107,174,126,0.38);
+}
+
+.btn-primary:hover::before { opacity: 1; }
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(107,174,126,0.2);
+}
+
+.btn-google {
+  width: 100%;
+  padding: 12px 20px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-xs);
+  color: var(--text-soft);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.btn-google:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.16);
+  color: var(--text);
+}
+
+.btn-google svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* ── character strip ── */
+.char-strip {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rule);
+}
+
+.char-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: rgba(0,0,0,0.7);
+  cursor: default;
+  transition: transform 0.2s, z-index 0.2s;
+  position: relative;
+}
+
+.char-avatar:hover {
+  transform: translateY(-3px) scale(1.1);
+  z-index: 2;
+}
+
+.char-avatar[data-char="reeva"]   { background: var(--reeva);   }
+.char-avatar[data-char="tanmay"]  { background: var(--tanmay);  color: rgba(255,255,255,0.7); }
+.char-avatar[data-char="dev"]     { background: var(--dev);     }
+.char-avatar[data-char="aarushi"] { background: var(--aarushi); color: rgba(255,255,255,0.7); }
+.char-avatar[data-char="mira"]    { background: var(--mira);    color: rgba(255,255,255,0.7); }
+
+.char-strip-label {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  margin-left: 8px;
+  letter-spacing: 0.02em;
+}
+
+/* ── bottom footer text ── */
+.footer-text {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-faint);
+  font-family: var(--font-hand);
+  font-size: 15px;
+  letter-spacing: 0.02em;
+}
+
+/* ── tooltip on char hover ── */
+.char-avatar::after {
+  content: attr(data-name);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20,23,16,0.95);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-soft);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s;
+}
+
+.char-avatar:hover::after {
+  opacity: 1;
+}
+
+/* ── password strength ── */
+.strength-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.strength-seg {
+  flex: 1;
+  height: 2px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  transition: background 0.3s;
+}
+
+/* ── responsive ── */
+@media (max-width: 520px) {
+  .card {
+    padding: 28px 20px 24px;
+    border-radius: 16px;
+  }
+  .headline { font-size: 25px; }
+  .field-row { grid-template-columns: 1fr; gap: 14px; }
+  .card-wrapper { max-width: 100%; }
+}
+
+/* ── enter animation ── */
+.card-wrapper {
+  animation: cardEnter 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.1s;
+}
+
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(20px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+.tagline-wrap {
+  animation: fadeUp 0.5s ease both;
+  animation-delay: 0.05s;
+}
+
+.footer-text {
+  animation: fadeUp 0.5s ease both;
+  animation-delay: 0.25s;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+
+<!-- ambient background glows -->
+<div class="bg-glows" aria-hidden="true">
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="bg-glow bg-glow-3"></div>
+</div>
+
+<!-- noise grain -->
+<div class="bg-noise" aria-hidden="true"></div>
+
+<!-- floating chat bubbles -->
+<div class="bubble-field" id="bubbleField" aria-hidden="true"></div>
+
+<!-- page layout -->
+<main class="page" role="main">
+
+  <!-- rotating tagline -->
+  <div class="tagline-wrap" id="taglineWrap">
+    <p class="tagline active" id="taglineText">your 3am thoughts deserve better</p>
+  </div>
+
+  <!-- card + orbit dots -->
+  <div class="card-wrapper">
+
+    <!-- orbiting character dots -->
+    <div class="orbit-dot reeva"   aria-hidden="true"></div>
+    <div class="orbit-dot tanmay"  aria-hidden="true"></div>
+    <div class="orbit-dot dev"     aria-hidden="true"></div>
+    <div class="orbit-dot aarushi" aria-hidden="true"></div>
+    <div class="orbit-dot mira"    aria-hidden="true"></div>
+
+    <div class="card">
+
+      <!-- header -->
+      <div class="card-header">
+        <div class="brand-logo">
+          <div class="brand-mark">mx</div>
+          <span class="brand-name">MachaX</span>
+        </div>
+
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          the gang's online
+        </div>
+
+        <h1 class="headline">arre, you again?</h1>
+        <p class="subline">slide in. the group chat's been waiting.</p>
+      </div>
+
+      <!-- tabs -->
+      <div class="tabs" role="tablist">
+        <button class="tab-btn active" id="tab-login" role="tab" aria-selected="true" aria-controls="panel-login" onclick="switchTab('login')">
+          sign in
+        </button>
+        <button class="tab-btn" id="tab-signup" role="tab" aria-selected="false" aria-controls="panel-signup" onclick="switchTab('signup')">
+          join the chaos →
+        </button>
+      </div>
+
+      <!-- login panel -->
+      <div class="form-panel active" id="panel-login" role="tabpanel" aria-labelledby="tab-login">
+
+        <div class="field">
+          <label for="login-email">email</label>
+          <input type="email" id="login-email" placeholder="you@somewhere.in" autocomplete="email">
+        </div>
+
+        <div class="field">
+          <label for="login-password">password</label>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+        </div>
+
+        <div class="forgot-row">
+          <a href="#" class="forgot-link">forgot?</a>
+        </div>
+
+        <button class="btn-primary" onclick="handleLogin()">slide in →</button>
+
+        <div class="or-divider">or</div>
+
+        <button class="btn-google" onclick="handleGoogle()">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          continue with google
+        </button>
+
+        <!-- character strip -->
+        <div class="char-strip">
+          <div class="char-avatar" data-char="reeva"   data-name="reeva"   title="reeva">R</div>
+          <div class="char-avatar" data-char="tanmay"  data-name="tanmay"  title="tanmay">T</div>
+          <div class="char-avatar" data-char="dev"     data-name="dev"     title="dev">D</div>
+          <div class="char-avatar" data-char="aarushi" data-name="aarushi" title="aarushi">A</div>
+          <div class="char-avatar" data-char="mira"    data-name="mira"    title="mira">M</div>
+          <span class="char-strip-label">waiting for you</span>
+        </div>
+
+      </div>
+
+      <!-- signup panel -->
+      <div class="form-panel" id="panel-signup" role="tabpanel" aria-labelledby="tab-signup">
+
+        <div class="field">
+          <label for="signup-name">full name</label>
+          <input type="text" id="signup-name" placeholder="what do your friends call you?" autocomplete="name">
+        </div>
+
+        <div class="field">
+          <label for="signup-email">email</label>
+          <input type="email" id="signup-email" placeholder="you@somewhere.in" autocomplete="email">
+        </div>
+
+        <div class="field-row">
+          <div class="field" style="margin-bottom:0">
+            <label for="signup-city">city</label>
+            <input type="text" id="signup-city" placeholder="bangalore?" autocomplete="address-level2">
+          </div>
+          <div class="field" style="margin-bottom:0">
+            <label for="signup-age">age</label>
+            <input type="number" id="signup-age" placeholder="22" min="13" max="99">
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:14px;">
+          <label for="signup-username">username</label>
+          <input type="text" id="signup-username" placeholder="@yourhandle" autocomplete="username">
+        </div>
+
+        <div class="field">
+          <label for="signup-password">password</label>
+          <input type="password" id="signup-password" placeholder="make it spicy" autocomplete="new-password" oninput="updateStrength(this.value)">
+          <div class="strength-bar" id="strengthBar">
+            <div class="strength-seg" id="seg1"></div>
+            <div class="strength-seg" id="seg2"></div>
+            <div class="strength-seg" id="seg3"></div>
+            <div class="strength-seg" id="seg4"></div>
+          </div>
+        </div>
+
+        <button class="btn-primary" onclick="handleSignup()">join the chaos →</button>
+
+        <div class="or-divider">or</div>
+
+        <button class="btn-google" onclick="handleGoogle()">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+          </svg>
+          continue with google
+        </button>
+
+        <div class="char-strip">
+          <div class="char-avatar" data-char="reeva"   data-name="reeva">R</div>
+          <div class="char-avatar" data-char="tanmay"  data-name="tanmay">T</div>
+          <div class="char-avatar" data-char="dev"     data-name="dev">D</div>
+          <div class="char-avatar" data-char="aarushi" data-name="aarushi">A</div>
+          <div class="char-avatar" data-char="mira"    data-name="mira">M</div>
+          <span class="char-strip-label">your new gang</span>
+        </div>
+
+      </div>
+
+    </div><!-- /card -->
+  </div><!-- /card-wrapper -->
+
+  <p class="footer-text">5 friends. zero filter. actual answers.</p>
+
+</main>
+
+<script>
+// ── tab switching ──────────────────────────────────────────
+function switchTab(tab) {
+  const loginBtn  = document.getElementById('tab-login');
+  const signupBtn = document.getElementById('tab-signup');
+  const loginPanel  = document.getElementById('panel-login');
+  const signupPanel = document.getElementById('panel-signup');
+
+  if (tab === 'login') {
+    loginBtn.classList.add('active');
+    loginBtn.setAttribute('aria-selected', 'true');
+    signupBtn.classList.remove('active');
+    signupBtn.setAttribute('aria-selected', 'false');
+    loginPanel.classList.add('active');
+    signupPanel.classList.remove('active');
+  } else {
+    signupBtn.classList.add('active');
+    signupBtn.setAttribute('aria-selected', 'true');
+    loginBtn.classList.remove('active');
+    loginBtn.setAttribute('aria-selected', 'false');
+    signupPanel.classList.add('active');
+    loginPanel.classList.remove('active');
+  }
+}
+
+// ── rotating tagline ──────────────────────────────────────
+const taglines = [
+  'your 3am thoughts deserve better',
+  'the group chat that doesn\'t ghost',
+  'opinions served hot, no chill',
+  'machax = friend in kannada',
+];
+let taglineIdx = 0;
+const taglineEl = document.getElementById('taglineText');
+
+function rotateTagline() {
+  taglineIdx = (taglineIdx + 1) % taglines.length;
+
+  // fade out
+  taglineEl.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+  taglineEl.style.opacity = '0';
+  taglineEl.style.transform = 'translateY(-8px)';
+
+  setTimeout(() => {
+    taglineEl.textContent = taglines[taglineIdx];
+    taglineEl.style.transform = 'translateY(8px)';
+    taglineEl.style.opacity = '0';
+    // fade in
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        taglineEl.style.transition = 'opacity 0.45s ease, transform 0.45s ease';
+        taglineEl.style.opacity = '1';
+        taglineEl.style.transform = 'translateY(0)';
+      });
+    });
+  }, 420);
+}
+
+setInterval(rotateTagline, 3800);
+
+// ── floating bubble system ────────────────────────────────
+const bubbleMessages = [
+  { text: 'yaar that's a terrible idea 😭', char: 'tanmay', side: 'left'  },
+  { text: 'okay but hear me out…',          char: 'reeva',  side: 'left'  },
+  { text: 'bro just do it already',         char: 'dev',    side: 'right' },
+  { text: 'I would NOT do that tbh',        char: 'mira',   side: 'right' },
+  { text: 'what does your gut say?',        char: 'aarushi', side: 'left' },
+  { text: 'classic overthinking moment',   char: 'tanmay', side: 'right' },
+  { text: 'nahi yaar, red flag',            char: 'mira',   side: 'left'  },
+  { text: 'HAHAHAHA okay okay',             char: 'dev',    side: 'right' },
+  { text: '3am wisdom incoming 🌙',        char: 'reeva',  side: 'left'  },
+  { text: 'dil ki sun, dimaag ki bhi',     char: 'aarushi', side: 'right'},
+  { text: 'okay but what's the worst case?', char: 'tanmay', side: 'left'},
+  { text: 'absolutely send the text',      char: 'reeva',  side: 'right' },
+  { text: 'nap on it. revisit at 2am',     char: 'mira',   side: 'left'  },
+  { text: 'king behavior, honestly',       char: 'dev',    side: 'right' },
+];
+
+const bubbleField = document.getElementById('bubbleField');
+
+function spawnBubble() {
+  const msg = bubbleMessages[Math.floor(Math.random() * bubbleMessages.length)];
+  const el = document.createElement('div');
+  el.className = `bubble ${msg.char}${msg.side === 'right' ? ' right' : ''}`;
+  el.textContent = msg.text;
+
+  // horizontal range: avoid the very center (where card is)
+  const vw = window.innerWidth;
+  let xPos;
+  if (msg.side === 'left') {
+    xPos = Math.random() * Math.min(vw * 0.3, 260);
+  } else {
+    const rightStart = Math.max(vw * 0.65, vw - 280);
+    xPos = rightStart + Math.random() * Math.min(vw * 0.25, 220);
+  }
+
+  // start somewhere in the lower 60% of viewport
+  const startY = window.innerHeight * 0.4 + Math.random() * window.innerHeight * 0.55;
+  const duration = 18000 + Math.random() * 16000;
+
+  el.style.left = xPos + 'px';
+  el.style.top  = startY + 'px';
+  el.style.animationDuration = duration + 'ms';
+  el.style.animationDelay   = '0ms';
+
+  bubbleField.appendChild(el);
+
+  setTimeout(() => el.remove(), duration + 200);
+}
+
+// seed initial bubbles staggered
+for (let i = 0; i < 5; i++) {
+  setTimeout(spawnBubble, i * 1800);
+}
+
+// keep spawning
+setInterval(spawnBubble, 2800);
+
+// ── password strength ─────────────────────────────────────
+function updateStrength(val) {
+  let score = 0;
+  if (val.length >= 8) score++;
+  if (/[A-Z]/.test(val)) score++;
+  if (/[0-9]/.test(val)) score++;
+  if (/[^A-Za-z0-9]/.test(val)) score++;
+
+  const colors = ['#D48A7A', '#D4A857', '#7BA5C4', '#6BAE7E'];
+  for (let i = 1; i <= 4; i++) {
+    const seg = document.getElementById('seg' + i);
+    seg.style.background = i <= score ? colors[score - 1] : 'rgba(255,255,255,0.08)';
+  }
+}
+
+// ── placeholder handlers ──────────────────────────────────
+function handleLogin() {
+  const btn = event.currentTarget;
+  btn.textContent = 'sliding in…';
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = 'slide in →';
+    btn.disabled = false;
+  }, 1800);
+}
+
+function handleSignup() {
+  const btn = event.currentTarget;
+  btn.textContent = 'joining the chaos…';
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = 'join the chaos →';
+    btn.disabled = false;
+  }, 1800);
+}
+
+function handleGoogle() {
+  const btn = event.currentTarget;
+  const orig = btn.innerHTML;
+  btn.style.opacity = '0.6';
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.style.opacity = '1';
+    btn.disabled = false;
+  }, 1500);
+}
+
+// ── username @ prefix helper ──────────────────────────────
+const usernameInput = document.getElementById('signup-username');
+if (usernameInput) {
+  usernameInput.addEventListener('input', function() {
+    let val = this.value;
+    if (val && !val.startsWith('@')) {
+      this.value = '@' + val;
+    }
+    if (val === '@') {
+      this.value = '';
+    }
+  });
+}
+</script>
+</body>
+</html>

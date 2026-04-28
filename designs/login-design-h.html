@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MachaX — identify yourself</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #1a1e16;
+      --terminal-green: #6BAE7E;
+      --terminal-green-dim: rgba(107, 174, 126, 0.45);
+      --terminal-green-faint: rgba(107, 174, 126, 0.12);
+      --card-bg: rgba(244, 241, 232, 0.97);
+      --ink: #1a1e16;
+      --ink-muted: #4a5240;
+      --border: rgba(107, 174, 126, 0.25);
+
+      /* character colors */
+      --reeva: #6BAE7E;
+      --tanmay: #7A8BD4;
+      --dev: #E2A34A;
+      --aarushi: #D28AA8;
+      --mira: #C87560;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      background: var(--bg);
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    /* scanline effect */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.03) 2px,
+        rgba(0, 0, 0, 0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* subtle glow vignette */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ──────────────────────────────────────
+       TERMINAL LAYER
+    ────────────────────────────────────── */
+
+    #terminal {
+      position: fixed;
+      inset: 0;
+      padding: clamp(20px, 5vw, 60px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .term-line {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(10px, 1.4vw, 14px);
+      line-height: 1.85;
+      color: var(--terminal-green-dim);
+      opacity: 0;
+      white-space: pre;
+      transition: opacity 0.3s ease;
+    }
+
+    .term-line.visible {
+      opacity: 1;
+    }
+
+    .term-line.dimmed {
+      color: var(--terminal-green-faint);
+    }
+
+    /* cursor blink */
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 1.1em;
+      background: var(--terminal-green);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: blink 1s step-end infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+
+    /* progress bar */
+    .progress-bar {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* character name colors */
+    .char-reeva   { color: var(--reeva); }
+    .char-tanmay  { color: var(--tanmay); }
+    .char-dev     { color: var(--dev); }
+    .char-aarushi { color: var(--aarushi); }
+    .char-mira    { color: var(--mira); }
+
+    .status-online {
+      color: var(--terminal-green);
+    }
+    .status-ready {
+      color: var(--terminal-green);
+      font-weight: 700;
+    }
+    .status-optimal {
+      color: var(--dev);
+    }
+    .status-waiting {
+      color: var(--terminal-green-dim);
+    }
+
+    /* ──────────────────────────────────────
+       CARD LAYER
+    ────────────────────────────────────── */
+
+    #card-wrapper {
+      position: relative;
+      z-index: 10;
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    #card-wrapper.revealed {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #card-wrapper.hidden-card {
+      opacity: 0 !important;
+      pointer-events: none;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border-radius: 4px;
+      padding: clamp(28px, 5vw, 48px);
+      width: min(420px, calc(100vw - 32px));
+      box-shadow:
+        0 0 0 1px rgba(107, 174, 126, 0.3),
+        0 0 40px rgba(107, 174, 126, 0.08),
+        0 24px 64px rgba(0, 0, 0, 0.6);
+      position: relative;
+    }
+
+    /* card corner decoration */
+    .card::before {
+      content: '// machax.v2';
+      position: absolute;
+      top: -22px;
+      left: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--terminal-green-dim);
+      letter-spacing: 0.05em;
+    }
+
+    .card-heading {
+      font-family: 'Fraunces', Georgia, serif;
+      font-size: clamp(22px, 4vw, 28px);
+      font-weight: 600;
+      color: var(--ink);
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+
+    .card-subline {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      color: var(--ink-muted);
+      margin-bottom: 24px;
+    }
+
+    /* tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      border-bottom: 1px solid rgba(26, 30, 22, 0.12);
+    }
+
+    .tab-btn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: lowercase;
+      color: var(--ink-muted);
+      background: none;
+      border: none;
+      padding: 8px 16px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.2s, border-color 0.2s;
+    }
+
+    .tab-btn:hover {
+      color: var(--ink);
+    }
+
+    .tab-btn.active {
+      color: var(--ink);
+      border-bottom-color: var(--ink);
+    }
+
+    /* form */
+    .form-panel {
+      display: none;
+    }
+
+    .form-panel.active {
+      display: block;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      margin-bottom: 5px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      background: rgba(26, 30, 22, 0.05);
+      border: 1px solid rgba(26, 30, 22, 0.15);
+      border-radius: 3px;
+      padding: 9px 12px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+    }
+
+    .field input:focus,
+    .field select:focus {
+      border-color: var(--terminal-green);
+      box-shadow: 0 0 0 3px rgba(107, 174, 126, 0.15);
+    }
+
+    .field input::placeholder {
+      color: rgba(26, 30, 22, 0.3);
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* buttons */
+    .btn-primary {
+      width: 100%;
+      padding: 11px 20px;
+      background: var(--ink);
+      color: #f4f1e8;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn-primary:hover {
+      background: #2d3426;
+    }
+
+    .btn-primary:active {
+      transform: scale(0.99);
+    }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 11px 20px;
+      background: transparent;
+      color: var(--ink);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      border: 1px solid rgba(26, 30, 22, 0.2);
+      border-radius: 3px;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .btn-secondary:hover {
+      border-color: rgba(26, 30, 22, 0.5);
+      background: rgba(26, 30, 22, 0.04);
+    }
+
+    /* footer */
+    .card-footer {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid rgba(26, 30, 22, 0.08);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--ink-muted);
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+
+    /* easter egg hint */
+    #easter-hint {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      z-index: 20;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: var(--terminal-green-dim);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+    }
+
+    #easter-hint.show {
+      opacity: 1;
+    }
+
+    /* toast */
+    #toast {
+      position: fixed;
+      bottom: 40px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--terminal-green);
+      color: var(--bg);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 8px 18px;
+      border-radius: 3px;
+      opacity: 0;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      z-index: 100;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* responsive */
+    @media (max-width: 480px) {
+      #terminal {
+        padding: 16px;
+        justify-content: flex-start;
+        padding-top: 20px;
+      }
+
+      .term-line {
+        font-size: 9px;
+        line-height: 1.7;
+      }
+
+      .field-row {
+        grid-template-columns: 1fr;
+      }
+
+      .card::before {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- terminal background layer -->
+  <div id="terminal" aria-hidden="true">
+    <div class="term-line" id="line-0">&gt; initializing machax v2.4.1...</div>
+    <div class="term-line" id="line-1">&gt; loading character models... <span class="progress-bar" id="progress-bar"></span></div>
+    <div class="term-line" id="line-2">&gt; <span class="char-reeva">reeva</span> (empath) .............. <span class="status-online">online</span></div>
+    <div class="term-line" id="line-3">&gt; <span class="char-tanmay">tanmay</span> (analyst) ........... <span class="status-online">online</span></div>
+    <div class="term-line" id="line-4">&gt; <span class="char-dev">dev</span> (pragmatist) .......... <span class="status-online">online</span></div>
+    <div class="term-line" id="line-5">&gt; <span class="char-aarushi">aarushi</span> (hype) ............. <span class="status-online">online</span></div>
+    <div class="term-line" id="line-6">&gt; <span class="char-mira">mira</span> (closer) .............. <span class="status-online">online</span></div>
+    <div class="term-line" id="line-7">&gt; calibrating chaos levels... <span class="status-optimal">87%</span> (optimal)</div>
+    <div class="term-line" id="line-8">&gt; group chat status: <span class="status-ready">READY</span></div>
+    <div class="term-line" id="line-9">&gt; waiting for human input...<span class="cursor" id="cursor"></span></div>
+  </div>
+
+  <!-- login card -->
+  <div id="card-wrapper">
+    <div class="card">
+
+      <h1 class="card-heading">identify yourself</h1>
+      <p class="card-subline">the council needs to know who's asking</p>
+
+      <div class="tabs">
+        <button class="tab-btn active" id="tab-login" onclick="switchTab('login')">login</button>
+        <button class="tab-btn" id="tab-signup" onclick="switchTab('signup')">register</button>
+      </div>
+
+      <!-- login form -->
+      <div class="form-panel active" id="panel-login">
+        <div class="field">
+          <label>email</label>
+          <input type="email" placeholder="you@somewhere.com" autocomplete="email" />
+        </div>
+        <div class="field">
+          <label>password</label>
+          <input type="password" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        <button class="btn-primary" onclick="handleLogin()">access granted →</button>
+      </div>
+
+      <!-- signup form -->
+      <div class="form-panel" id="panel-signup">
+        <div class="field">
+          <label>your name</label>
+          <input type="text" placeholder="what do people call you?" autocomplete="name" />
+        </div>
+        <div class="field">
+          <label>email</label>
+          <input type="email" placeholder="you@somewhere.com" autocomplete="email" />
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>city</label>
+            <input type="text" placeholder="Mumbai, Delhi..." />
+          </div>
+          <div class="field">
+            <label>age</label>
+            <input type="number" placeholder="e.g. 24" min="13" max="99" />
+          </div>
+        </div>
+        <div class="field">
+          <label>username</label>
+          <input type="text" placeholder="@handle" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label>password</label>
+          <input type="password" placeholder="make it good" autocomplete="new-password" />
+        </div>
+        <button class="btn-primary" onclick="handleSignup()">register →</button>
+      </div>
+
+      <div class="card-footer">
+        system uptime: 99.7% &nbsp;|&nbsp; opinions/sec: ∞
+      </div>
+
+    </div>
+  </div>
+
+  <!-- easter egg hint -->
+  <div id="easter-hint">ctrl+` — toggle terminal view</div>
+
+  <!-- toast notification -->
+  <div id="toast"></div>
+
+  <script>
+    // ──────────────────────────────────────
+    // TERMINAL BOOT ANIMATION
+    // ──────────────────────────────────────
+
+    const BOOT_SEQUENCE = [
+      { id: 'line-0', delay: 0,    typeDelay: 60 },
+      { id: 'line-1', delay: 700,  typeDelay: 0, special: 'progress' },
+      { id: 'line-2', delay: 2000, typeDelay: 0 },
+      { id: 'line-3', delay: 2350, typeDelay: 0 },
+      { id: 'line-4', delay: 2650, typeDelay: 0 },
+      { id: 'line-5', delay: 2900, typeDelay: 0 },
+      { id: 'line-6', delay: 3150, typeDelay: 0 },
+      { id: 'line-7', delay: 3450, typeDelay: 0 },
+      { id: 'line-8', delay: 3750, typeDelay: 0 },
+      { id: 'line-9', delay: 4050, typeDelay: 0 },
+    ];
+
+    // Animate progress bar
+    function animateProgressBar() {
+      const bar = document.getElementById('progress-bar');
+      const blocks = '████████████';
+      const suffix = ' done';
+      let i = 0;
+      const interval = setInterval(() => {
+        if (i <= blocks.length) {
+          bar.textContent = blocks.slice(0, i);
+          i++;
+        } else {
+          bar.textContent = blocks + suffix;
+          clearInterval(interval);
+        }
+      }, 80);
+    }
+
+    // Line 0: typewriter effect
+    function typewriterLine(el, fullHTML, delay) {
+      // For simplicity on the first line, type it out character by character
+      // We need to handle plain text only for typewriter
+      const text = '> initializing machax v2.4.1...';
+      el.innerHTML = '';
+      el.classList.add('visible');
+      let i = 0;
+      setTimeout(() => {
+        const interval = setInterval(() => {
+          if (i < text.length) {
+            el.textContent += text[i];
+            i++;
+          } else {
+            clearInterval(interval);
+          }
+        }, 40);
+      }, delay);
+    }
+
+    function runBootSequence() {
+      const cardWrapper = document.getElementById('card-wrapper');
+      const cursor = document.getElementById('cursor');
+
+      BOOT_SEQUENCE.forEach((item, index) => {
+        const el = document.getElementById(item.id);
+        if (!el) return;
+
+        if (item.special === 'progress') {
+          setTimeout(() => {
+            el.classList.add('visible');
+            animateProgressBar();
+          }, item.delay);
+          return;
+        }
+
+        if (item.id === 'line-0') {
+          // typewriter for first line
+          typewriterLine(el, null, item.delay);
+          return;
+        }
+
+        setTimeout(() => {
+          el.classList.add('visible');
+        }, item.delay);
+      });
+
+      // After boot: reveal card, dim terminal
+      const CARD_REVEAL_DELAY = 4600;
+      setTimeout(() => {
+        // dim all terminal lines
+        document.querySelectorAll('.term-line').forEach(line => {
+          line.classList.add('dimmed');
+        });
+        // hide cursor (card has focus now)
+        if (cursor) cursor.style.display = 'none';
+
+        // reveal card
+        cardWrapper.classList.add('revealed');
+
+        // show easter egg hint briefly
+        const hint = document.getElementById('easter-hint');
+        hint.classList.add('show');
+        setTimeout(() => hint.classList.remove('show'), 3500);
+
+      }, CARD_REVEAL_DELAY);
+    }
+
+    // Start boot sequence on load
+    window.addEventListener('DOMContentLoaded', () => {
+      runBootSequence();
+    });
+
+    // ──────────────────────────────────────
+    // TAB TOGGLE
+    // ──────────────────────────────────────
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.form-panel').forEach(panel => panel.classList.remove('active'));
+      document.getElementById('tab-' + tab).classList.add('active');
+      document.getElementById('panel-' + tab).classList.add('active');
+    }
+
+    // ──────────────────────────────────────
+    // FORM HANDLERS (UI only)
+    // ──────────────────────────────────────
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    function handleLogin() {
+      showToast('> authenticating... council assembled.');
+    }
+
+    function handleSignup() {
+      showToast('> identity registered. welcome to the group chat.');
+    }
+
+    // ──────────────────────────────────────
+    // EASTER EGG: Ctrl+` toggles card
+    // ──────────────────────────────────────
+
+    let cardVisible = true;
+
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+` (backtick = key 192 or key '`')
+      if (e.ctrlKey && (e.key === '`' || e.keyCode === 192 || e.key === 'Dead')) {
+        e.preventDefault();
+        cardVisible = !cardVisible;
+        const cardWrapper = document.getElementById('card-wrapper');
+        const lines = document.querySelectorAll('.term-line');
+        const cursor = document.getElementById('cursor');
+
+        if (!cardVisible) {
+          cardWrapper.classList.add('hidden-card');
+          lines.forEach(l => l.classList.remove('dimmed'));
+          if (cursor) cursor.style.display = 'inline-block';
+          showToastTerminal('> card hidden. pure terminal mode.');
+        } else {
+          cardWrapper.classList.remove('hidden-card');
+          lines.forEach(l => l.classList.add('dimmed'));
+          if (cursor) cursor.style.display = 'none';
+          showToastTerminal('> card restored.');
+        }
+      }
+    });
+
+    function showToastTerminal(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.style.background = 'var(--terminal-green)';
+      toast.style.color = 'var(--bg)';
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+  </script>
+</body>
+</html>

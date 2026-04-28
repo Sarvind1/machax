@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MachaX</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,300;1,9..144,500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #ece5dd;
+  --header: #075e54;
+  --header-text: #ffffff;
+  --bubble-in: #ffffff;
+  --bubble-out: #dcf8c6;
+  --bubble-shadow: rgba(0,0,0,0.08);
+  --tick: #53bdeb;
+  --meta: #667781;
+  --ink: #111b21;
+  --ink-soft: #3b4a54;
+  --matcha: #25d366;
+  --matcha-deep: #128c7e;
+  --input-bg: #f0f2f5;
+  --send-btn: #00a884;
+  --divider: rgba(0,0,0,0.12);
+  --avatar-1: #6BAE7E;
+  --avatar-2: #7BA5C4;
+  --avatar-3: #D4A857;
+  --avatar-4: #D28AA8;
+  --avatar-5: #D48A7A;
+  --font-ui: 'DM Sans', -apple-system, 'Helvetica Neue', sans-serif;
+  --font-logo: 'Fraunces', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html {
+  font-size: 16px;
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ── PHONE SHELL (desktop centering) ── */
+.phone-shell {
+  max-width: 420px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: var(--bg);
+  box-shadow: 0 0 60px rgba(0,0,0,0.18);
+}
+
+@media (min-width: 480px) {
+  body {
+    background: #1a1f23;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .phone-shell {
+    border-radius: 20px;
+    overflow: hidden;
+    min-height: min(820px, 95vh);
+    max-height: 95vh;
+  }
+}
+
+/* ── CHAT WALLPAPER PATTERN ── */
+.chat-wallpaper {
+  position: absolute;
+  inset: 0;
+  background-image:
+    url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23c9bfb0' stroke-width='0.5' opacity='0.35'%3E%3Cpath d='M12 20c0-4.4 3.6-8 8-8s8 3.6 8 8v2c0 1.1-.9 2-2 2H14c-1.1 0-2-.9-2-2v-2zm8 4v4m0 0h-3m3 0h3'/%3E%3Ccircle cx='42' cy='18' r='5' stroke-width='0.5'/%3E%3Cpath d='M37 28c0-2.8 2.2-5 5-5s5 2.2 5 5'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 120px 120px;
+  background-color: #e8ddd4;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── TOP BAR ── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--header);
+  padding: 10px 16px 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.topbar-avatar-group {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.topbar-avatar {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--header);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: white;
+}
+
+.topbar-avatar:nth-child(1) { top: 0; left: 0; background: var(--avatar-1); z-index: 5; }
+.topbar-avatar:nth-child(2) { top: 0; right: 0; background: var(--avatar-2); z-index: 4; }
+.topbar-avatar:nth-child(3) { bottom: 0; left: 9px; background: var(--avatar-3); z-index: 3; width: 23px; height: 23px; font-size: 10px; }
+
+.topbar-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.topbar-name {
+  font-family: var(--font-logo);
+  font-size: 17px;
+  font-weight: 500;
+  color: white;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.topbar-status {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: rgba(255,255,255,0.82);
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--matcha);
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.topbar-icon {
+  color: rgba(255,255,255,0.9);
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  opacity: 0.88;
+}
+
+/* ── GROUP INFO PANEL ── */
+.group-info-panel {
+  background: white;
+  margin: 0;
+  position: relative;
+  z-index: 10;
+  border-bottom: 1px solid var(--divider);
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+  opacity: 0;
+}
+
+.group-info-panel.open {
+  max-height: 280px;
+  opacity: 1;
+}
+
+.group-info-inner {
+  padding: 16px;
+}
+
+.group-info-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--meta);
+  margin-bottom: 12px;
+}
+
+.group-members {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.member-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.member-info {
+  flex: 1;
+}
+
+.member-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.member-role {
+  font-size: 12px;
+  color: var(--meta);
+  margin-top: 1px;
+}
+
+.member-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: #f0f2f5;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+/* ── SCROLL AREA ── */
+.chat-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 12px 8px;
+  position: relative;
+  z-index: 1;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+.chat-scroll::-webkit-scrollbar { width: 3px; }
+.chat-scroll::-webkit-scrollbar-track { background: transparent; }
+.chat-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 2px; }
+
+/* ── DATE DIVIDER ── */
+.date-divider {
+  text-align: center;
+  margin: 8px 0 12px;
+  opacity: 0;
+  animation: fadeIn 0.3s forwards;
+}
+
+.date-divider-inner {
+  display: inline-block;
+  background: rgba(255,255,255,0.7);
+  backdrop-filter: blur(6px);
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  font-family: var(--font-ui);
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+/* ── BUBBLES ── */
+.bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-bottom: 4px;
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.bubble-row.incoming {
+  justify-content: flex-start;
+}
+
+.bubble-row.outgoing {
+  justify-content: flex-end;
+}
+
+.bubble-row.animate-in {
+  animation: bubbleIn 0.35s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+}
+
+@keyframes bubbleIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+.bubble-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.bubble-avatar.invisible {
+  visibility: hidden;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 7px 10px 5px;
+  border-radius: 8px;
+  position: relative;
+  word-break: break-word;
+  box-shadow: 0 1px 2px var(--bubble-shadow);
+  line-height: 1.45;
+}
+
+.bubble.incoming {
+  background: var(--bubble-in);
+  border-top-left-radius: 2px;
+}
+
+.bubble.outgoing {
+  background: var(--bubble-out);
+  border-top-right-radius: 2px;
+}
+
+/* tail for incoming */
+.bubble.incoming::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -7px;
+  width: 0;
+  height: 0;
+  border-right: 8px solid var(--bubble-in);
+  border-top: 0px solid transparent;
+  border-bottom: 8px solid transparent;
+}
+
+/* tail for outgoing */
+.bubble.outgoing::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -7px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid var(--bubble-out);
+  border-top: 0px solid transparent;
+  border-bottom: 8px solid transparent;
+}
+
+.bubble-sender {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  line-height: 1;
+}
+
+.bubble-text {
+  font-size: 14.5px;
+  color: var(--ink);
+}
+
+.bubble-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  margin-top: 3px;
+}
+
+.bubble-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--meta);
+  line-height: 1;
+}
+
+.tick-icon {
+  color: var(--tick);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* ── TYPING INDICATOR ── */
+.typing-indicator {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-bottom: 4px;
+  opacity: 0;
+}
+
+.typing-indicator.show {
+  animation: fadeIn 0.3s forwards;
+}
+
+.typing-bubble {
+  background: var(--bubble-in);
+  border-radius: 8px;
+  border-top-left-radius: 2px;
+  padding: 10px 14px;
+  box-shadow: 0 1px 2px var(--bubble-shadow);
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.typing-dot {
+  width: 7px;
+  height: 7px;
+  background: #b0bec5;
+  border-radius: 50%;
+  animation: typingBounce 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.6; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ── FORM SECTION ── */
+.form-section {
+  background: white;
+  border-radius: 8px;
+  padding: 0;
+  margin-bottom: 6px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.form-section.animate-in {
+  animation: bubbleIn 0.35s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
+}
+
+.form-section-label {
+  background: var(--bubble-in);
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.form-section-label-text {
+  font-size: 13px;
+  color: var(--meta);
+  font-style: italic;
+}
+
+.form-field-wrap {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-input {
+  flex: 1;
+  background: var(--input-bg);
+  border: none;
+  outline: none;
+  border-radius: 20px;
+  padding: 9px 14px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  color: var(--ink);
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.form-input::placeholder {
+  color: #aab4bb;
+}
+
+.form-input:focus {
+  background: white;
+  box-shadow: 0 0 0 2px rgba(0,168,132,0.25);
+}
+
+.form-input.filled {
+  background: #f0fff6;
+  box-shadow: 0 0 0 1.5px rgba(0,168,132,0.3);
+}
+
+/* ── UNREAD BANNER ── */
+.unread-banner {
+  text-align: center;
+  margin: 12px 0 8px;
+  opacity: 0;
+  animation: fadeIn 0.3s 0.5s forwards;
+}
+
+.unread-banner-inner {
+  display: inline-block;
+  background: rgba(0, 168, 132, 0.12);
+  border: 1px solid rgba(0, 168, 132, 0.2);
+  color: var(--matcha-deep);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 20px;
+  letter-spacing: 0.01em;
+}
+
+/* ── SEND / SUBMIT AREA ── */
+.submit-row {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  position: relative;
+  z-index: 10;
+  opacity: 0;
+}
+
+.submit-row.visible {
+  animation: fadeIn 0.4s forwards;
+}
+
+.submit-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--send-btn);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.15s, background 0.15s;
+  box-shadow: 0 2px 8px rgba(0,168,132,0.35);
+}
+
+.submit-btn:hover {
+  transform: scale(1.06);
+  background: #00956e;
+}
+
+.submit-btn:active {
+  transform: scale(0.96);
+}
+
+.submit-btn svg {
+  color: white;
+  width: 22px;
+  height: 22px;
+  margin-left: 3px;
+}
+
+.submit-label {
+  flex: 1;
+  background: var(--input-bg);
+  border-radius: 20px;
+  padding: 11px 16px;
+  font-size: 14px;
+  color: var(--meta);
+  font-family: var(--font-ui);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.submit-label-text {
+  font-style: italic;
+}
+
+/* ── MODE SWITCH ── */
+.mode-switch-bubble {
+  text-align: center;
+  margin: 10px 0 6px;
+  opacity: 0;
+}
+
+.mode-switch-bubble.show {
+  animation: fadeIn 0.3s forwards;
+}
+
+.mode-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--matcha-deep);
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.7);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: background 0.15s;
+}
+
+.mode-btn:hover {
+  background: rgba(255,255,255,0.95);
+}
+
+/* ── SUCCESS STATE ── */
+.success-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.96);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
+.success-overlay.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.success-icon {
+  width: 72px;
+  height: 72px;
+  background: var(--matcha-deep);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.success-icon svg {
+  width: 36px;
+  height: 36px;
+  color: white;
+}
+
+.success-text {
+  text-align: center;
+}
+
+.success-text h2 {
+  font-family: var(--font-logo);
+  font-size: 22px;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.success-text p {
+  font-size: 14px;
+  color: var(--meta);
+}
+
+/* ── PASSWORD TOGGLE ── */
+.pw-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  color: var(--meta);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+.pw-toggle:hover { background: var(--input-bg); }
+
+/* ── SUBTLE GROUP INFO TRIGGER ── */
+.group-trigger {
+  font-size: 11px;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 1px;
+  user-select: none;
+}
+.group-trigger svg { width: 10px; height: 10px; transition: transform 0.3s; }
+.group-trigger.open svg { transform: rotate(180deg); }
+</style>
+</head>
+<body>
+
+<div class="phone-shell">
+  <!-- Wallpaper -->
+  <div class="chat-wallpaper"></div>
+
+  <!-- TOP BAR -->
+  <div class="topbar" id="topbar">
+    <div class="topbar-avatar-group">
+      <div class="topbar-avatar">R</div>
+      <div class="topbar-avatar">T</div>
+      <div class="topbar-avatar">D</div>
+    </div>
+    <div class="topbar-info">
+      <div class="topbar-name">MachaX</div>
+      <div class="topbar-status">
+        <span class="status-dot"></span>
+        <span id="status-text">5 members · 3 online</span>
+      </div>
+      <div class="group-trigger" id="groupTrigger" onclick="toggleGroupInfo()">
+        meet the group
+        <svg viewBox="0 0 10 6" fill="none">
+          <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <!-- video icon -->
+      <svg class="topbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="23 7 16 12 23 17 23 7"></polygon>
+        <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+      </svg>
+      <!-- call icon -->
+      <svg class="topbar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.35a2 2 0 0 1 1.99-2.18h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.95a16 16 0 0 0 6.29 6.29l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path>
+      </svg>
+    </div>
+  </div>
+
+  <!-- GROUP INFO PANEL -->
+  <div class="group-info-panel" id="groupInfoPanel">
+    <div class="group-info-inner">
+      <div class="group-info-title">the group</div>
+      <div class="group-members">
+        <div class="member-row">
+          <div class="member-avatar" style="background:var(--avatar-1)">R</div>
+          <div class="member-info">
+            <div class="member-name">Reeva</div>
+            <div class="member-role">startup girlie · always has data to prove you wrong</div>
+          </div>
+          <div class="member-badge">🔥 hot takes</div>
+        </div>
+        <div class="member-row">
+          <div class="member-avatar" style="background:var(--avatar-2)">T</div>
+          <div class="member-info">
+            <div class="member-name">Tanmay</div>
+            <div class="member-role">IIT dropout philosopher · questions everything</div>
+          </div>
+          <div class="member-badge">🤔 contrarian</div>
+        </div>
+        <div class="member-row">
+          <div class="member-avatar" style="background:var(--avatar-3)">D</div>
+          <div class="member-info">
+            <div class="member-name">Dev</div>
+            <div class="member-role">finance bro · ROI on everything, even feelings</div>
+          </div>
+          <div class="member-badge">📈 numbers</div>
+        </div>
+        <div class="member-row">
+          <div class="member-avatar" style="background:var(--avatar-4)">A</div>
+          <div class="member-info">
+            <div class="member-name">Aarushi</div>
+            <div class="member-role">dilli vibes · won't let logic ruin the mood</div>
+          </div>
+          <div class="member-badge">💅 vibe check</div>
+        </div>
+        <div class="member-row">
+          <div class="member-avatar" style="background:var(--avatar-5)">M</div>
+          <div class="member-info">
+            <div class="member-name">Mira</div>
+            <div class="member-role">the calm one · drops wisdom and leaves</div>
+          </div>
+          <div class="member-badge">🌿 grounded</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHAT SCROLL AREA -->
+  <div class="chat-scroll" id="chatScroll">
+
+    <!-- Date divider -->
+    <div class="date-divider" style="animation-delay:0.1s">
+      <div class="date-divider-inner">Today</div>
+    </div>
+
+    <!-- MachaX welcome message 1 -->
+    <div class="bubble-row incoming" id="msg1">
+      <div class="bubble-avatar" style="background:var(--header)">M</div>
+      <div class="bubble incoming">
+        <div class="bubble-sender" style="color:var(--header)">MachaX</div>
+        <div class="bubble-text">hey! welcome to the group 🍵</div>
+        <div class="bubble-meta">
+          <span class="bubble-time">now</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MachaX welcome message 2 -->
+    <div class="bubble-row incoming" id="msg2">
+      <div class="bubble-avatar invisible" style="background:var(--header)">M</div>
+      <div class="bubble incoming">
+        <div class="bubble-sender" style="color:var(--header)">MachaX</div>
+        <div class="bubble-text">before we let you in, quick intro?</div>
+        <div class="bubble-meta">
+          <span class="bubble-time">now</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Typing indicator placeholder -->
+    <div class="typing-indicator" id="typingIndicator">
+      <div class="bubble-avatar" style="background:var(--header);width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0;">M</div>
+      <div class="typing-bubble">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+    </div>
+
+    <!-- Signup form (shown in signup mode) -->
+    <div id="signupForm" style="display:block">
+
+      <!-- Name field -->
+      <div class="form-section" id="fieldName">
+        <div class="form-section-label">
+          <div style="font-size:12px;color:var(--meta);font-family:var(--font-mono);margin-bottom:2px">MachaX · now</div>
+          <div class="bubble-text" style="font-size:14px;">what do we call you?</div>
+        </div>
+        <div class="form-field-wrap">
+          <input class="form-input" type="text" id="inputName" placeholder="your name..." autocomplete="name" oninput="checkFilled(this)">
+        </div>
+      </div>
+
+      <!-- Email field -->
+      <div class="form-section" id="fieldEmail">
+        <div class="form-section-label">
+          <div style="font-size:12px;color:var(--meta);font-family:var(--font-mono);margin-bottom:2px">MachaX · now</div>
+          <div class="bubble-text" style="font-size:14px;">email? <span style="color:var(--meta);font-size:13px;">(we won't spam, promise)</span></div>
+        </div>
+        <div class="form-field-wrap">
+          <input class="form-input" type="email" id="inputEmail" placeholder="you@wherever.com" autocomplete="email" oninput="checkFilled(this)">
+        </div>
+      </div>
+
+      <!-- City field -->
+      <div class="form-section" id="fieldCity">
+        <div class="form-section-label">
+          <div style="font-size:12px;color:var(--meta);font-family:var(--font-mono);margin-bottom:2px">MachaX · now</div>
+          <div class="bubble-text" style="font-size:14px;">city?</div>
+        </div>
+        <div class="form-field-wrap">
+          <input class="form-input" type="text" id="inputCity" placeholder="Mumbai, Delhi, Bangalore..." autocomplete="address-level2" oninput="checkFilled(this)">
+        </div>
+      </div>
+
+      <!-- Username field -->
+      <div class="form-section" id="fieldUsername">
+        <div class="form-section-label">
+          <div style="font-size:12px;color:var(--meta);font-family:var(--font-mono);margin-bottom:2px">MachaX · now</div>
+          <div class="bubble-text" style="font-size:14px;">pick a username</div>
+        </div>
+        <div class="form-field-wrap">
+          <input class="form-input" type="text" id="inputUsername" placeholder="@something_cool" autocomplete="username" oninput="checkFilled(this)">
+        </div>
+      </div>
+
+      <!-- Password field -->
+      <div class="form-section" id="fieldPassword">
+        <div class="form-section-label">
+          <div style="font-size:12px;color:var(--meta);font-family:var(--font-mono);margin-bottom:2px">MachaX · now</div>
+          <div class="bubble-text" style="font-size:14px;">set a password</div>
+        </div>
+        <div class="form-field-wrap">
+          <input class="form-input" type="password" id="inputPassword" placeholder="something strong..." autocomplete="new-password" oninput="checkFilled(this)">
+          <button class="pw-toggle" onclick="togglePw('inputPassword', this)" aria-label="toggle password">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Reeva reaction bubble -->
+      <div class="bubble-row incoming" id="reevaReact" style="display:none">
+        <div class="bubble-avatar" style="background:var(--avatar-1)">R</div>
+        <div class="bubble incoming">
+          <div class="bubble-sender" style="color:var(--avatar-1)">Reeva</div>
+          <div class="bubble-text" id="reevaText">nice to meet you!</div>
+          <div class="bubble-meta">
+            <span class="bubble-time">now</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Login form (hidden initially) -->
+    <div id="loginForm" style="display:none">
+
+      <!-- Login message -->
+      <div class="bubble-row incoming" id="loginMsg">
+        <div class="bubble-avatar" style="background:var(--header)">M</div>
+        <div class="bubble incoming">
+          <div class="bubble-sender" style="color:var(--header)">MachaX</div>
+          <div class="bubble-text">already one of us? just username and password will do.</div>
+          <div class="bubble-meta"><span class="bubble-time">now</span></div>
+        </div>
+      </div>
+
+      <!-- Login username -->
+      <div class="form-section animate-in" id="loginFieldUser">
+        <div class="form-section-label">
+          <div style="font-size:12px;color:var(--meta);font-family:var(--font-mono);margin-bottom:2px">MachaX · now</div>
+          <div class="bubble-text" style="font-size:14px;">pick a username</div>
+        </div>
+        <div class="form-field-wrap">
+          <input class="form-input" type="text" id="loginUsername" placeholder="@yourname" autocomplete="username" oninput="checkFilled(this)">
+        </div>
+      </div>
+
+      <!-- Login password -->
+      <div class="form-section animate-in" id="loginFieldPw">
+        <div class="form-section-label">
+          <div style="font-size:12px;color:var(--meta);font-family:var(--font-mono);margin-bottom:2px">MachaX · now</div>
+          <div class="bubble-text" style="font-size:14px;">set a password</div>
+        </div>
+        <div class="form-field-wrap">
+          <input class="form-input" type="password" id="loginPassword" placeholder="your password..." autocomplete="current-password" oninput="checkFilled(this)">
+          <button class="pw-toggle" onclick="togglePw('loginPassword', this)" aria-label="toggle password">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode switch -->
+    <div class="mode-switch-bubble show" id="modeSwitch" style="margin-top:8px; opacity:1">
+      <button class="mode-btn" onclick="toggleMode()" id="modeSwitchBtn">already one of us? log in →</button>
+    </div>
+
+    <!-- Unread banner -->
+    <div class="unread-banner" id="unreadBanner">
+      <div class="unread-banner-inner">99+ unread opinions waiting for you</div>
+    </div>
+
+    <!-- spacing for scroll -->
+    <div style="height: 16px;"></div>
+
+  </div><!-- /chat-scroll -->
+
+  <!-- SUBMIT ROW -->
+  <div class="submit-row visible" id="submitRow">
+    <div class="submit-label">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--meta);flex-shrink:0">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+      </svg>
+      <span class="submit-label-text" id="submitLabelText">fill in the group's questions first...</span>
+    </div>
+    <button class="submit-btn" onclick="handleSubmit()" id="submitBtn" title="let me in 🚀">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+
+  <!-- SUCCESS OVERLAY -->
+  <div class="success-overlay" id="successOverlay">
+    <div class="success-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </div>
+    <div class="success-text">
+      <h2>welcome to the group 🍵</h2>
+      <p id="successMsg">heading in...</p>
+    </div>
+  </div>
+
+</div><!-- /phone-shell -->
+
+<script>
+/* ─── CONFIG ─── */
+const INTRO_DELAY   = 400;   // ms before first bubble
+const BUBBLE_GAP    = 550;   // ms between welcome bubbles
+const TYPING_DUR    = 900;   // ms typing shows before forms
+const FORM_GAP      = 200;   // ms stagger between form fields
+const REACTIONS = {
+  name:  ["nice to meet you! 👋", "ooh cool name", "added to contacts ✓"],
+  email: ["saved. we protect inboxes 🔒", "inbox noted 📬", "got it!"],
+  city:  ["respect the 🌆", "nice city choice", "the struggle is real there 😅"],
+  username: ["love it 🔥", "that's a vibe", "claimed! username locked ✓"],
+  password: ["strong password energy 💪", "very secure, nice", "ok we're impressed"],
+};
+
+/* ─── STATE ─── */
+let isLogin = false;
+let animDone = false;
+let reevaTriggered = false;
+
+/* ─── BOOT SEQUENCE ─── */
+window.addEventListener('DOMContentLoaded', () => {
+  runIntroSequence();
+});
+
+function runIntroSequence() {
+  const msg1 = document.getElementById('msg1');
+  const msg2 = document.getElementById('msg2');
+  const typing = document.getElementById('typingIndicator');
+  const fields = ['fieldName','fieldEmail','fieldCity','fieldUsername','fieldPassword'];
+
+  // msg1
+  setTimeout(() => { msg1.classList.add('animate-in'); }, INTRO_DELAY);
+  // msg2
+  setTimeout(() => { msg2.classList.add('animate-in'); }, INTRO_DELAY + BUBBLE_GAP);
+  // typing
+  setTimeout(() => { typing.classList.add('show'); scrollBottom(); }, INTRO_DELAY + BUBBLE_GAP * 2);
+  // hide typing, show fields one by one
+  setTimeout(() => {
+    typing.style.display = 'none';
+    fields.forEach((id, i) => {
+      setTimeout(() => {
+        const el = document.getElementById(id);
+        if (el) { el.classList.add('animate-in'); scrollBottom(); }
+      }, i * FORM_GAP);
+    });
+    setTimeout(() => {
+      animDone = true;
+      updateSubmitLabel();
+      scrollBottom();
+    }, fields.length * FORM_GAP + 100);
+  }, INTRO_DELAY + BUBBLE_GAP * 2 + TYPING_DUR);
+}
+
+/* ─── SCROLL HELPER ─── */
+function scrollBottom() {
+  const s = document.getElementById('chatScroll');
+  s.scrollTop = s.scrollHeight;
+}
+
+/* ─── FIELD FILL DETECTION ─── */
+function checkFilled(input) {
+  if (input.value.trim().length > 0) {
+    input.classList.add('filled');
+  } else {
+    input.classList.remove('filled');
+  }
+  updateSubmitLabel();
+  maybeShowReevaReaction(input);
+}
+
+let reevaTimeout = null;
+function maybeShowReevaReaction(input) {
+  const fieldMap = {
+    'inputName': 'name',
+    'inputEmail': 'email',
+    'inputCity': 'city',
+    'inputUsername': 'username',
+    'inputPassword': 'password'
+  };
+  const key = fieldMap[input.id];
+  if (!key || isLogin) return;
+  clearTimeout(reevaTimeout);
+  if (input.value.trim().length > 2) {
+    reevaTimeout = setTimeout(() => showReevaReaction(key, input.value), 1200);
+  }
+}
+
+function showReevaReaction(key, value) {
+  const el = document.getElementById('reevaReact');
+  const textEl = document.getElementById('reevaText');
+  const pool = REACTIONS[key];
+  const msg = pool[Math.floor(Math.random() * pool.length)];
+
+  // personalise name reaction
+  let finalMsg = msg;
+  if (key === 'name') {
+    const first = value.trim().split(' ')[0];
+    finalMsg = `nice to meet you, ${first}! 👋`;
+  }
+
+  textEl.textContent = finalMsg;
+  el.style.display = 'flex';
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(8px)';
+  el.offsetHeight; // reflow
+  el.style.transition = 'opacity 0.3s, transform 0.3s';
+  el.style.opacity = '1';
+  el.style.transform = 'translateY(0)';
+  scrollBottom();
+}
+
+/* ─── SUBMIT LABEL ─── */
+function updateSubmitLabel() {
+  const label = document.getElementById('submitLabelText');
+  if (isLogin) {
+    const u = document.getElementById('loginUsername').value.trim();
+    const p = document.getElementById('loginPassword').value.trim();
+    if (u && p) {
+      label.textContent = 'let me in 🚀';
+      label.style.color = 'var(--matcha-deep)';
+      label.style.fontStyle = 'normal';
+      label.style.fontWeight = '600';
+    } else {
+      label.textContent = 'fill in the details first...';
+      label.style.color = 'var(--meta)';
+      label.style.fontStyle = 'italic';
+      label.style.fontWeight = '400';
+    }
+    return;
+  }
+  const fields = ['inputName','inputEmail','inputCity','inputUsername','inputPassword'];
+  const allFilled = fields.every(id => document.getElementById(id).value.trim().length > 0);
+  if (allFilled) {
+    label.textContent = 'let me in 🚀';
+    label.style.color = 'var(--matcha-deep)';
+    label.style.fontStyle = 'normal';
+    label.style.fontWeight = '600';
+  } else {
+    label.textContent = 'fill in the group\'s questions first...';
+    label.style.color = 'var(--meta)';
+    label.style.fontStyle = 'italic';
+    label.style.fontWeight = '400';
+  }
+}
+
+/* ─── MODE TOGGLE ─── */
+function toggleMode() {
+  isLogin = !isLogin;
+  const signup = document.getElementById('signupForm');
+  const login  = document.getElementById('loginForm');
+  const btn    = document.getElementById('modeSwitchBtn');
+
+  if (isLogin) {
+    signup.style.display = 'none';
+    login.style.display  = 'block';
+    btn.textContent = 'new here? create account →';
+    document.getElementById('reevaReact').style.display = 'none';
+  } else {
+    signup.style.display = 'block';
+    login.style.display  = 'none';
+    btn.textContent = 'already one of us? log in →';
+  }
+  updateSubmitLabel();
+  setTimeout(scrollBottom, 50);
+}
+
+/* ─── GROUP INFO PANEL ─── */
+function toggleGroupInfo() {
+  const panel   = document.getElementById('groupInfoPanel');
+  const trigger = document.getElementById('groupTrigger');
+  const isOpen  = panel.classList.contains('open');
+  panel.classList.toggle('open', !isOpen);
+  trigger.classList.toggle('open', !isOpen);
+}
+
+/* ─── PASSWORD TOGGLE ─── */
+function togglePw(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  const isHidden = inp.type === 'password';
+  inp.type = isHidden ? 'text' : 'password';
+  btn.innerHTML = isHidden
+    ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`
+    : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+}
+
+/* ─── SUBMIT ─── */
+function handleSubmit() {
+  const label = document.getElementById('submitLabelText').textContent;
+  if (!label.includes('let me in')) {
+    // shake the submit-label
+    const sl = document.querySelector('.submit-label');
+    sl.style.transition = 'transform 0.08s';
+    const seq = [6,-6,5,-5,4,-4,0];
+    seq.forEach((x, i) => {
+      setTimeout(() => {
+        sl.style.transform = `translateX(${x}px)`;
+        if (i === seq.length - 1) sl.style.transform = '';
+      }, i * 60);
+    });
+    return;
+  }
+
+  // show success
+  const overlay = document.getElementById('successOverlay');
+  const msg = document.getElementById('successMsg');
+  const name = isLogin
+    ? document.getElementById('loginUsername').value.trim()
+    : document.getElementById('inputName').value.trim().split(' ')[0];
+  msg.textContent = name ? `see you in there, ${name}` : 'heading in...';
+  overlay.classList.add('show');
+
+  // send a "user joined" outgoing bubble effect
+  setTimeout(() => {
+    overlay.classList.remove('show');
+    // reset (demo purposes)
+  }, 3000);
+}
+
+/* ─── REAL-TIME CLOCK IN STATUS ─── */
+function updateClock() {
+  const now = new Date();
+  const h = now.getHours(), m = now.getMinutes();
+  const hh = h % 12 || 12;
+  const mm = m.toString().padStart(2,'0');
+  const ap = h < 12 ? 'am' : 'pm';
+  // Update all "now" timestamps
+  document.querySelectorAll('.bubble-time').forEach(el => {
+    if (el.textContent === 'now' || el.textContent.match(/^\d/)) {
+      el.textContent = `${hh}:${mm} ${ap}`;
+    }
+  });
+}
+setTimeout(updateClock, 3000);
+setInterval(updateClock, 60000);
+</script>
+</body>
+</html>

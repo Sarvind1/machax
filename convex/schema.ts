@@ -25,6 +25,7 @@ export default defineSchema({
     mediaUrl: v.optional(v.string()),
     mediaThumbnailUrl: v.optional(v.string()),
     mediaAltText: v.optional(v.string()),
+    replyTo: v.optional(v.string()),
     timestamp: v.number(),
   }).index("by_conversation", ["conversationId", "timestamp"]),
 

@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MachaX — your overthinking starts here</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300;1,9..144,400;1,9..144,600&family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@400;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── reset & base ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --paper: #F4F1E8;
+      --ink: #1E1C16;
+      --matcha: #4a7c59;
+      --matcha-mid: #6BAE7E;
+      --matcha-foam: #eef6ef;
+      --reeva: #6BAE7E;
+      --tanmay: #7BA5C4;
+      --dev: #D4A857;
+      --aarushi: #D28AA8;
+      --mira: #D48A7A;
+      --border: rgba(30,28,22,0.12);
+      --shadow: 0 2px 20px rgba(30,28,22,0.08);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Space Grotesk', sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    /* ─── grain texture overlay ─── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+    }
+
+    /* ─── topbar ─── */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 36px;
+      background: var(--ink);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      z-index: 100;
+    }
+    .topbar-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--matcha-mid);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(0.85); }
+    }
+    .topbar-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--matcha-mid);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    /* ─── main layout ─── */
+    .layout {
+      display: flex;
+      height: 100vh;
+      padding-top: 36px;
+    }
+
+    /* ─── left panel ─── */
+    .left {
+      flex: 0 0 480px;
+      width: 480px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 48px 52px;
+      position: relative;
+      overflow: hidden;
+      border-right: 1px solid var(--border);
+    }
+
+    /* green bloom behind left content */
+    .left::after {
+      content: '';
+      position: absolute;
+      bottom: -80px; right: -120px;
+      width: 400px; height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(74,124,89,0.12) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .left > * { position: relative; z-index: 1; }
+
+    .logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--matcha);
+      margin-bottom: 32px;
+    }
+
+    .headline {
+      font-family: 'Fraunces', serif;
+      font-size: 36px;
+      font-weight: 400;
+      font-style: italic;
+      line-height: 1.2;
+      color: var(--ink);
+      margin-bottom: 10px;
+    }
+
+    .subline {
+      font-size: 14px;
+      color: rgba(30,28,22,0.55);
+      line-height: 1.6;
+      max-width: 340px;
+      margin-bottom: 32px;
+    }
+
+    /* ─── tab switcher ─── */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      width: fit-content;
+    }
+    .tab {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 9px 22px;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      color: rgba(30,28,22,0.45);
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .tab.active {
+      background: var(--ink);
+      color: var(--paper);
+    }
+
+    /* ─── form ─── */
+    .form-panel {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .form-panel.active { display: flex; }
+
+    .field-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(30,28,22,0.45);
+      margin-bottom: 5px;
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .field-row {
+      display: flex;
+      gap: 10px;
+    }
+    .field-row .field-group { flex: 1; }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"] {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.5);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+    }
+    input:focus {
+      border-color: var(--matcha);
+      box-shadow: 0 0 0 3px rgba(74,124,89,0.12);
+    }
+    input::placeholder { color: rgba(30,28,22,0.3); }
+
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      border-radius: 12px;
+      border: none;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      margin-top: 4px;
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(30,28,22,0.2);
+    }
+    .btn-primary:active { transform: translateY(0); }
+
+    .btn-google {
+      width: 100%;
+      padding: 11px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      background: rgba(255,255,255,0.6);
+      color: rgba(30,28,22,0.45);
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: not-allowed;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .btn-google-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      background: rgba(30,28,22,0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .forgot-link {
+      font-size: 12px;
+      color: rgba(30,28,22,0.4);
+      text-decoration: none;
+      text-align: right;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .forgot-link:hover { color: var(--matcha); }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 4px 0;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .divider span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: rgba(30,28,22,0.3);
+      letter-spacing: 0.08em;
+    }
+
+    /* ─── handwritten note ─── */
+    .handwritten-note {
+      font-family: 'Caveat', cursive;
+      font-size: 16px;
+      color: rgba(30,28,22,0.35);
+      margin-top: 24px;
+      transform: rotate(-0.8deg);
+      display: inline-block;
+    }
+
+    /* ─── right panel ─── */
+    .right {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: var(--paper);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* bloom on right */
+    .right::before {
+      content: '';
+      position: absolute;
+      top: -100px; left: -80px;
+      width: 500px; height: 500px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(107,174,126,0.1) 0%, transparent 65%);
+      pointer-events: none;
+    }
+    .right::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; right: -60px;
+      width: 350px; height: 350px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(74,124,89,0.07) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    .chat-panel {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 36px 44px;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .chat-header-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--matcha-mid);
+      animation: pulse-dot 1.6s ease-in-out infinite;
+    }
+    .chat-header-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--matcha);
+    }
+    .chat-header-topic {
+      margin-left: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      color: rgba(30,28,22,0.3);
+      letter-spacing: 0.06em;
+    }
+
+    /* ─── chat messages ─── */
+    .chat-messages {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    .msg {
+      display: flex;
+      flex-direction: column;
+      max-width: 82%;
+      animation: msg-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      opacity: 0;
+    }
+    .msg.right-align {
+      align-self: flex-end;
+      align-items: flex-end;
+    }
+
+    @keyframes msg-in {
+      0% { opacity: 0; transform: translateY(8px) scale(0.96); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .msg-sender {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      padding-left: 2px;
+    }
+
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--ink);
+      background: rgba(255,255,255,0.65);
+      border: 1px solid rgba(30,28,22,0.08);
+      backdrop-filter: blur(4px);
+      box-shadow: 0 1px 6px rgba(30,28,22,0.06);
+    }
+
+    .msg-reaction {
+      font-size: 12px;
+      margin-top: 4px;
+      padding-left: 4px;
+      opacity: 0.7;
+    }
+
+    /* ─── typing indicator ─── */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .typing-indicator.visible { opacity: 1; }
+    .typing-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .typing-dots {
+      display: flex;
+      gap: 3px;
+      align-items: center;
+    }
+    .typing-dots span {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.4;
+      animation: bounce-dot 1.2s ease-in-out infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes bounce-dot {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-4px); opacity: 0.9; }
+    }
+
+    /* ─── topic fade overlay ─── */
+    .chat-fade-overlay {
+      position: absolute;
+      inset: 0;
+      background: var(--paper);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.6s;
+    }
+    .chat-fade-overlay.active { opacity: 1; }
+
+    /* ─── toast easter egg ─── */
+    .toast-container {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      pointer-events: none;
+    }
+    .toast {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px 16px;
+      box-shadow: 0 8px 30px rgba(30,28,22,0.12);
+      max-width: 340px;
+      animation: toast-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      opacity: 0;
+    }
+    .toast.hiding {
+      animation: toast-out 0.3s ease-in forwards;
+    }
+    @keyframes toast-in {
+      0% { opacity: 0; transform: translateY(12px) scale(0.95); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    @keyframes toast-out {
+      0% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-8px) scale(0.95); }
+    }
+    .toast-avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      color: white;
+    }
+    .toast-content {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .toast-who {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .toast-msg {
+      font-size: 13px;
+      color: var(--ink);
+      line-height: 1.4;
+    }
+
+    /* ─── mobile responsive ─── */
+    @media (max-width: 780px) {
+      html, body { overflow: auto; }
+      .layout {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+      }
+      .left {
+        flex: none;
+        width: 100%;
+        padding: 36px 28px 32px;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+      .right {
+        flex: none;
+        min-height: 400px;
+        height: 420px;
+      }
+      .chat-panel { padding: 24px 24px; }
+      .headline { font-size: 28px; }
+    }
+
+    @media (max-width: 420px) {
+      .left { padding: 28px 20px 24px; }
+      .headline { font-size: 24px; }
+      .field-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- topbar -->
+<div class="topbar">
+  <div class="topbar-dot"></div>
+  <span class="topbar-text">the gang's all here</span>
+</div>
+
+<!-- main layout -->
+<div class="layout">
+
+  <!-- ─── LEFT PANEL ─── -->
+  <div class="left">
+    <div class="logo">MachaX ✦</div>
+
+    <h1 class="headline">your overthinking<br/>starts here</h1>
+    <p class="subline">5 friends. zero judgment. infinite takes. let them in.</p>
+
+    <!-- tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="login" onclick="switchTab('login')">log in</button>
+      <button class="tab" data-tab="signup" onclick="switchTab('signup')">sign up</button>
+    </div>
+
+    <!-- LOGIN FORM -->
+    <div class="form-panel active" id="form-login">
+      <div class="field-group">
+        <div class="field-label">email</div>
+        <input type="email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="field-group">
+        <div class="field-label">password</div>
+        <input type="password" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <a class="forgot-link" onclick="void(0)">forgot? classic overthinking.</a>
+      <button class="btn-primary" onclick="handleLogin()">let me in</button>
+      <div class="divider"><span>or</span></div>
+      <button class="btn-google" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        continue with google
+        <span class="btn-google-badge">coming soon</span>
+      </button>
+    </div>
+
+    <!-- SIGNUP FORM -->
+    <div class="form-panel" id="form-signup">
+      <div class="field-group">
+        <div class="field-label">name</div>
+        <input type="text" id="signup-name" placeholder="what do your friends call you?" autocomplete="name" />
+      </div>
+      <div class="field-group">
+        <div class="field-label">email</div>
+        <input type="email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">city</div>
+          <input type="text" placeholder="mumbai, delhi..." autocomplete="off" />
+        </div>
+        <div class="field-group">
+          <div class="field-label">age</div>
+          <input type="number" placeholder="18" min="13" max="99" style="max-width:80px" />
+        </div>
+      </div>
+      <div class="field-group">
+        <div class="field-label">username</div>
+        <input type="text" placeholder="@yourhandle" autocomplete="username" />
+      </div>
+      <div class="field-group">
+        <div class="field-label">password</div>
+        <input type="password" placeholder="make it spicy" autocomplete="new-password" />
+      </div>
+      <button class="btn-primary" onclick="handleSignup()">sign me up</button>
+      <div class="divider"><span>or</span></div>
+      <button class="btn-google" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        continue with google
+        <span class="btn-google-badge">coming soon</span>
+      </button>
+    </div>
+
+    <span class="handwritten-note">they're already arguing about something...</span>
+  </div>
+
+  <!-- ─── RIGHT PANEL ─── -->
+  <div class="right">
+    <div class="chat-panel">
+      <div class="chat-header">
+        <div class="chat-header-dot"></div>
+        <span class="chat-header-label">live from the group chat</span>
+        <span class="chat-header-topic" id="topic-label">topic 1 of 3</span>
+      </div>
+
+      <div class="chat-messages" id="chat-messages">
+        <!-- messages injected by JS -->
+        <div class="chat-fade-overlay" id="fade-overlay"></div>
+      </div>
+
+      <div class="typing-indicator" id="typing-indicator">
+        <span class="typing-name" id="typing-name" style="color: var(--matcha)">reeva</span>
+        <div class="typing-dots" id="typing-dots">
+          <span style="color: var(--matcha)"></span>
+          <span style="color: var(--matcha)"></span>
+          <span style="color: var(--matcha)"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+  /* ─── tab switching ─── */
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.tab === tab);
+    });
+    document.getElementById('form-login').classList.toggle('active', tab === 'login');
+    document.getElementById('form-signup').classList.toggle('active', tab === 'signup');
+  }
+
+  function handleLogin() {
+    const btn = document.querySelector('#form-login .btn-primary');
+    btn.textContent = 'unlocking the chaos...';
+    btn.style.opacity = '0.7';
+    setTimeout(() => {
+      btn.textContent = 'let me in';
+      btn.style.opacity = '1';
+    }, 2000);
+  }
+
+  function handleSignup() {
+    const btn = document.querySelector('#form-signup .btn-primary');
+    btn.textContent = 'summoning the gang...';
+    btn.style.opacity = '0.7';
+    setTimeout(() => {
+      btn.textContent = 'sign me up';
+      btn.style.opacity = '1';
+    }, 2000);
+  }
+
+  /* ─── character config ─── */
+  const CHARS = {
+    reeva:   { color: '#6BAE7E', emoji: '🌿' },
+    tanmay:  { color: '#7BA5C4', emoji: '🌊' },
+    dev:     { color: '#D4A857', emoji: '☀️' },
+    aarushi: { color: '#D28AA8', emoji: '🌸' },
+    mira:    { color: '#D48A7A', emoji: '🔥' },
+  };
+
+  /* ─── conversations ─── */
+  const CONVOS = [
+    {
+      topic: 'MBA abroad or startup?',
+      messages: [
+        { who: 'dev',     text: 'bhai just go do the MBA. Stanford, Wharton, done. your indecision is your startup co-founder.' },
+        { who: 'mira',    text: 'lol dev you sound like every LinkedIn aunty. startup fail rate is 90%, at least MBA has placement.' },
+        { who: 'tanmay',  text: 'actually mira the failure rate is a feature. you learn more failing than in a classroom with 60 other confused people.' },
+        { who: 'aarushi', text: 'okay but can we talk about WHY you want either? you haven't answered that yet and you're already spiraling about rank.' },
+        { who: 'reeva',   text: 'aarushi is right. also — both options exist because you're afraid of the third one which is to just do the thing.' },
+        { who: 'dev',     text: 'what third thing?? 😭' },
+        { who: 'mira',    text: 'THE THING DEV. THE THING.' },
+      ]
+    },
+    {
+      topic: 'should I text first?',
+      messages: [
+        { who: 'aarushi', text: 'wait when did they last text YOU?' },
+        { who: 'reeva',   text: 'three weeks ago is the answer and we all know it.' },
+        { who: 'tanmay',  text: 'okay so like... what's the actual fear here. rejection? or confirmation of something you already suspect?' },
+        { who: 'mira',    text: 'text them. worst case they leave you on read. which is also information.' },
+        { who: 'dev',     text: 'mira what kind of unhinged advice is "rejection is information" 💀' },
+        { who: 'mira',    text: 'correct information, dev. CORRECT INFORMATION.' },
+        { who: 'aarushi', text: 'text them but text them like you're not waiting for a reply. "hey was just thinking of you" and then GO DO SOMETHING.' },
+        { who: 'reeva',   text: 'this is the most sane thing aarushi has ever said.' },
+      ]
+    },
+    {
+      topic: 'quit job tomorrow?',
+      messages: [
+        { who: 'tanmay',  text: 'okay so your savings runway is how many months exactly?' },
+        { who: 'dev',     text: 'runway is overrated. the real question is: will you be more miserable in 6 months if you stay or if you go?' },
+        { who: 'mira',    text: 'dev would tell someone with ₹0 in account to quit and "trust the universe".' },
+        { who: 'dev',     text: 'I literally would not say that 😭 I'd say figure out one customer first.' },
+        { who: 'reeva',   text: 'the fact that you're asking means you already know. nobody asks "should I quit" when the job is good.' },
+        { who: 'aarushi', text: 'REEVA.' },
+        { who: 'tanmay',  text: 'she's not wrong though. the question is already the answer.' },
+        { who: 'mira',    text: 'we're all just here to make you feel less alone about the answer you already have.' },
+      ]
+    }
+  ];
+
+  /* ─── chat animation engine ─── */
+  let currentConvo = 0;
+  let msgTimeouts = [];
+  let toastTimer = null;
+
+  function clearTimeouts() {
+    msgTimeouts.forEach(t => clearTimeout(t));
+    msgTimeouts = [];
+  }
+
+  function setTyping(name, visible) {
+    const indicator = document.getElementById('typing-indicator');
+    const nameEl = document.getElementById('typing-name');
+    const dots = document.getElementById('typing-dots');
+    const char = CHARS[name];
+    nameEl.textContent = name;
+    nameEl.style.color = char.color;
+    dots.querySelectorAll('span').forEach(s => s.style.color = char.color);
+    indicator.classList.toggle('visible', visible);
+  }
+
+  function appendMessage(who, text, container) {
+    const char = CHARS[who];
+    const el = document.createElement('div');
+    el.className = 'msg';
+    el.innerHTML = `
+      <div class="msg-sender" style="color:${char.color}">${who}</div>
+      <div class="msg-bubble">${text}</div>
+    `;
+    container.insertBefore(el, document.getElementById('fade-overlay'));
+
+    // scroll to bottom
+    container.parentElement.scrollTop = container.parentElement.scrollHeight;
+    return el;
+  }
+
+  function playConversation(convoIndex) {
+    const convo = CONVOS[convoIndex];
+    const container = document.getElementById('chat-messages');
+    const topicLabel = document.getElementById('topic-label');
+    topicLabel.textContent = convo.topic;
+
+    let delay = 400;
+    const TYPING_TIME = 1200;
+    const READ_PAUSE = 800;
+
+    convo.messages.forEach((msg, i) => {
+      // show typing
+      const t1 = setTimeout(() => {
+        setTyping(msg.who, true);
+      }, delay);
+      msgTimeouts.push(t1);
+
+      delay += TYPING_TIME;
+
+      // show message
+      const t2 = setTimeout(() => {
+        setTyping(msg.who, false);
+        appendMessage(msg.who, msg.text, container);
+      }, delay);
+      msgTimeouts.push(t2);
+
+      delay += READ_PAUSE;
+    });
+
+    // after last message, wait then transition to next convo
+    const t3 = setTimeout(() => {
+      transitionToNext();
+    }, delay + 2400);
+    msgTimeouts.push(t3);
+  }
+
+  function transitionToNext() {
+    const overlay = document.getElementById('fade-overlay');
+    overlay.classList.add('active');
+
+    const t = setTimeout(() => {
+      // clear old messages
+      const container = document.getElementById('chat-messages');
+      const msgs = container.querySelectorAll('.msg');
+      msgs.forEach(m => m.remove());
+
+      currentConvo = (currentConvo + 1) % CONVOS.length;
+      overlay.classList.remove('active');
+      playConversation(currentConvo);
+    }, 700);
+    msgTimeouts.push(t);
+  }
+
+  // kick off
+  setTimeout(() => playConversation(0), 600);
+
+  /* ─── easter egg: name field ─── */
+  const TOAST_CHARS = ['reeva', 'tanmay', 'dev', 'aarushi', 'mira'];
+  const TOAST_REACTIONS = (name) => [
+    { who: 'reeva',   msg: `ooh "${name}" — already sounds like someone who overthinks song lyrics at 2am.` },
+    { who: 'tanmay',  msg: `wait is that a ${name}?? I feel like ${name}s are always right about everything but say it too quietly.` },
+    { who: 'dev',     msg: `${name}! okay okay. first question — startup or stability? no wrong answer but also there is.` },
+    { who: 'aarushi', msg: `${name} joining the group chat??? okay the vibe just shifted.` },
+    { who: 'mira',    msg: `${name} huh. classic. I already have opinions about you and we haven't even met.` },
+  ];
+
+  let lastToastName = '';
+  let toastShown = false;
+
+  document.getElementById('signup-name').addEventListener('input', function() {
+    const name = this.value.trim();
+    if (name.length < 3) { toastShown = false; lastToastName = ''; return; }
+    if (name === lastToastName) return;
+    lastToastName = name;
+    toastShown = false;
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      if (!toastShown) {
+        toastShown = true;
+        const reactions = TOAST_REACTIONS(name);
+        const pick = reactions[Math.floor(Math.random() * reactions.length)];
+        showToast(pick.who, pick.msg);
+      }
+    }, 600);
+  });
+
+  function showToast(who, msg) {
+    const char = CHARS[who];
+    const container = document.getElementById('toast-container');
+
+    // clear existing toasts
+    container.querySelectorAll('.toast').forEach(t => t.remove());
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = `
+      <div class="toast-avatar" style="background:${char.color}">${char.emoji}</div>
+      <div class="toast-content">
+        <div class="toast-who" style="color:${char.color}">${who}</div>
+        <div class="toast-msg">${msg}</div>
+      </div>
+    `;
+    container.appendChild(toast);
+
+    // auto-dismiss
+    setTimeout(() => {
+      toast.classList.add('hiding');
+      setTimeout(() => toast.remove(), 350);
+    }, 4500);
+  }
+</script>
+</body>
+</html>

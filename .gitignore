@@ -42,4 +42,6 @@ next-env.d.ts
 .mcp.json
 .env.local
 .claude/changelog.md
+media-log.jsonl
 .playwright-mcp/
+engine-log.jsonl

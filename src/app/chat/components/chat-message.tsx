@@ -7,13 +7,14 @@ interface ChatMessageProps {
   text: string;
   isUser: boolean;
   replyTo?: string;
+  replyToText?: string;
   mediaType?: "gif" | "sticker" | "meme";
   mediaUrl?: string;
   mediaThumbnailUrl?: string;
   mediaAltText?: string;
 }
 
-export default function ChatMessage({ from, text, isUser, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText }: ChatMessageProps) {
+export default function ChatMessage({ from, text, isUser, replyTo, replyToText, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText }: ChatMessageProps) {
   // System messages (joins, events)
   if (from === "system") {
     return (
@@ -51,11 +52,16 @@ export default function ChatMessage({ from, text, isUser, replyTo, mediaType, me
         {friend?.name[0] ?? "?"}
       </div>
       <div className="chat-bubble-content">
-        {replyTo && replyFriend && (
+        {replyTo && (replyFriend || replyTo === "user") && (
           <div className="reply-to-label">
-            {"<-"} replying to <span style={{ color: replyFriend.color }}>
-              {replyFriend.name.toLowerCase()}
+            {"↩"} <span style={{ color: replyFriend?.color ?? "#888" }}>
+              {replyTo === "user" ? "you" : replyFriend?.name.toLowerCase() ?? replyTo}
             </span>
+            {replyToText && (
+              <span style={{ opacity: 0.6 }}>
+                {" · "}{replyToText.length > 40 ? replyToText.slice(0, 40) + "…" : replyToText}
+              </span>
+            )}
           </div>
         )}
         <span
