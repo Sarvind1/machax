@@ -32,17 +32,29 @@ export async function POST(request: Request) {
         console.warn("RESEND_API_KEY not configured, skipping email");
         return Response.json({ success: true });
       }
-      await resend.emails.send({
+
+      // NOTE: With onboarding@resend.dev (Resend's shared sender), emails can
+      // only be delivered to the Resend account owner's email. To send to any
+      // user, add and verify a custom domain in Resend, then update the "from"
+      // address below.
+      const { data, error } = await resend.emails.send({
         from: "MachaX <onboarding@resend.dev>",
         to: email.trim(),
         subject: "Reset your MachaX password",
         text: `Hey,\n\nSomeone requested a password reset for your MachaX account.\n\nClick here to reset: ${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.\n\n— machax`,
       });
+
+      if (error) {
+        console.error("[forgot-password] Resend error:", JSON.stringify(error));
+      } else {
+        console.log("[forgot-password] Email sent, id:", data?.id);
+      }
     }
 
     // Always return success to not reveal if email exists
     return Response.json({ success: true });
-  } catch {
+  } catch (err) {
+    console.error("[forgot-password] Unexpected error:", err);
     return Response.json({ success: true });
   }
 }
