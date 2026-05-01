@@ -38,7 +38,8 @@ export async function POST(request: Request) {
       // user, add and verify a custom domain in Resend, then update the "from"
       // address below.
       const { data, error } = await resend.emails.send({
-        from: "MachaX <onboarding@resend.dev>",
+        from: "MachaX <noreply@machax.xyz>",
+        replyTo: "sarvindrankawat@gmail.com",
         to: email.trim(),
         subject: "Reset your MachaX password",
         text: `Hey,\n\nSomeone requested a password reset for your MachaX account.\n\nClick here to reset: ${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, ignore this email.\n\n— machax`,
