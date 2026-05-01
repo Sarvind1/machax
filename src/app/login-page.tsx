@@ -393,6 +393,7 @@ export default function LoginPage() {
           <div className="login-content-left">
             <div className="login-form-card">
               {activeTab === "login" ? (
+                <>
                 <form onSubmit={handleLoginSubmit} noValidate>
                   <div className="login-field">
                     <label htmlFor="login-username">username or email</label>
@@ -464,6 +465,7 @@ export default function LoginPage() {
                     )}
                   </div>
                 )}
+                </>
               ) : (
                 <form onSubmit={handleSignupSubmit} noValidate>
                   <div className="login-field">
