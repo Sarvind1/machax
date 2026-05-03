@@ -5,6 +5,7 @@
 
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
+import { getRotatedModel, isGemmaModel } from "./providers";
 import { readFileSync, appendFileSync } from "fs";
 import { join } from "path";
 
@@ -63,19 +64,18 @@ export async function generateSearchQueries(vibeText: string): Promise<[string, 
   const timeout = setTimeout(() => controller.abort(), 3000);
 
   try {
+    const modelName = getRotatedModel();
     const result = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google(modelName),
       system:
         "Given this emotional vibe/reaction, generate 2 different short search queries (2-4 words each) that would find a relevant GIF, sticker, or meme. Return as JSON: {\"q1\": \"...\", \"q2\": \"...\"}",
       messages: [{ role: "user", content: vibeText }],
       maxOutputTokens: 100,
       temperature: 0.3,
       abortSignal: controller.signal,
-      providerOptions: {
-        google: {
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      },
+      ...(!isGemmaModel(modelName) && {
+        providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+      }),
     });
 
     clearTimeout(timeout);
@@ -258,8 +258,9 @@ async function validateMediaRelevance(
   const timeout = setTimeout(() => controller.abort(), 2000);
 
   try {
+    const modelName = getRotatedModel();
     const result = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google(modelName),
       system: "You validate if a GIF/sticker matches a conversation context. Reply only YES or NO.",
       messages: [{
         role: "user",
@@ -268,11 +269,9 @@ async function validateMediaRelevance(
       maxOutputTokens: 5,
       temperature: 0,
       abortSignal: controller.signal,
-      providerOptions: {
-        google: {
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      },
+      ...(!isGemmaModel(modelName) && {
+        providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+      }),
     });
 
     clearTimeout(timeout);
@@ -301,7 +300,7 @@ export async function resolveMedia(vibeText: string, conversationTopic: string =
   }
 }
 
-const MEDIA_LOG_PATH = "/Users/sarvind/Projects/machax/media-log.jsonl";
+const MEDIA_LOG_PATH = join(process.cwd(), "media-log.jsonl");
 
 function writeMediaLog(entry: Record<string, unknown>): void {
   try {

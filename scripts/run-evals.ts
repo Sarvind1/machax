@@ -46,6 +46,7 @@ try {
 // ── Now import modules that depend on env vars ──
 import { orchestrateChat } from "../src/lib/orchestrator";
 import { selectPod } from "../src/lib/friends";
+import { getRotatedModel } from "../src/lib/providers";
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { ConvexHttpClient } from "convex/browser";
@@ -131,8 +132,10 @@ async function main() {
         .map((m) => `[${m.from}] ${m.text}`)
         .join("\n");
 
+      const scoreModel = getRotatedModel();
+      const isGemma = scoreModel.startsWith("gemma-");
       const scoreResult = await generateText({
-        model: google("gemini-2.5-flash"),
+        model: google(scoreModel),
         messages: [
           {
             role: "user",
@@ -141,7 +144,7 @@ async function main() {
         ],
         maxOutputTokens: 800,
         temperature: 0.1,
-        providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } },
+        ...(!isGemma && { providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } } }),
       });
 
       // Parse JSON score

@@ -3,6 +3,7 @@ export const maxDuration = 300; // 5 min max for Vercel
 
 import { orchestrateChat } from "@/lib/orchestrator";
 import { selectPod } from "@/lib/friends";
+import { getRotatedModel } from "@/lib/providers";
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { ConvexHttpClient } from "convex/browser";
@@ -134,8 +135,10 @@ export async function POST() {
             const transcript = messages
               .map((m) => `[${m.from}] ${m.text}`)
               .join("\n");
+            const scoreModel = getRotatedModel();
+            const isGemma = scoreModel.startsWith("gemma-");
             const scoreResult = await generateText({
-              model: google("gemini-2.5-flash"),
+              model: google(scoreModel),
               messages: [
                 {
                   role: "user",
@@ -144,9 +147,7 @@ export async function POST() {
               ],
               maxOutputTokens: 800,
               temperature: 0.1,
-              providerOptions: {
-                google: { thinkingConfig: { thinkingBudget: 0 } },
-              },
+              ...(!isGemma && { providerOptions: { google: { thinkingConfig: { thinkingBudget: 0 } } } }),
             });
 
             let scores: Record<string, unknown>;

@@ -12,7 +12,7 @@ import {
   lengthToInstruction,
   computeTopicAffinity,
 } from "./friends";
-import { getActiveProvider, type ProviderConfig } from "./providers";
+import { getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
 import type {
   EngineEvent,
@@ -165,49 +165,76 @@ async function callClaudeLocal(
   }
 }
 
-// ── AI SDK call (Gemini, OpenAI, Anthropic) ──
+// ── AI SDK call (Gemini, OpenAI, Anthropic) with model rotation ──
 async function callAiSdk(
   system: string,
   userPrompt: string,
   provider: ProviderConfig,
   maxTokens: number,
+  modelOverride?: string,
 ): Promise<string> {
-  let model;
+  // For Gemini provider, use rotation unless a specific model is requested
+  let modelName: string;
   switch (provider.name) {
     case "gemini":
-      model = google(provider.model);
+      modelName = modelOverride || getRotatedModel();
       break;
     case "openai":
     case "anthropic":
-      console.warn(`[orchestrator] Provider "${provider.name}" not yet supported by AI SDK, falling back to Gemini with model ${provider.model}`);
-      model = google(provider.model);
+      console.warn(`[orchestrator] Provider "${provider.name}" not yet supported by AI SDK, falling back to Gemini`);
+      modelName = modelOverride || getRotatedModel();
       break;
     default:
-      console.warn(`[orchestrator] Unknown provider "${provider.name}", falling back to gemini-2.5-flash`);
-      model = google("gemini-2.5-flash");
+      console.warn(`[orchestrator] Unknown provider "${provider.name}", falling back to rotation`);
+      modelName = getRotatedModel();
   }
 
-  const result = await generateText({
-    model,
-    system,
-    messages: [{ role: "user", content: userPrompt }],
-    maxOutputTokens: maxTokens,
-    temperature: 1.2,
-    topP: 0.9,
-    providerOptions: {
-      google: {
-        thinkingConfig: { thinkingBudget: 0 },
-        safetySettings: [
-          { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-          { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-        ],
-      },
-    },
-  });
+  const exhausted = new Set<string>();
 
-  return result.text;
+  const attempt = async (name: string): Promise<string> => {
+    const gemma = isGemmaModel(name);
+    const googleOptions: Record<string, any> = { // eslint-disable-line @typescript-eslint/no-explicit-any
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      ],
+    };
+    if (!gemma) {
+      googleOptions.thinkingConfig = { thinkingBudget: 0 };
+    }
+    const result = await generateText({
+      model: google(name),
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+      maxOutputTokens: maxTokens,
+      temperature: 1.2,
+      topP: 0.9,
+      providerOptions: { google: googleOptions },
+    });
+    return result.text;
+  };
+
+  const isRetryable = (err: unknown) => {
+    const s = String(err);
+    return s.includes("429") || s.includes("quota") || s.includes("RESOURCE_EXHAUSTED") || s.includes("Thinking is not enabled");
+  };
+
+  // Try the initial model, then rotate through the pool on retryable errors
+  let currentModel = modelName;
+  while (true) {
+    try {
+      return await attempt(currentModel);
+    } catch (err) {
+      if (!isRetryable(err)) throw err;
+      exhausted.add(currentModel);
+      const next = skipExhaustedModels(exhausted);
+      if (!next) throw err; // all models exhausted
+      console.warn(`[rotation] ${currentModel} exhausted, trying ${next}`);
+      currentModel = next;
+    }
+  }
 }
 
 // ── Unified call function ──
@@ -216,11 +243,12 @@ async function callModel(
   userPrompt: string,
   provider: ProviderConfig,
   maxTokens: number,
+  modelOverride?: string,
 ): Promise<string> {
   if (provider.name === "claude-cli") {
     return callClaudeCli(system, userPrompt, provider.model, maxTokens);
   }
-  return callAiSdk(system, userPrompt, provider, maxTokens);
+  return callAiSdk(system, userPrompt, provider, maxTokens, modelOverride);
 }
 
 // ── Clean up model response ──
@@ -1027,9 +1055,10 @@ If it's just a casual opinion question (like "pizza or burger" or "should I quit
 
   try {
     // Use Gemini with Google Search when available for real-time research
+    // Google Search tool only works with Gemini models (not Gemma), so use dedicated search model
     if (provider.name === "gemini") {
       const result = await generateText({
-        model: google(provider.synthesisModel),
+        model: google(getSearchModel()),
         tools: {
           google_search: google.tools.googleSearch({}),
         },
@@ -1503,7 +1532,7 @@ export async function* orchestrateChat(params: {
     const synthesisText = await callModel(
       `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`,
       `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 3-4 distinct options/perspectives that emerged. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. Return 3-4 options.`,
-      { ...provider, model: provider.synthesisModel },
+      provider,
       600,
     );
 

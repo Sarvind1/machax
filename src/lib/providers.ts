@@ -6,6 +6,9 @@
 //   3. OpenAI — via OPENAI_API_KEY (future)
 //   4. Anthropic API — via ANTHROPIC_API_KEY (future)
 //
+// Model rotation: when using Gemini, we rotate across multiple models to
+// multiply free-tier quota (each model has its own RPD/RPM limits).
+//
 // At startup / on demand, we probe each provider and report which are live.
 
 import { execSync } from "child_process";
@@ -23,7 +26,7 @@ export interface ProviderConfig {
 }
 
 // The priority order — edit this array to change preference
-// Gemini first: 1-3s per call vs Claude CLI's 15-20s
+// Gemini first for batch content generation (Claude CLI too slow for parallel)
 const PROVIDER_PRIORITY: ProviderName[] = [
   "gemini",
   "claude-cli",
@@ -76,6 +79,53 @@ function checkAnthropic(): { available: boolean; reason?: string } {
   return { available: false, reason: "ANTHROPIC_API_KEY not set" };
 }
 
+// ── Gemini model rotation pool ──
+// Ordered by free-tier generosity. Each model has its own RPD/RPM quota.
+// gemma models: 14,400 RPD, 30 RPM — workhorses for agent responses
+// gemini-3.1-flash-lite-preview: 500 RPD, 15 RPM — good overflow buffer
+// gemini-2.5-flash-lite: 20 RPD, 10 RPM — small buffer
+// gemini-2.5-flash: 20 RPD, 5 RPM — reserved for Google Search grounding only
+const GEMINI_ROTATION_POOL = [
+  "gemma-3-27b-it",                // 14,400 RPD, 30 RPM
+  "gemma-3-12b-it",                // 14,400 RPD, 30 RPM
+  "gemini-3.1-flash-lite-preview", // 500 RPD, 15 RPM
+  "gemini-2.5-flash-lite",         // 20 RPD, 10 RPM
+  "gemini-3-flash-preview",        // 20 RPD, 5 RPM
+];
+
+// Model used exclusively for Google Search grounding (needs Gemini, not Gemma)
+const GEMINI_SEARCH_MODEL = "gemini-2.5-flash";
+
+// Seed from timestamp so Vercel cold starts don't always hit index 0
+let rotationIndex = Date.now() % GEMINI_ROTATION_POOL.length;
+
+/** Get the next model from the rotation pool (round-robin). */
+export function getRotatedModel(): string {
+  const model = GEMINI_ROTATION_POOL[rotationIndex % GEMINI_ROTATION_POOL.length];
+  rotationIndex++;
+  return model;
+}
+
+/** Get search-grounding model (only Gemini models support Google Search tool). */
+export function getSearchModel(): string {
+  return GEMINI_SEARCH_MODEL;
+}
+
+/** Get the next model that isn't in the exhausted set. */
+export function skipExhaustedModels(exhausted: Set<string>): string | null {
+  for (let i = 0; i < GEMINI_ROTATION_POOL.length; i++) {
+    const model = GEMINI_ROTATION_POOL[rotationIndex % GEMINI_ROTATION_POOL.length];
+    rotationIndex++;
+    if (!exhausted.has(model)) return model;
+  }
+  return null; // all models exhausted
+}
+
+/** Check if a model name is a Gemma model (different capabilities). */
+export function isGemmaModel(model: string): boolean {
+  return model.startsWith("gemma-");
+}
+
 const MODEL_MAP: Record<
   ProviderName,
   { model: string; synthesisModel: string; label: string }
@@ -86,9 +136,9 @@ const MODEL_MAP: Record<
     label: "Claude CLI (Haiku)",
   },
   gemini: {
-    model: "gemini-2.5-flash",
-    synthesisModel: "gemini-2.5-flash",
-    label: "Gemini 2.5 Flash",
+    model: "gemma-3-27b-it", // default, but rotation overrides this per-call
+    synthesisModel: "gemma-3-27b-it",
+    label: "Gemini (Multi-Model Rotation)",
   },
   openai: {
     model: "gpt-4o-mini",
