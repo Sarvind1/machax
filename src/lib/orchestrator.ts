@@ -172,7 +172,7 @@ async function callAiSdk(
   provider: ProviderConfig,
   maxTokens: number,
   modelOverride?: string,
-): Promise<string> {
+): Promise<{ text: string; model: string; paid: boolean }> {
   // For Gemini provider, use rotation unless a specific model is requested
   let modelName: string;
   switch (provider.name) {
@@ -228,7 +228,7 @@ async function callAiSdk(
 
   while (true) {
     try {
-      return await attempt(currentModel);
+      return { text: await attempt(currentModel), model: currentModel, paid: false };
     } catch (err) {
       if (!isRetryable(err)) throw err;
       exhausted.add(currentModel);
@@ -238,6 +238,7 @@ async function callAiSdk(
         const next = skipExhaustedModels(exhausted);
         if (next) {
           console.warn(`[rotation] ${currentModel} exhausted, trying ${next}`);
+          engineLog({ ts: new Date().toISOString(), event: "rotation-exhaust", exhaustedModel: currentModel, nextModel: next });
           currentModel = next;
           continue;
         }
@@ -248,11 +249,12 @@ async function callAiSdk(
       if (paidKey && !exhausted.has("__paid__")) {
         exhausted.add("__paid__");
         console.warn(`[rotation] Free models exhausted, falling back to paid Gemini key`);
+        engineLog({ ts: new Date().toISOString(), event: "rotation-paid-fallback", exhaustedModels: [...exhausted].filter(m => m !== "__paid__") });
         // Temporarily swap the API key for the paid one
         const origKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
         try {
           process.env.GOOGLE_GENERATIVE_AI_API_KEY = paidKey;
-          return await attempt("gemini-2.5-flash");
+          return { text: await attempt("gemini-2.5-flash"), model: "gemini-2.5-flash", paid: true };
         } finally {
           process.env.GOOGLE_GENERATIVE_AI_API_KEY = origKey;
         }
@@ -270,9 +272,9 @@ async function callModel(
   provider: ProviderConfig,
   maxTokens: number,
   modelOverride?: string,
-): Promise<string> {
+): Promise<{ text: string; model: string; paid: boolean }> {
   if (provider.name === "claude-cli") {
-    return callClaudeCli(system, userPrompt, provider.model, maxTokens);
+    return { text: await callClaudeCli(system, userPrompt, provider.model, maxTokens), model: provider.model, paid: false };
   }
   return callAiSdk(system, userPrompt, provider, maxTokens, modelOverride);
 }
@@ -796,7 +798,7 @@ async function callFriend(
   isMinimalPrompt: boolean = false,
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
   overrides: Record<string, any> = {},
-): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string } | null> {
+): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string; model?: string; paid?: boolean } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
     return {
@@ -994,7 +996,7 @@ async function callFriend(
   }
 
   try {
-    let text = await callModel(
+    let { text, model: usedModel, paid } = await callModel(
       friend.systemPrompt,
       prompt,
       provider,
@@ -1051,7 +1053,7 @@ async function callFriend(
       const reason = text.length < 3 ? "too-short" : allMessages.some(m => m.text.toLowerCase() === text.toLowerCase()) ? "exact-dupe" : "incomplete";
       engineLog({ ts: new Date().toISOString(), event: "garbage-first", agent: friendId, text: text.slice(0, 120), reason, length: text.length });
       const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
-      text = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150));
+      ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150)));
       text = cleanResponse(text, friend.name);
 
       // If still garbage after retry, return null to skip this agent
@@ -1062,7 +1064,7 @@ async function callFriend(
       }
     }
 
-    return { entry: { from: friendId, text }, replyTo: replyToId, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText };
+    return { entry: { from: friendId, text }, replyTo: replyToId, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, model: usedModel, paid };
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
     engineLog({ ts: new Date().toISOString(), event: "agent-error", agent: friendId, error: String(err).slice(0, 200) });
@@ -1107,7 +1109,7 @@ If it's just a casual opinion question (like "pizza or burger" or "should I quit
     }
 
     // Fallback for non-Gemini providers: use model's training knowledge
-    const text = await callModel(
+    const { text } = await callModel(
       "You are a research assistant. Give brief factual context about topics. Reply NONE for casual questions.",
       topicPrompt,
       { ...provider, model: provider.synthesisModel },
@@ -1437,7 +1439,7 @@ export async function* orchestrateChat(params: {
         engineLog({ ts: new Date().toISOString(), event: "null-response", agent: batch[i].agent.id, iteration: iterations });
         continue;
       }
-      const { entry, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText } = result.value;
+      const { entry, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, model: usedModel, paid } = result.value;
       const agent = batch[i].agent;
       const target = batch[i].target;
 
@@ -1501,7 +1503,7 @@ export async function* orchestrateChat(params: {
         engineLog({ ts: new Date().toISOString(), event: "media-rate-capped", agent: entry.from, mediaSource: mediaType, iteration: iterations, mediaMessageCount });
       }
 
-      engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: entry.from, text: entry.text.slice(0, 80), hasMedia: !!includeMedia, mediaSource: mediaType || null, iteration: iterations, energy: parseFloat(energy.toFixed(3)) });
+      engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: entry.from, text: entry.text.slice(0, 80), model: usedModel || "unknown", paid: !!paid, hasMedia: !!includeMedia, mediaSource: mediaType || null, iteration: iterations, energy: parseFloat(energy.toFixed(3)) });
 
       yield {
         type: "message",
@@ -1558,7 +1560,7 @@ export async function* orchestrateChat(params: {
     .filter(Boolean);
 
   try {
-    const synthesisText = await callModel(
+    const { text: synthesisText } = await callModel(
       `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`,
       `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 3-4 distinct options/perspectives that emerged. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. Return 3-4 options.`,
       provider,
