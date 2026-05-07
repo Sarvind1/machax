@@ -218,7 +218,7 @@ async function callAiSdk(
 
   const isRetryable = (err: unknown) => {
     const s = String(err);
-    return s.includes("429") || s.includes("quota") || s.includes("RESOURCE_EXHAUSTED") || s.includes("Thinking is not enabled");
+    return s.includes("429") || s.includes("403") || s.includes("409") || s.includes("quota") || s.includes("RESOURCE_EXHAUSTED") || s.includes("Thinking is not enabled");
   };
 
   // Try the initial model, then rotate through the pool on retryable errors
@@ -288,7 +288,7 @@ function cleanResponse(text: string, friendName: string): string {
 // ── Media marker extraction ─────────────────────────────────────────
 
 function extractMediaMarker(text: string): { query: string; remainingText: string } | null {
-  const match = text.match(/\[(?:REACT|GIF):\s*(.+?)\]/i);
+  const match = text.match(/\[(?:REACT|GIF)[:\s]\s*(.+?)\]/i);
   if (!match) return null;
   const query = match[1].trim();
   const remainingText = text.replace(match[0], '').trim();
@@ -1008,6 +1008,9 @@ async function callFriend(
         // text is already cleaned — just continue with text-only
       }
     }
+
+    // Safety net: strip any remaining [REACT...] or [GIF...] markers the model produced
+    text = text.replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, '').trim();
 
     // Validate response quality — retry once if garbage or truncated
     const looksIncomplete = (t: string) => {
