@@ -1488,6 +1488,8 @@ export async function* orchestrateChat(params: {
       if (traceAgent) {
         traceAgent.responseText = entry.text.slice(0, 120);
         traceAgent.responseTimeMs = Date.now() - traceStartTime;
+        traceAgent.model = usedModel || "unknown";
+        traceAgent.paid = !!paid;
       }
 
       // Track if this message engages the user (contains a question)
