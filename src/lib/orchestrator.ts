@@ -221,18 +221,44 @@ async function callAiSdk(
     return s.includes("429") || s.includes("403") || s.includes("409") || s.includes("quota") || s.includes("RESOURCE_EXHAUSTED") || s.includes("Thinking is not enabled");
   };
 
-  // Try the initial model, then rotate through the pool on retryable errors
+  // Try the initial model, 1 retry on a different free model, then paid key as ultimate fallback
   let currentModel = modelName;
+  let retryCount = 0;
+  const MAX_FREE_RETRIES = 1;
+
   while (true) {
     try {
       return await attempt(currentModel);
     } catch (err) {
       if (!isRetryable(err)) throw err;
       exhausted.add(currentModel);
-      const next = skipExhaustedModels(exhausted);
-      if (!next) throw err; // all models exhausted
-      console.warn(`[rotation] ${currentModel} exhausted, trying ${next}`);
-      currentModel = next;
+      retryCount++;
+
+      if (retryCount <= MAX_FREE_RETRIES) {
+        const next = skipExhaustedModels(exhausted);
+        if (next) {
+          console.warn(`[rotation] ${currentModel} exhausted, trying ${next}`);
+          currentModel = next;
+          continue;
+        }
+      }
+
+      // Ultimate fallback: paid Gemini key
+      const paidKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY_PAID;
+      if (paidKey && !exhausted.has("__paid__")) {
+        exhausted.add("__paid__");
+        console.warn(`[rotation] Free models exhausted, falling back to paid Gemini key`);
+        // Temporarily swap the API key for the paid one
+        const origKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        try {
+          process.env.GOOGLE_GENERATIVE_AI_API_KEY = paidKey;
+          return await attempt("gemini-2.5-flash");
+        } finally {
+          process.env.GOOGLE_GENERATIVE_AI_API_KEY = origKey;
+        }
+      }
+
+      throw err; // all options exhausted
     }
   }
 }
