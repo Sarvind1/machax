@@ -376,7 +376,7 @@ export default function ChatPage() {
                     conversationId: convoId,
                     question: data.decision.question,
                     options: data.decision.options,
-                    ...(settingsUsername ? { username: settingsUsername } : {}),
+                    username: settingsUsername!,
                   });
                 } catch {
                   // Convex save failed — decision still shows in UI
@@ -472,7 +472,7 @@ export default function ChatPage() {
           conversationId: convoId,
           from: "user",
           text,
-          ...(settingsUsername ? { username: settingsUsername } : {}),
+          username: settingsUsername!,
         });
 
         await streamChat(text, convoId, podIds, []);
@@ -496,7 +496,7 @@ export default function ChatPage() {
           conversationId: activeConversation,
           from: "user",
           text,
-          ...(settingsUsername ? { username: settingsUsername } : {}),
+          username: settingsUsername!,
         });
       } catch {
         // continue even if Convex fails
