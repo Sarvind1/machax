@@ -1,0 +1,57 @@
+[
+  {
+    "from": "user",
+    "text": "i think i'm falling for my best friend... what do i do",
+    "isUser": true
+  },
+  {
+    "from": "sid",
+    "text": "oh god i typed that out loud",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "tell them duh lol",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "oh god no. i did that once and it was a disaster.",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "priya is right it's never a good idea lol",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "omg sid you didn't... i'm gonna die",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "what if it's not a crush, but just a fear of losing them?",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "priya you're just bad at it, doesn't mean it's a bad idea for everyone",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "sid, you're literally just scared of commitment 💀",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "priya's just projecting lol",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "sid you really just put that in the group chat lmao",
+    "isUser": false
+  }
+]

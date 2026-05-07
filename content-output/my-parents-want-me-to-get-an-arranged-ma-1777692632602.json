@@ -1,0 +1,52 @@
+[
+  {
+    "from": "user",
+    "text": "my parents want me to get an arranged marriage but i'm not ready",
+    "isUser": true
+  },
+  {
+    "from": "priya",
+    "text": "omg literally my life rn i'm 26 and still dodging this lol",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "arranged marriage is just tinder for your parents bestie",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "that's still a thing??",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "omg noooo... you're not ready you're not ready... trust your gut",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "just get a fake partner for a bit lol it works",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "nah just tell em you're gay lol instant escape card",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "i literally did that in pune with a random dude and it did not end well lol",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "lol nah that's too much drama for parents",
+    "isUser": false
+  },
+  {
+    "from": "tanmay",
+    "text": "are you marrying a person or a resume tho",
+    "isUser": false
+  }
+]

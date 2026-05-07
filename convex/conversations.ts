@@ -23,11 +23,11 @@ export const create = mutation({
 });
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { username: v.string() },
+  handler: async (ctx, { username }) => {
     const conversations = await ctx.db
       .query("conversations")
-      .withIndex("by_created")
+      .withIndex("by_username", (q) => q.eq("username", username))
       .order("desc")
       .take(20);
     return conversations;
@@ -35,8 +35,11 @@ export const list = query({
 });
 
 export const get = query({
-  args: { id: v.id("conversations") },
-  handler: async (ctx, { id }) => {
-    return await ctx.db.get(id);
+  args: { id: v.id("conversations"), username: v.string() },
+  handler: async (ctx, { id, username }) => {
+    const conversation = await ctx.db.get(id);
+    if (!conversation) return null;
+    if (conversation.username !== username) return null;
+    return conversation;
   },
 });

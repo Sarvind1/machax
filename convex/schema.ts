@@ -33,6 +33,7 @@ export default defineSchema({
     username: v.string(),
     email: v.optional(v.string()),
     password: v.string(),
+    salt: v.optional(v.string()),
     name: v.optional(v.string()),
     city: v.optional(v.string()),
     age: v.optional(v.number()),

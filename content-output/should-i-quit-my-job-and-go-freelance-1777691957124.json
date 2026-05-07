@@ -1,0 +1,47 @@
+[
+  {
+    "from": "user",
+    "text": "should i quit my job and go freelance?",
+    "isUser": true
+  },
+  {
+    "from": "aarushi",
+    "text": "do it.",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "how much runway do i have in savings for a few months without income",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "reeva is right. you need a plan. jumping without a parachute is just stupid.",
+    "isUser": false
+  },
+  {
+    "from": "tanmay",
+    "text": "are you quitting for freedom or fear",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "freelance life is kinda lonely tho",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "this is such a classic fear-based risk mitigation strategy",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "you just need to find a good coworking space mira lol",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "lmao mira that's literally what i did last year",
+    "isUser": false
+  }
+]

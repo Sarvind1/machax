@@ -174,7 +174,10 @@ export default function ChatPage() {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isStreamingRef = useRef(false);
 
-  const conversations = useSafeQuery<any[]>(api.conversations.list) ?? [];
+  const conversations = useSafeQuery<any[]>(
+    api.conversations.list,
+    settingsUsername ? { username: settingsUsername } : "skip"
+  ) ?? [];
   const createConversation = useMutation(api.conversations.create);
   const sendMessage = useMutation(api.messages.send);
   const upsertDecision = useMutation(api.decisions.upsert);
@@ -184,11 +187,11 @@ export default function ChatPage() {
   // Load messages from Convex when conversation changes
   const convexMessages = useSafeQuery<any[]>(
     api.messages.list,
-    activeConversation ? { conversationId: activeConversation } : "skip"
+    activeConversation && settingsUsername ? { conversationId: activeConversation, username: settingsUsername } : "skip"
   );
   const convexDecision = useSafeQuery<any>(
     api.decisions.get,
-    activeConversation ? { conversationId: activeConversation } : "skip"
+    activeConversation && settingsUsername ? { conversationId: activeConversation, username: settingsUsername } : "skip"
   );
 
   useEffect(() => {
@@ -349,6 +352,7 @@ export default function ChatPage() {
                     conversationId: convoId,
                     from: data.from,
                     text: data.text,
+                    ...(settingsUsername ? { username: settingsUsername } : {}),
                     ...(data.mediaType ? { mediaType: data.mediaType } : {}),
                     ...(data.mediaUrl ? { mediaUrl: data.mediaUrl } : {}),
                     ...(data.mediaThumbnailUrl ? { mediaThumbnailUrl: data.mediaThumbnailUrl } : {}),
@@ -373,6 +377,7 @@ export default function ChatPage() {
                     conversationId: convoId,
                     question: data.decision.question,
                     options: data.decision.options,
+                    ...(settingsUsername ? { username: settingsUsername } : {}),
                   });
                 } catch {
                   // Convex save failed — decision still shows in UI
@@ -486,6 +491,7 @@ export default function ChatPage() {
           conversationId: convoId,
           from: "user",
           text,
+          ...(settingsUsername ? { username: settingsUsername } : {}),
         });
 
         await streamChat(text, convoId, podIds, []);
@@ -509,6 +515,7 @@ export default function ChatPage() {
           conversationId: activeConversation,
           from: "user",
           text,
+          ...(settingsUsername ? { username: settingsUsername } : {}),
         });
       } catch {
         // continue even if Convex fails
@@ -557,11 +564,12 @@ export default function ChatPage() {
   };
 
   const handleDecisionSelect = async (optionId: string) => {
-    if (!activeConversation) return;
+    if (!activeConversation || !settingsUsername) return;
     try {
       await selectDecision({
         conversationId: activeConversation,
         optionId,
+        username: settingsUsername,
       });
       router.push("/decisions");
     } catch (err) {

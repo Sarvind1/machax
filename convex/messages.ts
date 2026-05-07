@@ -6,13 +6,20 @@ export const send = mutation({
     conversationId: v.id("conversations"),
     from: v.string(),
     text: v.string(),
+    username: v.optional(v.string()),
     mediaType: v.optional(v.union(v.literal("gif"), v.literal("sticker"), v.literal("meme"))),
     mediaUrl: v.optional(v.string()),
     mediaThumbnailUrl: v.optional(v.string()),
     mediaAltText: v.optional(v.string()),
     replyTo: v.optional(v.string()),
   },
-  handler: async (ctx, { conversationId, from, text, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, replyTo }) => {
+  handler: async (ctx, { conversationId, from, text, username, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, replyTo }) => {
+    if (username) {
+      const conversation = await ctx.db.get(conversationId);
+      if (!conversation || (conversation.username && conversation.username !== username)) {
+        throw new Error("Not authorized");
+      }
+    }
     await ctx.db.insert("messages", {
       conversationId,
       from,
@@ -28,8 +35,14 @@ export const send = mutation({
 });
 
 export const list = query({
-  args: { conversationId: v.id("conversations") },
-  handler: async (ctx, { conversationId }) => {
+  args: { conversationId: v.id("conversations"), username: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, username }) => {
+    if (username) {
+      const conversation = await ctx.db.get(conversationId);
+      if (!conversation || (conversation.username && conversation.username !== username)) {
+        return [];
+      }
+    }
     const messages = await ctx.db
       .query("messages")
       .withIndex("by_conversation", (q) =>

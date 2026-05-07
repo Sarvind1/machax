@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -20,7 +20,18 @@ function timeAgo(timestamp: number): string {
 export default function TracesPage() {
   const [selectedId, setSelectedId] = useState<Id<"traces"> | null>(null);
 
-  const traces = useQuery(api.traces.list);
+  const settingsUsername = useMemo(() => {
+    try {
+      const stored = localStorage.getItem("machax-user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        return parsed?.username || null;
+      }
+    } catch {}
+    return null;
+  }, []);
+
+  const traces = useQuery(api.traces.list, settingsUsername ? { username: settingsUsername } : "skip");
   const selectedTrace = useQuery(
     api.traces.get,
     selectedId ? { id: selectedId } : "skip"

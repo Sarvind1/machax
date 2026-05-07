@@ -82,6 +82,14 @@ export async function POST(request: Request) {
       userEngagementFrequency?: number;
     };
 
+    // Require a non-empty username to prevent anonymous/bot access
+    if (typeof userName !== "string" || !userName.trim()) {
+      return Response.json(
+        { error: "userName is required" },
+        { status: 401 }
+      );
+    }
+
     if (!message || !podFriendIds?.length) {
       return Response.json(
         { error: "message and podFriendIds are required" },

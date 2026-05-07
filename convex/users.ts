@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { generateSalt, hashPassword } from "./lib/passwords";
 
 export const signup = mutation({
   args: {
@@ -25,10 +26,14 @@ export const signup = mutation({
     if (existingEmail) {
       return { success: false as const, error: "email_taken" as const };
     }
+    const salt = generateSalt();
+    const hashedPassword = await hashPassword(password, salt);
+
     await ctx.db.insert("users", {
       username,
       email,
-      password,
+      password: hashedPassword,
+      salt,
       name,
       city,
       age,
@@ -59,9 +64,23 @@ export const login = mutation({
     if (!user) {
       return { success: false as const, error: "not_found" as const };
     }
-    if (user.password !== password) {
-      return { success: false as const, error: "wrong_password" as const };
+    if (user.salt) {
+      // Hashed password: compare hashes
+      const hashedInput = await hashPassword(password, user.salt);
+      if (user.password !== hashedInput) {
+        return { success: false as const, error: "wrong_password" as const };
+      }
+    } else {
+      // Legacy plaintext password: compare directly, then migrate
+      if (user.password !== password) {
+        return { success: false as const, error: "wrong_password" as const };
+      }
+      // Migrate to hashed password on successful login
+      const salt = generateSalt();
+      const hashedPassword = await hashPassword(password, salt);
+      await ctx.db.patch(user._id, { password: hashedPassword, salt });
     }
+
     return { success: true as const, username: user.username, name: user.name };
   },
 });
@@ -74,7 +93,11 @@ export const getByUsername = query({
       .withIndex("by_username", (q) => q.eq("username", username))
       .first();
     if (!user) return null;
-    const { password: _, ...rest } = user;
-    return rest;
+    return {
+      _id: user._id,
+      username: user.username,
+      name: user.name,
+      createdAt: user.createdAt,
+    };
   },
 });

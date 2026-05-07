@@ -24,13 +24,16 @@ export const save = mutation({
 });
 
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db
+  args: { username: v.optional(v.string()) },
+  handler: async (ctx, { username }) => {
+    let q = ctx.db
       .query("traces")
       .withIndex("by_created")
-      .order("desc")
-      .take(50);
+      .order("desc");
+    if (username) {
+      q = q.filter((f) => f.eq(f.field("userName"), username));
+    }
+    return await q.take(50);
   },
 });
 

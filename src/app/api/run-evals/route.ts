@@ -73,7 +73,17 @@ const EVAL_PROMPTS = [
   },
 ];
 
-export async function POST() {
+export async function POST(request: Request) {
+  // Admin-only: require x-admin-key header matching ADMIN_API_KEY env var
+  const adminKey = process.env.ADMIN_API_KEY;
+  const providedKey = request.headers.get("x-admin-key");
+  if (!adminKey || providedKey !== adminKey) {
+    return Response.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (!convexUrl) {
     return Response.json(

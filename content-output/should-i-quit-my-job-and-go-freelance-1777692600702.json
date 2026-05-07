@@ -1,0 +1,52 @@
+[
+  {
+    "from": "user",
+    "text": "should i quit my job and go freelance?",
+    "isUser": true
+  },
+  {
+    "from": "reeva",
+    "text": "you gotta have at least 6 months of expenses saved up first",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "financially speaking that's a risk mitigation strategy. i'd do it.",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "bestie you think you're gonna save six months of anything",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "six months is crazy lol",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "literally quit my job with 2 months saved lol. big yolo energy. but srsly what's making you consider it? like what's the actual pain point?",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "omg wait you actually want to do this?? do it!!",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "what's the current role not giving you then",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "lol aarushi enabling them.  you need a plan not just vibes",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "the lack of freedom probably",
+    "isUser": false
+  }
+]

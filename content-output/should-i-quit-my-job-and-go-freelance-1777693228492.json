@@ -1,0 +1,97 @@
+[
+  {
+    "from": "user",
+    "text": "should i quit my job and go freelance?",
+    "isUser": true
+  },
+  {
+    "from": "aarushi",
+    "text": "life's too short for boring jobs... do it!!",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "bestie your rent is due soon tho",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "lol no. it's called a side hustle first",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "nah just quit lol",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "i literally quit my job without a plan last year lol worst mistake ever",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "nah you need savings first lol",
+    "isUser": false
+  },
+  {
+    "from": "tanmay",
+    "text": "are you quitting a job or escaping yourself",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "side hustle first, always. why risk it all lol priya knows this.",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "literally though arjun 😂 what happened to you?",
+    "isUser": false
+  },
+  {
+    "from": "user",
+    "text": "mira's right lol, i have like 3 months savings max. gonna try the side hustle thing for now tbh",
+    "isUser": true
+  },
+  {
+    "from": "mira",
+    "text": "babe my savings account is a joke",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "nah that's smart",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "yesss side hustle!!",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "lol mira's right, my savings is always a joke. last time i quit i had like 2 weeks rent saved and it was fine. you'll figure it out",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "i literally have no side hustle ideas lol help",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "smart move lowkey",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "bestie so you're not quitting then",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "what happened with arjun's job?",
+    "isUser": false
+  }
+]

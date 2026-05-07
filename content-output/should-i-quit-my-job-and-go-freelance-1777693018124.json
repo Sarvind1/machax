@@ -1,0 +1,107 @@
+[
+  {
+    "from": "user",
+    "text": "should i quit my job and go freelance?",
+    "isUser": true
+  },
+  {
+    "from": "reeva",
+    "text": "how much money do you have saved up",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "omg do it... life's too short for a job you hate",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "i literally quit my job to freelance last year lol worst decision ever",
+    "isUser": false
+  },
+  {
+    "from": "tanmay",
+    "text": "are you quitting a job or escaping responsibility",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "nah priya's wrong lol",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "babe what's the worst that could happen",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "what's actually bothering you about it",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "lmao priya hard disagree. freelancing was the best decision for me. you just gotta pick the right domain.",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "what priya said... why was it bad??",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "domain matters. priya probably picked something oversaturated.",
+    "isUser": false
+  },
+  {
+    "from": "user",
+    "text": "nah tanmay not running away lol. boss literally asked me to do 3 peoples jobs for same pay",
+    "isUser": true
+  },
+  {
+    "from": "tanmay",
+    "text": "so it's a prison break not a career move then",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "lmao prison break sounds more fun",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "omg that's insane... leave. now.",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "yo what that's illegal",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "leave lol. stop overthinking it",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "omg that's literally what happened to me in Pune lol",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "same story different city priya lol",
+    "isUser": false
+  },
+  {
+    "from": "tanmay",
+    "text": "bosses really think loyalty is free labor 💀",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "ikr my last boss literally said \"we're a family here\" then paid me nothing lol",
+    "isUser": false
+  }
+]

@@ -1,0 +1,107 @@
+[
+  {
+    "from": "user",
+    "text": "should i quit my job and go freelance?",
+    "isUser": true
+  },
+  {
+    "from": "reeva",
+    "text": "depends if you have a backup plan or just vibes",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "omg do it... what's stopping you",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "vibes always win",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "babe your boss already hates you anyway",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "i literally quit my last job for vibes and ended up crying daily lol. what's making you want to quit?",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "what's your runway look like. that's the real question",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "lol sounds like a skill issue priya. just kidding but what happened fr",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "priya what did you even plan for lol. classic vibes moment",
+    "isUser": false
+  },
+  {
+    "from": "user",
+    "text": "arjun you're right about runway lol, sitting on like 6 months. but priya made me paranoid ngl, might test the freelance waters first",
+    "isUser": true
+  },
+  {
+    "from": "sid",
+    "text": "that's rich lol",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "bestie six months is retirement practically",
+    "isUser": false
+  },
+  {
+    "from": "aarushi",
+    "text": "test the waters! yes!",
+    "isUser": false
+  },
+  {
+    "from": "mira",
+    "text": "so you're just bored then",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "i literally did this last year lol and regretted it so hard",
+    "isUser": false
+  },
+  {
+    "from": "reeva",
+    "text": "priya what actually went wrong tho six months is plenty lol stop overthinking it freelance is easy money if you know what you're doing just do it honestly you'll figure it out who cares",
+    "isUser": false
+  },
+  {
+    "from": "tanmay",
+    "text": "priya's crying daily sounds like a bad product market fit not a bad decision lol",
+    "isUser": false
+  },
+  {
+    "from": "sid",
+    "text": "priya why did u regret it tho",
+    "isUser": false
+  },
+  {
+    "from": "priya",
+    "text": "lmao tanmay what is product market fit even?? i literally have no idea",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "six months is good enough for freelancing. go for it.",
+    "isUser": false
+  },
+  {
+    "from": "arjun",
+    "text": "priya's bad p-m fit was probably just bad clients lol, happens to everyone",
+    "isUser": false
+  }
+]
