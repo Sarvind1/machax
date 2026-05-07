@@ -351,7 +351,7 @@ export default function ChatPage() {
                     conversationId: convoId,
                     from: data.from,
                     text: data.text,
-                    ...(settingsUsername ? { username: settingsUsername } : {}),
+                    username: settingsUsername!,
                     ...(data.mediaType ? { mediaType: data.mediaType } : {}),
                     ...(data.mediaUrl ? { mediaUrl: data.mediaUrl } : {}),
                     ...(data.mediaThumbnailUrl ? { mediaThumbnailUrl: data.mediaThumbnailUrl } : {}),
