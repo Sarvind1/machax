@@ -1068,6 +1068,34 @@ async function callFriend(
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
     engineLog({ ts: new Date().toISOString(), event: "agent-error", agent: friendId, error: String(err).slice(0, 200) });
+
+    // Last resort: try paid Gemini key before giving up
+    const paidKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY_PAID;
+    if (paidKey) {
+      try {
+        engineLog({ ts: new Date().toISOString(), event: "agent-paid-rescue", agent: friendId });
+        const origKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+        process.env.GOOGLE_GENERATIVE_AI_API_KEY = paidKey;
+        try {
+          const { text: rescueText } = await callAiSdk(
+            FRIENDS_BY_ID[friendId]?.systemPrompt || "",
+            allMessages.filter(m => m.from === "user").pop()?.text || "",
+            provider,
+            150,
+            "gemini-2.5-flash",
+          );
+          const cleaned = cleanResponse(rescueText, FRIENDS_BY_ID[friendId]?.name || friendId);
+          if (cleaned && cleaned.length >= 3) {
+            return { entry: { from: friendId, text: cleaned }, replyTo: null, model: "gemini-2.5-flash", paid: true };
+          }
+        } finally {
+          process.env.GOOGLE_GENERATIVE_AI_API_KEY = origKey;
+        }
+      } catch (rescueErr) {
+        engineLog({ ts: new Date().toISOString(), event: "agent-paid-rescue-failed", agent: friendId, error: String(rescueErr).slice(0, 200) });
+      }
+    }
+
     return {
       entry: { from: friendId, text: "hmm let me think about that..." },
       replyTo: null,
