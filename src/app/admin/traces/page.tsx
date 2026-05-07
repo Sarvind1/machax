@@ -34,7 +34,7 @@ export default function TracesPage() {
   const traces = useQuery(api.traces.list, settingsUsername ? { username: settingsUsername } : "skip");
   const selectedTrace = useQuery(
     api.traces.get,
-    selectedId ? { id: selectedId } : "skip"
+    selectedId && settingsUsername ? { id: selectedId, username: settingsUsername } : "skip"
   );
 
   return (

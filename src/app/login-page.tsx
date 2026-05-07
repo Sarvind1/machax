@@ -246,10 +246,8 @@ export default function LoginPage() {
         const name = result.name ?? formData.username.trim();
         localStorage.setItem("machax-user", JSON.stringify({ username: formData.username.trim(), name }));
         setVictory({ username: formData.username.trim(), isNew: false });
-      } else if (result.error === "not_found") {
-        setErrors({ username: "username not found" });
       } else {
-        setErrors({ password: "wrong password" });
+        setErrors({ username: "invalid username or password" });
       }
     } catch {
       if (abortRef.current !== token) return;

@@ -1,7 +1,7 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-export const save = mutation({
+export const save = internalMutation({
   args: {
     conversationId: v.optional(v.id("conversations")),
     prompt: v.string(),
@@ -24,22 +24,24 @@ export const save = mutation({
 });
 
 export const list = query({
-  args: { username: v.optional(v.string()) },
+  args: { username: v.string() },
   handler: async (ctx, { username }) => {
-    let q = ctx.db
+    return await ctx.db
       .query("traces")
       .withIndex("by_created")
-      .order("desc");
-    if (username) {
-      q = q.filter((f) => f.eq(f.field("userName"), username));
-    }
-    return await q.take(50);
+      .order("desc")
+      .filter((f) => f.eq(f.field("userName"), username))
+      .take(50);
   },
 });
 
 export const get = query({
-  args: { id: v.id("traces") },
-  handler: async (ctx, { id }) => {
-    return await ctx.db.get(id);
+  args: { id: v.id("traces"), username: v.string() },
+  handler: async (ctx, { id, username }) => {
+    const trace = await ctx.db.get(id);
+    if (!trace || trace.userName !== username) {
+      return null;
+    }
+    return trace;
   },
 });

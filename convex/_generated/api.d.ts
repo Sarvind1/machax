@@ -11,6 +11,7 @@
 import type * as conversations from "../conversations.js";
 import type * as decisions from "../decisions.js";
 import type * as evals from "../evals.js";
+import type * as lib_passwords from "../lib/passwords.js";
 import type * as messages from "../messages.js";
 import type * as passwordResets from "../passwordResets.js";
 import type * as settings from "../settings.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
   decisions: typeof decisions;
   evals: typeof evals;
+  "lib/passwords": typeof lib_passwords;
   messages: typeof messages;
   passwordResets: typeof passwordResets;
   settings: typeof settings;

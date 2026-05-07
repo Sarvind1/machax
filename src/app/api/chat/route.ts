@@ -2,6 +2,8 @@ export const dynamic = "force-dynamic";
 
 import { orchestrateChat } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
+import { ConvexHttpClient } from "convex/browser";
+import { internal } from "../../../../convex/_generated/api";
 
 const encoder = new TextEncoder();
 
@@ -43,8 +45,18 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
   }
 }
 
+function getConvexClient(): ConvexHttpClient | null {
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  const deployKey = process.env.CONVEX_DEPLOY_KEY;
+  if (!convexUrl || !deployKey) return null;
+  const client = new ConvexHttpClient(convexUrl);
+  (client as any).setAdminAuth(deployKey);
+  return client;
+}
+
 function iteratorToStream(
-  iterator: AsyncGenerator<EngineEvent>
+  iterator: AsyncGenerator<EngineEvent>,
+  conversationId?: string
 ): ReadableStream<Uint8Array> {
   return new ReadableStream({
     async pull(controller) {
@@ -54,6 +66,31 @@ function iteratorToStream(
           controller.enqueue(encoder.encode(`data: {"done":true}\n\n`));
           controller.close();
         } else {
+          // Save trace server-side instead of letting the client do it
+          if (value.type === "trace") {
+            const client = getConvexClient();
+            if (client && value.data) {
+              try {
+                await (client as any).mutation(internal.traces.save, {
+                  ...(conversationId ? { conversationId } : {}),
+                  prompt: value.data.prompt,
+                  userName: value.data.userName,
+                  podFriendIds: value.data.podFriendIds,
+                  provider: value.data.provider,
+                  sessionMood: value.data.sessionMood,
+                  totalTimeMs: value.data.totalTimeMs,
+                  totalIterations: value.data.totalIterations,
+                  totalMessages: value.data.totalMessages,
+                  finalEnergy: value.data.finalEnergy,
+                  iterations: typeof value.data.iterations === "string"
+                    ? value.data.iterations
+                    : JSON.stringify(value.data.iterations),
+                });
+              } catch (err) {
+                console.error("Trace save failed:", err);
+              }
+            }
+          }
           const flat = translateEvent(value);
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify(flat)}\n\n`)
@@ -71,7 +108,7 @@ function iteratorToStream(
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { message, podFriendIds, history, userName, sessionMood, characterOverrides, conversationDepth, userEngagementFrequency } = body as {
+    const { message, podFriendIds, history, userName, sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, conversationId } = body as {
       message: string;
       podFriendIds: string[];
       history: { from: string; text: string }[];
@@ -80,6 +117,7 @@ export async function POST(request: Request) {
       characterOverrides?: string | null;
       conversationDepth?: string;
       userEngagementFrequency?: number;
+      conversationId?: string;
     };
 
     // Require a non-empty username to prevent anonymous/bot access
@@ -108,7 +146,7 @@ export async function POST(request: Request) {
       userEngagementFrequency,
     });
 
-    const stream = iteratorToStream(generator);
+    const stream = iteratorToStream(generator, conversationId);
 
     return new Response(stream, {
       headers: {

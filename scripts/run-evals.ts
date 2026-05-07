@@ -50,14 +50,21 @@ import { getRotatedModel } from "../src/lib/providers";
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/_generated/api";
+import { internal } from "../convex/_generated/api";
 
 const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
 if (!convexUrl) {
   console.error("NEXT_PUBLIC_CONVEX_URL not set in .env.local");
   process.exit(1);
 }
-const client = new ConvexHttpClient(convexUrl);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const client: any = new ConvexHttpClient(convexUrl);
+const deployKey = process.env.CONVEX_DEPLOY_KEY;
+if (!deployKey) {
+  console.error("CONVEX_DEPLOY_KEY not set in .env.local — required for internal mutations");
+  process.exit(1);
+}
+client.setAdminAuth(deployKey);
 
 const SCORE_PROMPT = `You are a quality reviewer for MachaX, an AI group chat app.
 Evaluate this conversation and return ONLY valid JSON (no markdown, no explanation).
@@ -93,7 +100,7 @@ async function main() {
   );
   const runName = `eval-${new Date().toISOString().slice(0, 16)}`;
 
-  const runId = await client.mutation(api.evals.createRun, {
+  const runId = await client.mutation(internal.evals.createRun, {
     name: runName,
     promptCount: prompts.length,
   });
@@ -170,7 +177,7 @@ async function main() {
 
       console.log(`  Score: ${overallScore}/10 | ${messages.length} msgs | ${(totalTimeMs / 1000).toFixed(1)}s`);
 
-      await client.mutation(api.evals.saveResult, {
+      await client.mutation(internal.evals.saveResult, {
         evalRunId: runId,
         prompt: evalPrompt.prompt,
         messages: JSON.stringify(messages),
@@ -186,7 +193,7 @@ async function main() {
   }
 
   const avgScore = completed > 0 ? parseFloat((totalScore / completed).toFixed(1)) : 0;
-  await client.mutation(api.evals.completeRun, {
+  await client.mutation(internal.evals.completeRun, {
     id: runId,
     avgScore,
     status: "complete",

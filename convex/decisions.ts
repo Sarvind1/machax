@@ -4,7 +4,7 @@ import { v } from "convex/values";
 export const upsert = mutation({
   args: {
     conversationId: v.id("conversations"),
-    username: v.optional(v.string()),
+    username: v.string(),
     question: v.string(),
     options: v.array(
       v.object({
@@ -16,11 +16,9 @@ export const upsert = mutation({
     ),
   },
   handler: async (ctx, { conversationId, username, question, options }) => {
-    if (username) {
-      const conversation = await ctx.db.get(conversationId);
-      if (!conversation || (conversation.username && conversation.username !== username)) {
-        throw new Error("Not authorized");
-      }
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation || (conversation.username && conversation.username !== username)) {
+      throw new Error("Not authorized");
     }
     const existing = await ctx.db
       .query("decisions")
@@ -45,13 +43,11 @@ export const upsert = mutation({
 });
 
 export const get = query({
-  args: { conversationId: v.id("conversations"), username: v.optional(v.string()) },
+  args: { conversationId: v.id("conversations"), username: v.string() },
   handler: async (ctx, { conversationId, username }) => {
-    if (username) {
-      const conversation = await ctx.db.get(conversationId);
-      if (!conversation || (conversation.username && conversation.username !== username)) {
-        return null;
-      }
+    const conversation = await ctx.db.get(conversationId);
+    if (!conversation || (conversation.username && conversation.username !== username)) {
+      return null;
     }
     return await ctx.db
       .query("decisions")

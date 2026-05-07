@@ -62,18 +62,18 @@ export const login = mutation({
         .first();
     }
     if (!user) {
-      return { success: false as const, error: "not_found" as const };
+      return { success: false as const, error: "invalid_credentials" as const };
     }
     if (user.salt) {
       // Hashed password: compare hashes
       const hashedInput = await hashPassword(password, user.salt);
       if (user.password !== hashedInput) {
-        return { success: false as const, error: "wrong_password" as const };
+        return { success: false as const, error: "invalid_credentials" as const };
       }
     } else {
       // Legacy plaintext password: compare directly, then migrate
       if (user.password !== password) {
-        return { success: false as const, error: "wrong_password" as const };
+        return { success: false as const, error: "invalid_credentials" as const };
       }
       // Migrate to hashed password on successful login
       const salt = generateSalt();

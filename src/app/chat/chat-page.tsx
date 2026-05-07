@@ -182,7 +182,6 @@ export default function ChatPage() {
   const sendMessage = useMutation(api.messages.send);
   const upsertDecision = useMutation(api.decisions.upsert);
   const selectDecision = useMutation(api.decisions.select);
-  const saveTrace = useMutation(api.traces.save);
 
   // Load messages from Convex when conversation changes
   const convexMessages = useSafeQuery<any[]>(
@@ -390,25 +389,7 @@ export default function ChatPage() {
                 isStreamingRef.current = false;
               }
 
-              if (data.trace) {
-                try {
-                  await saveTrace({
-                    conversationId: convoId,
-                    prompt: data.trace.prompt,
-                    userName: data.trace.userName,
-                    podFriendIds: data.trace.podFriendIds,
-                    provider: data.trace.provider,
-                    sessionMood: data.trace.sessionMood,
-                    totalTimeMs: data.trace.totalTimeMs,
-                    totalIterations: data.trace.totalIterations,
-                    totalMessages: data.trace.totalMessages,
-                    finalEnergy: data.trace.finalEnergy,
-                    iterations: JSON.stringify(data.trace.iterations),
-                  });
-                } catch {
-                  // Trace save failed — not critical
-                }
-              }
+              // Trace is saved server-side in the chat API route
             } catch {
               // Skip malformed JSON lines
             }
@@ -422,7 +403,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     },
-    [sendMessage, upsertDecision, saveTrace, userName, sessionModes, sessionPacing, sessionEnergy, userSettings]
+    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings]
   );
 
   const handleSubmit = useCallback(async () => {

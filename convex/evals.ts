@@ -1,7 +1,7 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-export const createRun = mutation({
+export const createRun = internalMutation({
   args: {
     name: v.string(),
     promptCount: v.number(),
@@ -15,7 +15,7 @@ export const createRun = mutation({
   },
 });
 
-export const completeRun = mutation({
+export const completeRun = internalMutation({
   args: {
     id: v.id("evalRuns"),
     avgScore: v.number(),
@@ -26,7 +26,7 @@ export const completeRun = mutation({
   },
 });
 
-export const saveResult = mutation({
+export const saveResult = internalMutation({
   args: {
     evalRunId: v.id("evalRuns"),
     prompt: v.string(),

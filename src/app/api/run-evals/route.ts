@@ -7,7 +7,7 @@ import { getRotatedModel } from "@/lib/providers";
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../../../convex/_generated/api";
+import { internal } from "../../../../convex/_generated/api";
 
 const encoder = new TextEncoder();
 
@@ -92,7 +92,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const client = new ConvexHttpClient(convexUrl);
+  const deployKey = process.env.CONVEX_DEPLOY_KEY;
+  if (!deployKey) {
+    return Response.json(
+      { error: "CONVEX_DEPLOY_KEY not configured" },
+      { status: 500 }
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client: any = new ConvexHttpClient(convexUrl);
+  client.setAdminAuth(deployKey);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -103,7 +113,7 @@ export async function POST(request: Request) {
       let runId: string | undefined;
       try {
         const runName = `eval-${new Date().toISOString().slice(0, 16)}`;
-        runId = await client.mutation(api.evals.createRun, {
+        runId = await client.mutation(internal.evals.createRun, {
           name: runName,
           promptCount: EVAL_PROMPTS.length,
         });
@@ -182,7 +192,7 @@ export async function POST(request: Request) {
             completed++;
             successCount++;
 
-            await client.mutation(api.evals.saveResult, {
+            await client.mutation(internal.evals.saveResult, {
               evalRunId: runId as any,
               prompt: evalPrompt.prompt,
               messages: JSON.stringify(messages),
@@ -214,7 +224,7 @@ export async function POST(request: Request) {
 
         const avgScore =
           successCount > 0 ? parseFloat((totalScore / successCount).toFixed(1)) : 0;
-        await client.mutation(api.evals.completeRun, {
+        await client.mutation(internal.evals.completeRun, {
           id: runId as any,
           avgScore,
           status: "complete",
@@ -225,7 +235,7 @@ export async function POST(request: Request) {
         // Mark run as failed so the button doesn't stay disabled forever
         if (runId) {
           try {
-            await client.mutation(api.evals.completeRun, {
+            await client.mutation(internal.evals.completeRun, {
               id: runId as any,
               avgScore: 0,
               status: "failed",
