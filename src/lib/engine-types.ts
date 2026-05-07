@@ -60,6 +60,8 @@ export interface IterationTrace {
     delay: number;
     responseText?: string;
     responseTimeMs?: number;
+    model?: string;
+    paid?: boolean;
     failed?: boolean;
   }[];
   skippedAgents: { agentId: string; reason: string }[];
