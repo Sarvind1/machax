@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "Dimaag Ki Parliament: Because Your Brain's MPs Never Agree — MachaX",
   description:
     "Your brain runs a full parliament session every night at 3am. MachaX gives it a speaker, an agenda, and an actual verdict. Ab decision lena easy hai.",
-};
+  slug: "blog/dimaag-ki-parliament",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["dimaag ki parliament", "brain parliament", "Indian AI app"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function DimaagKiParliamentPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "Dimaag Ki Parliament: Because Your Brain's MPs Never Agree",
+        description: "Your brain runs a full parliament session every night at 3am. MachaX gives it a speaker, an agenda, and an actual verdict. Ab decision lena easy hai.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/dimaag-ki-parliament",
+        image: "https://machax.xyz/blog/chat-conversation.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -131,6 +144,8 @@ export default function DimaagKiParliamentPost() {
             Yahi loop chalta rehta hai. No resolution. No vote. Just vibes and
             existential dread.
           </p>
+
+          <img src="/blog/chat-conversation.png" alt="MachaX mein AI agents ek decision pe debate karte hue" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -266,6 +281,8 @@ export default function DimaagKiParliamentPost() {
           <p>
             Wo decision jispe tum 2 hafton se soch rahe the? 3 minute. Seriously.
           </p>
+
+          <img src="/blog/freelance-debate-p1.png" alt="MachaX mobile card showing agents debating a freelance question in Hinglish" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p>
             Aur nahi, ye therapy nahi hai. Agar serious mental health issues hain

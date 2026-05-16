@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "Built This Because My Brain Wouldn't Shut Up at 3am — MachaX",
   description:
     "The founder story behind MachaX — a tool born from too many sleepless nights spent arguing with yourself about decisions that shouldn't be this hard.",
-};
+  slug: "blog/3am",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["3am thoughts", "late night overthinking", "anxiety decisions"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function ThreeAmPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "Built This Because My Brain Wouldn't Shut Up at 3am",
+        description: "The founder story behind MachaX — a tool born from too many sleepless nights spent arguing with yourself about decisions that shouldn't be this hard.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/3am",
+        image: "https://machax.xyz/blog/chat-casual.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -131,6 +144,8 @@ export default function ThreeAmPost() {
             You know the loop. If you&rsquo;re reading this at 3am, you&rsquo;re
             probably in one right now.
           </p>
+
+          <img src="/blog/chat-casual.png" alt="MachaX casual chat interface where you dump your late-night thoughts" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -202,6 +217,8 @@ export default function ThreeAmPost() {
             stuff. And every time, the pattern was the same: dump the messy
             thought, let the agents argue, get one action, feel weirdly lighter.
           </p>
+
+          <img src="/blog/arranged-marriage-debate.png" alt="MachaX mobile card showing agents debating an arranged marriage decision" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{

@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "The Paradox of Infinite Advice — MachaX",
   description:
     "We have more access to opinions than ever, yet we're more paralyzed than ever. The problem isn't lack of information — it's lack of synthesis.",
-};
+  slug: "blog/paradox-of-advice",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["paradox of advice", "too much advice", "decision paralysis"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function ParadoxOfAdvicePost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "The Paradox of Infinite Advice",
+        description: "We have more access to opinions than ever, yet we're more paralyzed than ever. The problem isn't lack of information — it's lack of synthesis.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/paradox-of-advice",
+        image: "https://machax.xyz/blog/decision-panel.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -127,6 +140,8 @@ export default function ParadoxOfAdvicePost() {
             history. And we are, by several measures, worse at making decisions
             than ever.
           </p>
+
+          <img src="/blog/decision-panel.png" alt="MachaX decision panel cutting through information overload with one clear verdict" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -294,6 +309,8 @@ export default function ParadoxOfAdvicePost() {
             arguments on each side. Pick the one you can live with even if
             it&rsquo;s wrong. That&rsquo;s not settling. That&rsquo;s deciding.
           </p>
+
+          <img src="/blog/arranged-marriage-debate.png" alt="MachaX mobile card showing agents synthesizing opposing viewpoints on a life decision" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p
             style={{

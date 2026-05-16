@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "How MachaX Works: From Messy Thought to One Clear Action — MachaX",
   description:
     "A simple walkthrough of MachaX: dump your thought, four AI agents debate it, you get one action with XP and quests. Not therapy. Not a to-do app. A tiebreaker.",
-};
+  slug: "blog/how-it-works",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["how machax works", "AI decision tool", "decision making app"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function HowItWorksPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "How MachaX Works: From Messy Thought to One Clear Action",
+        description: "A simple walkthrough of MachaX: dump your thought, four AI agents debate it, you get one action with XP and quests. Not therapy. Not a to-do app. A tiebreaker.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/how-it-works",
+        image: "https://machax.xyz/blog/chat-conversation.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -160,6 +173,8 @@ export default function HowItWorksPost() {
             That&rsquo;s it. That&rsquo;s the input. No prompting tricks. No
             &ldquo;act as a career coach.&rdquo; Just your actual thought.
           </p>
+
+          <img src="/blog/chat-conversation.png" alt="MachaX app showing four AI agents debating a career decision in real time" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -266,6 +281,8 @@ export default function HowItWorksPost() {
           <p>
             One action. Concrete. Doable right now. That&rsquo;s the whole point.
           </p>
+
+          <img src="/blog/decision-panel.png" alt="MachaX decision panel showing clear options after the agents finish debating" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{

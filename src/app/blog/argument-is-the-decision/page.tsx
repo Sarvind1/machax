@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "Why Having the Argument IS the Decision — MachaX",
   description:
     "Research shows that forcing yourself to argue both sides of a decision improves outcomes by 30%. The uncomfortable process of disagreement isn't the obstacle — it's the answer.",
-};
+  slug: "blog/argument-is-the-decision",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["argument is decision", "disagreement helps decisions"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function ArgumentIsTheDecisionPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "Why Having the Argument IS the Decision",
+        description: "Research shows that forcing yourself to argue both sides of a decision improves outcomes by 30%. The uncomfortable process of disagreement isn't the obstacle — it's the answer.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/argument-is-the-decision",
+        image: "https://machax.xyz/blog/decision-panel.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -132,6 +145,8 @@ export default function ArgumentIsTheDecisionPost() {
           <p>
             The research says this is exactly backward.
           </p>
+
+          <img src="/blog/decision-panel.png" alt="MachaX decision panel where agents present opposing viewpoints before reaching a verdict" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -298,6 +313,8 @@ export default function ArgumentIsTheDecisionPost() {
           <p>
             That friction wasn&rsquo;t the obstacle. It was the whole point.
           </p>
+
+          <img src="/blog/freelance-debate-p1.png" alt="MachaX mobile card showing agents debating a freelance career question" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p
             style={{

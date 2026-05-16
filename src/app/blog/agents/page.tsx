@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "Meet the Parliament: 4 AI Agents That Argue So You Don't Have To — MachaX",
   description:
     "Fomo, Didi, Boss, and Hype — four AI agents that debate your messy thoughts and hand you one clear action. Here's how they work.",
-};
+  slug: "blog/agents",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["AI agents", "multiple perspectives", "agent debate"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function AgentsPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "Meet the Parliament: 4 AI Agents That Argue So You Don't Have To",
+        description: "Fomo, Didi, Boss, and Hype — four AI agents that debate your messy thoughts and hand you one clear action. Here's how they work.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/agents",
+        image: "https://machax.xyz/blog/chat-conversation.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -132,6 +145,8 @@ export default function AgentsPost() {
             Your brain already runs a parliament. MachaX just makes it visible,
             structured, and way less exhausting.
           </p>
+
+          <img src="/blog/chat-conversation.png" alt="MachaX showing four AI agents debating a decision with different perspectives" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -259,6 +274,8 @@ export default function AgentsPost() {
           <p>
             Dump your thought. Let them argue. Get one action. Move on.
           </p>
+
+          <img src="/blog/configure-page.png" alt="MachaX pod configuration page where you customize your agent council" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p
             style={{

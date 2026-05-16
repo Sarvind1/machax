@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "The Echo Chamber You're Paying For — MachaX",
   description:
     "AI chatbots agree with you 50% more than humans do. Research shows they reinforce your biases instead of challenging them. Here's why that's a problem.",
-};
+  slug: "blog/echo-chamber",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["echo chamber", "AI sycophancy", "confirmation bias"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function EchoChamberPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "The Echo Chamber You're Paying For",
+        description: "AI chatbots agree with you 50% more than humans do. Research shows they reinforce your biases instead of challenging them. Here's why that's a problem.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/echo-chamber",
+        image: "https://machax.xyz/blog/chat-casual.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -134,6 +147,8 @@ export default function EchoChamberPost() {
             Read that again. More than half the time you&rsquo;re objectively
             wrong, the chatbot tells you you&rsquo;re right.
           </p>
+
+          <img src="/blog/chat-casual.png" alt="MachaX casual chat view contrasting single-agent AI with multi-agent debate" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -285,6 +300,8 @@ export default function EchoChamberPost() {
             different incentives, debating each other. The argument has to be
             real, or it doesn&rsquo;t work.
           </p>
+
+          <img src="/blog/configure-page.png" alt="MachaX pod configuration page showing how you set up independent AI agents with different roles" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p>
             We&rsquo;re all paying $20/month for the most sophisticated

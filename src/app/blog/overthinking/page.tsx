@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "Why Your Brain Argues With Itself at 3am — MachaX",
   description:
     "You're not broken. Your brain just has 4 opinions and no tiebreaker. Here's why we built a council of AI agents to do the overthinking for you.",
-};
+  slug: "blog/overthinking",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["overthinking", "brain argues at 3am", "stop overthinking"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function OverthinkingPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "Why Your Brain Argues With Itself at 3am",
+        description: "You're not broken. Your brain just has 4 opinions and no tiebreaker. Here's why we built a council of AI agents to do the overthinking for you.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/overthinking",
+        image: "https://machax.xyz/blog/chat-conversation.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -133,6 +146,8 @@ export default function OverthinkingPost() {
             indecisive&mdash;the kind where I can argue myself into and out of
             the same decision fourteen times before breakfast.
           </p>
+
+          <img src="/blog/chat-conversation.png" alt="MachaX agents having a structured debate about a real decision" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -259,6 +274,8 @@ export default function OverthinkingPost() {
             old manager. Send the counter-offer. Delete the app. Whatever. One
             action, decided by committee so your brain doesn&rsquo;t have to.
           </p>
+
+          <img src="/blog/chat-casual.png" alt="MachaX casual chat view showing a relaxed conversation with AI agents" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{

@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "The Decision You're Avoiding Is Costing You More Than the Wrong Choice — MachaX",
   description:
     "Not deciding is itself a decision — and usually the worst one. How externalizing the debate gets you unstuck in 20 minutes.",
-};
+  slug: "blog/decisions",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["decision making", "how to decide", "decision fatigue"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function DecisionsPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "The Decision You're Avoiding Is Costing You More Than the Wrong Choice",
+        description: "Not deciding is itself a decision — and usually the worst one. How externalizing the debate gets you unstuck in 20 minutes.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/decisions",
+        image: "https://machax.xyz/blog/decision-panel.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -163,6 +176,8 @@ export default function DecisionsPost() {
             most people are running like twelve of them simultaneously.
           </p>
 
+          <img src="/blog/decision-panel.png" alt="MachaX decision panel showing a clear verdict after structured debate" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
+
           <h2
             style={{
               fontFamily: "var(--font-serif), serif",
@@ -229,6 +244,8 @@ export default function DecisionsPost() {
             something. But the decision you never make? That just keeps costing
             you, silently, every single day.
           </p>
+
+          <img src="/blog/chat-conversation.png" alt="MachaX agents debating a decision to help you get unstuck" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p
             style={{

@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title: "One Chat Is a Monologue, Not a Conversation — MachaX",
   description:
     "The fundamental design flaw of single-agent AI: no tension, no pushback, no friction. Real conversations that change your mind look nothing like a chatbot interface.",
-};
+  slug: "blog/one-chat",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["one chat", "single conversation", "focused thinking"],
+});
 
 const LogoCup = () => (
   <svg
@@ -64,6 +69,14 @@ const LogoCup = () => (
 export default function OneChatPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "One Chat Is a Monologue, Not a Conversation",
+        description: "The fundamental design flaw of single-agent AI: no tension, no pushback, no friction. Real conversations that change your mind look nothing like a chatbot interface.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/one-chat",
+        image: "https://machax.xyz/blog/chat-sidebar.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -126,6 +139,8 @@ export default function OneChatPost() {
             neither party saw alone. What we have with single-agent AI is
             something else entirely: a monologue with a very attentive audience.
           </p>
+
+          <img src="/blog/chat-sidebar.png" alt="MachaX sidebar showing conversation history with multiple agent debates" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -292,6 +307,8 @@ export default function OneChatPost() {
             We modeled AI chat on texting. Maybe we should have modeled it on
             a dinner-table argument.
           </p>
+
+          <img src="/blog/chat-conversation.png" alt="MachaX multi-agent conversation showing what AI interaction looks like beyond the single chat bubble" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p
             style={{

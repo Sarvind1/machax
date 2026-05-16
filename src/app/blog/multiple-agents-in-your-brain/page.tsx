@@ -1,12 +1,17 @@
-import type { Metadata } from "next";
+import { createMetadata } from "@/lib/seo";
+import { StructuredData } from "@/components/structured-data";
 import Link from "next/link";
 
-export const metadata: Metadata = {
+export const metadata = createMetadata({
   title:
     "Your Brain Already Has Multiple Agents (You Just Can't Hear Them) — MachaX",
   description:
     "Neuroscience says your brain isn't one decision-maker — it's a committee. Minsky's Society of Mind, Kahneman's System 1 and 2, IFS therapy — they all agree: you're a parliament, not a president.",
-};
+  slug: "blog/multiple-agents-in-your-brain",
+  type: "article",
+  publishedTime: "2026-04-01",
+  keywords: ["multiple agents brain", "society of mind", "internal family systems"],
+});
 
 const LogoCup = () => (
   <svg
@@ -65,6 +70,14 @@ const LogoCup = () => (
 export default function MultipleAgentsInYourBrainPost() {
   return (
     <>
+      <StructuredData type="BlogPosting" data={{
+        headline: "Your Brain Already Has Multiple Agents (You Just Can't Hear Them)",
+        description: "Neuroscience says your brain isn't one decision-maker — it's a committee. Minsky's Society of Mind, Kahneman's System 1 and 2, IFS therapy — they all agree: you're a parliament, not a president.",
+        datePublished: "2026-04-01",
+        url: "https://machax.xyz/blog/multiple-agents-in-your-brain",
+        image: "https://machax.xyz/blog/configure-page.png",
+      }} />
+
       {/* NAV */}
       <div className="wrap">
         <div className="topbar">
@@ -128,6 +141,8 @@ export default function MultipleAgentsInYourBrainPost() {
             It&rsquo;s closer to a neurological description than most people
             realize.
           </p>
+
+          <img src="/blog/configure-page.png" alt="MachaX configuration page showing multiple AI agents each with distinct roles and personalities" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <h2
             style={{
@@ -334,6 +349,8 @@ export default function MultipleAgentsInYourBrainPost() {
             Your brain is already running a multi-agent system. You just
             can&rsquo;t see the transcripts.
           </p>
+
+          <img src="/blog/chat-conversation.png" alt="MachaX making the internal debate visible with multiple AI agents arguing in real time" style={{ width: "100%", borderRadius: 12, margin: "24px 0", boxShadow: "0 2px 16px rgba(0,0,0,0.08)" }} />
 
           <p
             style={{
