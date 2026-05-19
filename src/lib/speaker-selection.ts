@@ -16,7 +16,7 @@ import { computeTopicAffinity } from "./friends";
 import type { Friend } from "./friends";
 
 export const MAX_RESPONDERS_PER_TURN = 3;
-export const DEFAULT_TALKATIVENESS = 0.5;
+export const DEFAULT_TALKATIVENESS = 0.7;
 
 export interface SpeakerSelectionInput {
   podFriendIds: string[];

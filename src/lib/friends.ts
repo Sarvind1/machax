@@ -2003,6 +2003,14 @@ const LENGTH_WEIGHTS: Record<ResponseLength, number> = {
 
 const LENGTH_ORDER: ResponseLength[] = ["micro", "short", "medium", "long", "rant"];
 
+/**
+ * Floor returned by computeTopicAffinity when the user message contains no
+ * recognized keywords. Exported so scoreStanceRelevance (and any other caller
+ * that needs to distinguish "no signal" from "low signal") stays in sync.
+ * Tuned 0.5→0.7 on 2026-05-20 to address dead-air on small pods.
+ */
+export const NEUTRAL_TOPIC_AFFINITY = 0.7;
+
 export function computeTopicAffinity(friendTags: string[], userMessage: string): number {
   const msgLower = userMessage.toLowerCase();
   // Map common keywords to tags
@@ -2032,7 +2040,7 @@ export function computeTopicAffinity(friendTags: string[], userMessage: string):
     }
   }
 
-  if (matchedTags.size === 0) return 0.5; // neutral affinity for unknown topics
+  if (matchedTags.size === 0) return NEUTRAL_TOPIC_AFFINITY; // neutral affinity for unknown topics
 
   const overlap = friendTags.filter(t => matchedTags.has(t)).length;
   return Math.min(1.0, overlap / Math.max(matchedTags.size, 1));

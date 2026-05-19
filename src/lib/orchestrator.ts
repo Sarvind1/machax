@@ -11,6 +11,7 @@ import {
   pickResponseLength,
   lengthToInstruction,
   computeTopicAffinity,
+  NEUTRAL_TOPIC_AFFINITY,
 } from "./friends";
 import type { Friend } from "./friends";
 import { getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
@@ -660,11 +661,11 @@ function scoreStanceRelevance(topic: string, userMessage: string): number {
   if (!userMessage) return 0;
   // Detect the "no recognized keywords" neutral-floor case by probing
   // computeTopicAffinity with a tag that cannot possibly be in its
-  // keyword→tag map. If that probe returns 0.5, the message has no
-  // matched tags at all — every stance check would falsely score 0.5
-  // and we'd never omit. Return 0 in that case.
+  // keyword→tag map. If that probe equals NEUTRAL_TOPIC_AFFINITY, the
+  // message has no matched tags at all — every stance check would falsely
+  // score the floor and we'd never omit. Return 0 in that case.
   const neutralProbe = computeTopicAffinity(["__voice_anchor_neutral_probe__"], userMessage);
-  if (neutralProbe === 0.5) {
+  if (neutralProbe === NEUTRAL_TOPIC_AFFINITY) {
     // Fall back to a direct substring check so stance topics that ARE
     // content words (e.g. "marriage", "spirituality") still match when
     // the user types them verbatim.
