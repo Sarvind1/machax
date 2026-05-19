@@ -23,6 +23,7 @@ import type {
 import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
 import { resolveMedia } from "./media-service";
 import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
+import { buildCharacterMemory } from "./private-memory";
 
 const ENGINE_LOG = join(process.cwd(), "engine-log.jsonl");
 function engineLog(entry: Record<string, unknown>): void {
@@ -31,7 +32,10 @@ function engineLog(entry: Record<string, unknown>): void {
 
 const execAsync = promisify(exec);
 
-type ChatEntry = { from: string; text: string };
+// Fix 2 (260519-kq3): replyTo on ChatEntry lets per-character memory filter
+// resolve "messages where X was the replyTo target" from history. Must stay
+// structurally compatible with the ChatEntry type in src/lib/private-memory.ts.
+type ChatEntry = { from: string; text: string; replyTo?: string | null };
 
 // ── Kept infrastructure ──────────────────────────────────────────────
 
@@ -46,7 +50,11 @@ function formatTranscript(messages: ChatEntry[], userName: string = "friend"): s
 
 /** Windowed transcript — only the last N messages visible to this agent.
  *  ALWAYS includes all user messages regardless of window size,
- *  so agents never lose the user's questions/context. */
+ *  so agents never lose the user's questions/context.
+ *
+ *  TODO: remove once private-memory replaces all callers. As of Fix 2
+ *  (260519-kq3) the per-character prompt path uses buildCharacterMemory()
+ *  instead. Kept in place because other callers may still reference it. */
 function formatWindowedTranscript(
   allMessages: ChatEntry[],
   windowSize: number,
@@ -825,8 +833,19 @@ async function callFriend(
       }
     : friend.traits;
 
-  // Windowed transcript — agent only sees recent messages per their attention
-  const transcript = formatWindowedTranscript(allMessages, attentionWindow, userName);
+  // Per-character private memory (Fix 2, 260519-kq3) — replaces full-transcript
+  // fanout. Visible-set = own + replyTo + mention + user messages. Everything
+  // else is compressed into a one-line summary prepended at the TOP of the
+  // prompt below (U-shape attention). attentionWindow is now a final cap on
+  // visible-set size — preserves the long-conversation knob.
+  const memory = buildCharacterMemory({
+    allMessages,
+    characterId: friendId,
+    characterName: friend.name,
+    userName,
+    cap: attentionWindow,
+  });
+  const transcript = memory.visibleTranscript;
 
   // Resolve reply target
   let replyToName: string | null = null;
@@ -969,6 +988,14 @@ async function callFriend(
     traitHintsBlock,
     sessionMood,
   );
+
+  // Fix 2 (260519-kq3) — per-character memory summary at TOP of prompt
+  // (U-shape attention zone). When this character missed messages outside
+  // their visible-set, prepend a one-line perspective summary so the model
+  // knows what it doesn't know rather than fabricating from a full transcript.
+  if (memory.summary) {
+    prompt = `[Your private memory of what you missed: ${memory.summary}]\n\n` + prompt;
+  }
 
   // ── GIF prompt injection (conditional) ──
   const shouldOfferGif = Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
@@ -1529,7 +1556,10 @@ export async function* orchestrateChat(params: {
         yield { type: "presence", agentId: agent.id, state: "active" };
       }
 
-      roundResponses.push(entry);
+      // Fix 2 (260519-kq3) — carry replyTo on the ChatEntry so future turns'
+      // per-character memory filter can resolve "messages where X was the
+      // replyTo target" from history without extra plumbing.
+      roundResponses.push({ ...entry, replyTo });
 
       // Update trace with response
       const traceAgent = iterTrace.selectedAgents.find(a => a.agentId === agent.id);
