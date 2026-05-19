@@ -2,25 +2,29 @@
 
 **Project:** MachaX
 **Milestone:** chat-realism-context-fixes
-**Last activity:** 2026-05-19 — Quick task 260519-gzz reached checkpoint:human-verify (Tasks 1,2 merged; Task 3 awaiting manual e2e against fiery-ocelot-22)
+**Last activity:** 2026-05-19 — Quick task 260519-gzz VERIFIED. Speaker-selection gate live in dev. Phase 2 ready to start.
 
 ## Active Phase
 
-Phase 1: Speaker-selection gate — code landed, awaiting human verification
+Phase 2: Per-character private memory — ready to plan
 
 ## Phases
 
 | # | Phase | Status |
 |---|-------|--------|
-| 1 | Speaker-selection gate | Checkpoint (2/3 tasks done) |
-| 2 | Per-character private memory | Pending (depends on Phase 1 sign-off) |
+| 1 | Speaker-selection gate | ✓ Verified |
+| 2 | Per-character private memory | Ready to plan |
 
 ## Blockers/Concerns
 
 None.
 
+## Surfaced for Phase 2
+
+- Scenario B verification revealed characters fabricating context ("linkedin", "dead end roles" on a Delhi-heat prompt). Confirms the per-character private memory + topic-grounding work is the right next move.
+
 ### Quick Tasks Completed
 
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
-| 260519-gzz | Speaker-selection gate for chat engine | 2026-05-19 | 4589442 | Checkpoint (awaiting human verify) | [260519-gzz-speaker-selection-gate-for-chat-engine-r](./quick/260519-gzz-speaker-selection-gate-for-chat-engine-r/) |
+| 260519-gzz | Speaker-selection gate for chat engine | 2026-05-19 | 4589442 | Verified ✓ | [260519-gzz-speaker-selection-gate-for-chat-engine-r](./quick/260519-gzz-speaker-selection-gate-for-chat-engine-r/) |
