@@ -2,11 +2,11 @@
 
 **Project:** MachaX
 **Milestone:** chat-realism-context-fixes
-**Last activity:** 2026-05-19 — Quick task 260519-kq3 verified in dev: 5/5 scenarios pass (4 Fix-1 regressions + new did-not-witness). Reeva's turn-B prompt confirmed to open with `[Your private memory of what you missed:` marker and exclude topic-A bot transcript.
+**Last activity:** 2026-05-20 — Quick task 260519-x71 (Fix 3: character voice anchoring) code-complete and awaiting human verify. 29/29 tests pass (21 prior + 8 new voice-anchor cases); tsc clean. 13 core characters seeded with mesExample/antiPatterns/stances extracted mechanically from existing systemPrompts.
 
 ## Active Phase
 
-None — Fix 1 and Fix 2 both verified.
+Fix 3 — character voice anchoring (`buildVoiceAnchorBlock` helper + 13 core seeds + U-shape injection). Code landed; pending human-verify in dev chat.
 
 ## Phases
 
@@ -29,3 +29,4 @@ None.
 |---|-------------|------|--------|--------|-----------|
 | 260519-gzz | Speaker-selection gate for chat engine | 2026-05-19 | 4589442 | Verified ✓ | [260519-gzz-speaker-selection-gate-for-chat-engine-r](./quick/260519-gzz-speaker-selection-gate-for-chat-engine-r/) |
 | 260519-kq3 | Per-character private memory (Fix 2) | 2026-05-19 | d87dcf0 | Verified ✓ | [260519-kq3-fix-2-per-character-private-memory](./quick/260519-kq3-fix-2-per-character-private-memory/) |
+| 260519-x71 | Character voice anchoring (Fix 3) | 2026-05-20 | 81ed539 | checkpoint:human-verify | [260519-x71-fix-3-character-voice-anchoring](./quick/260519-x71-fix-3-character-voice-anchoring/) |
