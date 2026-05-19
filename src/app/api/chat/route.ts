@@ -4,6 +4,11 @@ import { orchestrateChat } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
 import { ConvexHttpClient } from "convex/browser";
 import { internal } from "../../../../convex/_generated/api";
+import { corsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(request: Request) {
+  return handleCorsOptions(request) ?? new Response(null, { status: 204 });
+}
 
 const encoder = new TextEncoder();
 
@@ -148,8 +153,10 @@ export async function POST(request: Request) {
 
     const stream = iteratorToStream(generator, conversationId);
 
+    const cors = corsHeaders(request);
     return new Response(stream, {
       headers: {
+        ...cors,
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
@@ -157,6 +164,6 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     console.error("Chat API error:", err);
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    return Response.json({ error: "Internal server error" }, { status: 500, headers: corsHeaders(request) });
   }
 }

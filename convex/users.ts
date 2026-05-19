@@ -85,6 +85,49 @@ export const login = mutation({
   },
 });
 
+export const createDemoUser = mutation({
+  args: { visitorId: v.string() },
+  handler: async (ctx, { visitorId }) => {
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_username", (q) => q.eq("username", visitorId))
+      .first();
+    if (existing) {
+      return { success: true as const };
+    }
+    await ctx.db.insert("users", {
+      username: visitorId,
+      email: "",
+      password: "",
+      createdAt: Date.now(),
+    });
+    return { success: true as const };
+  },
+});
+
+export const claimDemoSession = mutation({
+  args: { demoUsername: v.string(), realUsername: v.string() },
+  handler: async (ctx, { demoUsername, realUsername }) => {
+    // Reassign all demo conversations to the real user
+    const conversations = await ctx.db
+      .query("conversations")
+      .withIndex("by_username", (q) => q.eq("username", demoUsername))
+      .collect();
+    for (const convo of conversations) {
+      await ctx.db.patch(convo._id, { username: realUsername });
+    }
+    // Delete the demo user record
+    const demoUser = await ctx.db
+      .query("users")
+      .withIndex("by_username", (q) => q.eq("username", demoUsername))
+      .first();
+    if (demoUser) {
+      await ctx.db.delete(demoUser._id);
+    }
+    return { success: true as const, claimedConversations: conversations.length };
+  },
+});
+
 export const getByUsername = query({
   args: { username: v.string() },
   handler: async (ctx, { username }) => {

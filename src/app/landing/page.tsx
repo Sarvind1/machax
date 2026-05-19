@@ -1,9 +1,5 @@
-import { cookies } from "next/headers";
-import HomePage from "../home-page";
+import LandingClient from "./landing-client";
 
-export default async function Page() {
-  const cookieStore = await cookies();
-  const geo = cookieStore.get("geo")?.value ?? "in";
-  const locale = geo === "in" ? "in" : "global";
-  return <HomePage locale={locale} />;
+export default function Page() {
+  return <LandingClient />;
 }

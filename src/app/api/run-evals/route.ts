@@ -8,6 +8,11 @@ import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { ConvexHttpClient } from "convex/browser";
 import { internal } from "../../../../convex/_generated/api";
+import { corsHeaders, handleCorsOptions } from "@/lib/cors";
+
+export async function OPTIONS(request: Request) {
+  return handleCorsOptions(request) ?? new Response(null, { status: 204 });
+}
 
 const encoder = new TextEncoder();
 
@@ -74,13 +79,15 @@ const EVAL_PROMPTS = [
 ];
 
 export async function POST(request: Request) {
+  const cors = corsHeaders(request);
+
   // Admin-only: require x-admin-key header matching ADMIN_API_KEY env var
   const adminKey = process.env.ADMIN_API_KEY;
   const providedKey = request.headers.get("x-admin-key");
   if (!adminKey || providedKey !== adminKey) {
     return Response.json(
       { error: "Unauthorized" },
-      { status: 401 }
+      { status: 401, headers: cors }
     );
   }
 
@@ -88,7 +95,7 @@ export async function POST(request: Request) {
   if (!convexUrl) {
     return Response.json(
       { error: "NEXT_PUBLIC_CONVEX_URL not configured" },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 
@@ -96,7 +103,7 @@ export async function POST(request: Request) {
   if (!deployKey) {
     return Response.json(
       { error: "CONVEX_DEPLOY_KEY not configured" },
-      { status: 500 }
+      { status: 500, headers: cors }
     );
   }
 
@@ -254,6 +261,7 @@ export async function POST(request: Request) {
 
   return new Response(stream, {
     headers: {
+      ...cors,
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",

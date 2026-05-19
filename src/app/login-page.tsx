@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "convex/react";
+import { API_BASE } from "@/lib/api-base";
 import { api } from "../../convex/_generated/api";
 import { useRouter } from "next/navigation";
 import "./login.css";
@@ -112,6 +113,7 @@ export default function LoginPage() {
   const router = useRouter();
   const signupMutation = useMutation(api.users.signup);
   const loginMutation = useMutation(api.users.login);
+  const claimDemoSession = useMutation(api.users.claimDemoSession);
 
   const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
   const [formData, setFormData] = useState({ name: "", email: "", city: "", age: "", username: "", password: "" });
@@ -244,8 +246,20 @@ export default function LoginPage() {
 
       if (result.success) {
         const name = result.name ?? formData.username.trim();
-        localStorage.setItem("machax-user", JSON.stringify({ username: formData.username.trim(), name }));
-        setVictory({ username: formData.username.trim(), isNew: false });
+        const realUsername = formData.username.trim();
+        localStorage.setItem("machax-user", JSON.stringify({ username: realUsername, name }));
+        // Claim demo conversation if exists
+        try {
+          const demo = localStorage.getItem("machax-demo");
+          if (demo) {
+            const { visitorId } = JSON.parse(demo);
+            if (visitorId) {
+              await claimDemoSession({ demoUsername: visitorId, realUsername });
+            }
+            localStorage.removeItem("machax-demo");
+          }
+        } catch {}
+        setVictory({ username: realUsername, isNew: false });
       } else {
         setErrors({ username: "invalid username or password" });
       }
@@ -257,7 +271,7 @@ export default function LoginPage() {
         setSubmitting(false);
       }
     }
-  }, [submitting, formData, loginMutation]);
+  }, [submitting, formData, loginMutation, claimDemoSession]);
 
   /* ===== SUBMIT: SIGNUP ===== */
 
@@ -291,8 +305,20 @@ export default function LoginPage() {
       if (abortRef.current !== token) return;
 
       if (result.success) {
-        localStorage.setItem("machax-user", JSON.stringify({ username: formData.username.trim(), name: formData.name.trim() }));
-        setVictory({ username: formData.username.trim(), isNew: true });
+        const realUsername = formData.username.trim();
+        localStorage.setItem("machax-user", JSON.stringify({ username: realUsername, name: formData.name.trim() }));
+        // Claim demo conversation if exists
+        try {
+          const demo = localStorage.getItem("machax-demo");
+          if (demo) {
+            const { visitorId } = JSON.parse(demo);
+            if (visitorId) {
+              await claimDemoSession({ demoUsername: visitorId, realUsername });
+            }
+            localStorage.removeItem("machax-demo");
+          }
+        } catch {}
+        setVictory({ username: realUsername, isNew: true });
       } else if (result.error === "username_taken") {
         setErrors({ username: "username already taken" });
       } else if (result.error === "email_taken") {
@@ -306,7 +332,7 @@ export default function LoginPage() {
         setSubmitting(false);
       }
     }
-  }, [submitting, formData, signupMutation]);
+  }, [submitting, formData, signupMutation, claimDemoSession]);
 
   /* ===== FORGOT PASSWORD ===== */
 
@@ -321,7 +347,7 @@ export default function LoginPage() {
     if (!forgotEmail.trim()) return;
     setForgotStatus("sending");
     try {
-      await fetch("/api/forgot-password", {
+      await fetch(`${API_BASE}/api/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: forgotEmail.trim() }),

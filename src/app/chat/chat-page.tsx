@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
+import { API_BASE } from "@/lib/api-base";
 import { api } from "../../../convex/_generated/api";
 
 function useSafeQuery<T>(query: any, args?: any): T | null {
@@ -55,21 +56,66 @@ const MODES = [
 const PACING_OPTIONS = ["snappy", "natural", "slow"];
 const ENERGY_OPTIONS = ["low", "settled", "up"];
 
-export default function ChatPage() {
+// Curated demo pod — 5 diverse personalities for best first impression
+const DEMO_POD_IDS = ["reeva", "aarushi", "noor", "simran", "dev"];
+const DEMO_MESSAGE_LIMIT = 2;
+
+function getOrCreateDemoVisitorId(): string {
+  try {
+    const stored = localStorage.getItem("machax-demo");
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed?.visitorId) return parsed.visitorId;
+    }
+  } catch {}
+  const visitorId = `demo-${crypto.randomUUID().slice(0, 8)}`;
+  localStorage.setItem("machax-demo", JSON.stringify({ visitorId, messageCount: 0 }));
+  return visitorId;
+}
+
+function getDemoMessageCount(): number {
+  try {
+    const stored = localStorage.getItem("machax-demo");
+    if (stored) return JSON.parse(stored)?.messageCount ?? 0;
+  } catch {}
+  return 0;
+}
+
+function incrementDemoMessageCount(): number {
+  try {
+    const stored = localStorage.getItem("machax-demo");
+    const parsed = stored ? JSON.parse(stored) : {};
+    const newCount = (parsed.messageCount ?? 0) + 1;
+    localStorage.setItem("machax-demo", JSON.stringify({ ...parsed, messageCount: newCount }));
+    return newCount;
+  } catch {}
+  return 0;
+}
+
+export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = {}) {
   const router = useRouter();
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+  const createDemoUser = useMutation(api.users.createDemoUser);
 
   useEffect(() => {
+    if (demoMode) {
+      // Create demo user in Convex on first visit
+      const visitorId = getOrCreateDemoVisitorId();
+      createDemoUser({ visitorId }).catch(() => {});
+      setIsAuthed(true);
+      return;
+    }
     const user = localStorage.getItem("machax-user");
     if (!user) {
       router.push("/");
     } else {
       setIsAuthed(true);
     }
-  }, [router]);
+  }, [router, demoMode, createDemoUser]);
 
   // userName for display (can be display name)
   const userName = useMemo(() => {
+    if (demoMode) return "friend";
     try {
       const stored = localStorage.getItem("machax-user");
       if (stored) {
@@ -78,10 +124,11 @@ export default function ChatPage() {
       }
     } catch {}
     return "friend";
-  }, []);
+  }, [demoMode]);
 
   // settingsUsername for Convex queries (must match what /configure saves under)
   const settingsUsername = useMemo(() => {
+    if (demoMode) return getOrCreateDemoVisitorId();
     try {
       const stored = localStorage.getItem("machax-user");
       if (stored) {
@@ -90,10 +137,10 @@ export default function ChatPage() {
       }
     } catch {}
     return null;
-  }, []);
+  }, [demoMode]);
 
   // Load user's saved settings from Convex (pod size, character overrides, etc.)
-  const userSettings = useQuery(api.settings.get, settingsUsername ? { username: settingsUsername } : "skip");
+  const userSettings = useQuery(api.settings.get, !demoMode && settingsUsername ? { username: settingsUsername } : "skip");
 
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
   const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
@@ -161,7 +208,7 @@ export default function ChatPage() {
 
   // Probe providers on mount
   useEffect(() => {
-    fetch("/api/providers")
+    fetch(`${API_BASE}/api/providers`)
       .then((r) => r.json())
       .then((data) => {
         if (data.active) setActiveProvider(data.active.label);
@@ -257,7 +304,7 @@ export default function ChatPage() {
       setIsLoading(true);
       isStreamingRef.current = true;
       try {
-        const response = await fetch("/api/chat", {
+        const response = await fetch(`${API_BASE}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -409,6 +456,17 @@ export default function ChatPage() {
   const handleSubmit = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
+
+    // Demo mode: check message cap before sending
+    if (demoMode) {
+      const count = getDemoMessageCount();
+      if (count >= DEMO_MESSAGE_LIMIT) {
+        router.push("/login");
+        return;
+      }
+      incrementDemoMessageCount();
+    }
+
     setInput("");
 
     // Guard against Convex reactive query overwriting local state during the
@@ -422,9 +480,11 @@ export default function ChatPage() {
       // First message — create conversation
       const tag = STARTERS.find((s) => s.text === text)?.tag ?? "life";
 
-      // Use user's configured characters if available, otherwise auto-select
+      // Demo mode: force curated pod; otherwise use user config
       let podIds: string[];
-      if (userSettings?.characterOverrides) {
+      if (demoMode) {
+        podIds = DEMO_POD_IDS;
+      } else if (userSettings?.characterOverrides) {
         try {
           const overrides = JSON.parse(userSettings.characterOverrides);
           const activeIds = Object.entries(overrides)
@@ -518,7 +578,7 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     }
-  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings]);
+  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, demoMode, router]);
 
   const handleStarterClick = (starterText: string) => {
     setInput(starterText);
@@ -588,7 +648,7 @@ export default function ChatPage() {
             macha<em>X</em>
           </a>
 
-          {conversations.length > 0 && (
+          {!demoMode && conversations.length > 0 && (
             <>
               <div className="chat-sidebar-section">recent</div>
               <div className="chat-history-list">
@@ -605,27 +665,41 @@ export default function ChatPage() {
             </>
           )}
 
-          <button className="chat-new-btn" onClick={handleNewChat}>
-            + new chat
-          </button>
+          {!demoMode && (
+            <button className="chat-new-btn" onClick={handleNewChat}>
+              + new chat
+            </button>
+          )}
 
-          <a href="/configure" style={{
-            display: "block", padding: "10px 16px", fontSize: 12,
-            color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
-            textDecoration: "none", letterSpacing: "0.06em",
-          }}>
-            ⚙ configure pod
-          </a>
+          {demoMode ? (
+            <a href="/login" style={{
+              display: "block", padding: "10px 16px", fontSize: 12,
+              color: "var(--accent)", fontFamily: "var(--font-mono)",
+              textDecoration: "none", letterSpacing: "0.06em", fontWeight: 600,
+            }}>
+              sign up / log in
+            </a>
+          ) : (
+            <a href="/configure" style={{
+              display: "block", padding: "10px 16px", fontSize: 12,
+              color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
+              textDecoration: "none", letterSpacing: "0.06em",
+            }}>
+              ⚙ configure pod
+            </a>
+          )}
         </aside>
 
         {/* Landing center */}
         <div className="chat-landing">
           <h1 className="chat-landing-title">what&apos;s on your mind?</h1>
           <p className="chat-landing-sub">
-            dump your messiest thought. your council of AI friends will hash it out.
+            {demoMode
+              ? "try it out — send a message and watch your AI friends debate it. 2 free messages, no signup needed."
+              : "dump your messiest thought. your council of AI friends will hash it out."}
           </p>
 
-          <div className="chat-mood-landing">
+          {!demoMode && <div className="chat-mood-landing">
             <button
               ref={moodTriggerRef}
               className="chat-mood-trigger"
@@ -695,7 +769,7 @@ export default function ChatPage() {
                 </button>
               </div>
             )}
-          </div>
+          </div>}
 
           <div className="chat-landing-composer">
             <ChatComposer
@@ -782,7 +856,7 @@ export default function ChatPage() {
           </>
         )}
 
-        {conversations.length > 0 && (
+        {!demoMode && conversations.length > 0 && (
           <>
             <div className="chat-sidebar-section">recent</div>
             <div className="chat-history-list">
@@ -799,17 +873,29 @@ export default function ChatPage() {
           </>
         )}
 
-        <button className="chat-new-btn" onClick={handleNewChat}>
-          + new chat
-        </button>
+        {!demoMode && (
+          <button className="chat-new-btn" onClick={handleNewChat}>
+            + new chat
+          </button>
+        )}
 
-        <a href="/configure" style={{
-          display: "block", padding: "10px 16px", fontSize: 12,
-          color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
-          textDecoration: "none", letterSpacing: "0.06em",
-        }}>
-          ⚙ configure pod
-        </a>
+        {demoMode ? (
+          <a href="/login" style={{
+            display: "block", padding: "10px 16px", fontSize: 12,
+            color: "var(--accent)", fontFamily: "var(--font-mono)",
+            textDecoration: "none", letterSpacing: "0.06em", fontWeight: 600,
+          }}>
+            sign up / log in
+          </a>
+        ) : (
+          <a href="/configure" style={{
+            display: "block", padding: "10px 16px", fontSize: 12,
+            color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
+            textDecoration: "none", letterSpacing: "0.06em",
+          }}>
+            ⚙ configure pod
+          </a>
+        )}
       </aside>
 
       {/* Center */}

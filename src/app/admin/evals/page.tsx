@@ -1,6 +1,7 @@
 "use client";
 import { useState, Fragment } from "react";
 import { useQuery } from "convex/react";
+import { API_BASE } from "@/lib/api-base";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { FRIENDS_BY_ID } from "@/lib/friends";
@@ -195,7 +196,7 @@ export default function EvalsPage() {
     setRunProgress(null);
 
     try {
-      const response = await fetch("/api/run-evals", { method: "POST" });
+      const response = await fetch(`${API_BASE}/api/run-evals`, { method: "POST" });
       if (!response.ok || !response.body) {
         throw new Error("Failed to start eval run");
       }

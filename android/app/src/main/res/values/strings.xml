@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MachaX</string>
+    <string name="title_activity_main">MachaX</string>
+    <string name="package_name">xyz.machax.app</string>
+    <string name="custom_url_scheme">xyz.machax.app</string>
+</resources>
