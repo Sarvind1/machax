@@ -12,6 +12,7 @@ import {
   lengthToInstruction,
   computeTopicAffinity,
 } from "./friends";
+import type { Friend } from "./friends";
 import { getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
 import type {
@@ -633,6 +634,89 @@ function containsQuestion(text: string): boolean {
   return text.includes("?") || /\b(what|how|should|would|do you|are you|right)\b/i.test(text);
 }
 
+// ── Fix 3 (260519-x71): character voice anchoring ──────────────────
+//
+// Assemble up to three lines from a Friend's optional voice fields:
+//   1. `[How you talk: ex1 | ex2 | ex3]`     ← mesExample
+//   2. `[What you never do: rule1 | rule2]`  ← antiPatterns
+//   3. `[What you believe: t1: pos | t2: pos]` ← stances filtered by relevance
+//
+// Empty / missing field → that line is omitted (no `[How you talk: ]`
+// artifacts). When nothing emits, returns "". Caller is responsible for
+// surrounding whitespace.
+//
+// Stance filtering: we want to keep a stance only when the user message
+// is actually about that topic. The plan suggests reusing
+// computeTopicAffinity, but its normalization (overlap / matchedTags.size)
+// makes a single-tag stance score ≤0.5 whenever the message spans
+// multiple topic categories, and it returns a 0.5 neutral floor for
+// unknown messages. Both behaviors defeat the "omit when irrelevant"
+// requirement. Instead we score a stance as the number of dictionary
+// keywords in the user message that map to the stance's topic tag —
+// score >0 means at least one keyword in the message references this
+// topic. This is a small documented deviation from the plan
+// (deviation rule 1: pure correctness fix to the chosen primitive).
+function scoreStanceRelevance(topic: string, userMessage: string): number {
+  if (!userMessage) return 0;
+  // Detect the "no recognized keywords" neutral-floor case by probing
+  // computeTopicAffinity with a tag that cannot possibly be in its
+  // keyword→tag map. If that probe returns 0.5, the message has no
+  // matched tags at all — every stance check would falsely score 0.5
+  // and we'd never omit. Return 0 in that case.
+  const neutralProbe = computeTopicAffinity(["__voice_anchor_neutral_probe__"], userMessage);
+  if (neutralProbe === 0.5) {
+    // Fall back to a direct substring check so stance topics that ARE
+    // content words (e.g. "marriage", "spirituality") still match when
+    // the user types them verbatim.
+    return userMessage.toLowerCase().includes(topic.toLowerCase()) ? 1 : 0;
+  }
+  // Real path: matchedTags is non-empty. An affinity > 0 means the
+  // stance topic appears in matchedTags (overlap >= 1). The actual
+  // affinity value scales with how many other topics the message also
+  // covers; we use the raw value as the score so that "more matches
+  // to this topic" sort higher when ties matter.
+  const affinity = computeTopicAffinity([topic], userMessage);
+  if (affinity > 0) return affinity;
+  // Final fallback: substring match for stance topics that are content
+  // words but not in computeTopicAffinity's dictionary (e.g. "marriage").
+  return userMessage.toLowerCase().includes(topic.toLowerCase()) ? 0.1 : 0;
+}
+
+export function buildVoiceAnchorBlock(friend: Friend, userMessage: string): string {
+  const lines: string[] = [];
+
+  // 1. mesExample → How you talk
+  if (friend.mesExample && friend.mesExample.length > 0) {
+    lines.push(`[How you talk: ${friend.mesExample.join(" | ")}]`);
+  }
+
+  // 2. antiPatterns → What you never do
+  if (friend.antiPatterns && friend.antiPatterns.length > 0) {
+    lines.push(`[What you never do: ${friend.antiPatterns.join(" | ")}]`);
+  }
+
+  // 3. stances → What you believe (filtered to top 1–2 by relevance)
+  if (friend.stances && Object.keys(friend.stances).length > 0) {
+    const scored = Object.entries(friend.stances)
+      .map(([topic, position]) => ({
+        topic,
+        position,
+        score: scoreStanceRelevance(topic, userMessage),
+      }))
+      .filter((s) => s.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2);
+
+    if (scored.length > 0) {
+      lines.push(
+        `[What you believe: ${scored.map((s) => `${s.topic}: ${s.position}`).join(" | ")}]`,
+      );
+    }
+  }
+
+  return lines.join("\n");
+}
+
 // ── Prompt builder ──────────────────────────────────────────────────
 
 function buildPrompt(
@@ -989,6 +1073,14 @@ async function callFriend(
     sessionMood,
   );
 
+  // Fix 3 (260519-x71) — character voice anchor at TOP of prompt (U-shape
+  // attention zone). Must be prepended BEFORE the Fix 2 memory prepend so
+  // the final top-down order is: [memory] → [voice] → base prompt.
+  const voiceBlock = buildVoiceAnchorBlock(friend, latestUserMsg ?? "");
+  if (voiceBlock.length > 0) {
+    prompt = voiceBlock + "\n\n" + prompt;
+  }
+
   // Fix 2 (260519-kq3) — per-character memory summary at TOP of prompt
   // (U-shape attention zone). When this character missed messages outside
   // their visible-set, prepend a one-line perspective summary so the model
@@ -1001,6 +1093,13 @@ async function callFriend(
   const shouldOfferGif = Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
   if (shouldOfferGif) {
     prompt += `\n\nReact with a visual this time! Write [REACT: 2-4 words describing your reaction to THIS specific moment] — describe what you're actually feeling right now, don't use generic reactions. You can write text before or after the tag, or just send it alone.`;
+  }
+
+  // Fix 3 (260519-x71) — duplicate mesExample at END of prompt (U-shape's
+  // bottom anchor). Only mesExample repeats, not antiPatterns/stances —
+  // examples are the strongest style signal. Guard on non-empty array.
+  if (friend.mesExample && friend.mesExample.length > 0) {
+    prompt += `\n\n[How you talk: ${friend.mesExample.join(" | ")}]`;
   }
 
   let maxTokens =

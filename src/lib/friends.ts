@@ -15,6 +15,11 @@ export interface Friend {
   defaultLength: "micro" | "short" | "medium" | "long";
   category: string;
   traits: AgentTraits;
+  // Fix 3 (260519-x71) — character voice anchoring. All optional;
+  // a missing or empty field produces NO line in the assembled prompt.
+  mesExample?: string[]; // 2-3 in-voice one-liners ≤80 chars
+  antiPatterns?: string[]; // 2-3 "never do this" rules
+  stances?: Record<string, string>; // topic → short opinion (≤120 chars)
 }
 
 export interface ConversationMode {
