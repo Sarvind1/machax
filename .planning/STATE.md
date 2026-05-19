@@ -2,18 +2,18 @@
 
 **Project:** MachaX
 **Milestone:** chat-realism-context-fixes
-**Last activity:** 2026-05-19 — Quick task 260519-gzz VERIFIED. Speaker-selection gate live in dev. Phase 2 ready to start.
+**Last activity:** 2026-05-19 — Quick task 260519-kq3 implementation complete (15 unit tests + orchestrator wiring; 21/21 tests pass; typecheck clean). Awaiting human verify in dev-Convex.
 
 ## Active Phase
 
-Phase 2: Per-character private memory — ready to plan
+Phase 2: Per-character private memory — implementation done, awaiting human verify
 
 ## Phases
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Speaker-selection gate | ✓ Verified |
-| 2 | Per-character private memory | Ready to plan |
+| 2 | Per-character private memory | Awaiting human verify |
 
 ## Blockers/Concerns
 
@@ -28,3 +28,4 @@ None.
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260519-gzz | Speaker-selection gate for chat engine | 2026-05-19 | 4589442 | Verified ✓ | [260519-gzz-speaker-selection-gate-for-chat-engine-r](./quick/260519-gzz-speaker-selection-gate-for-chat-engine-r/) |
+| 260519-kq3 | Per-character private memory (Fix 2) | 2026-05-19 | d87dcf0 | checkpoint:human-verify | [260519-kq3-fix-2-per-character-private-memory](./quick/260519-kq3-fix-2-per-character-private-memory/) |
