@@ -2,6 +2,7 @@
 // Capacitor Android uses http://localhost, iOS uses capacitor://localhost.
 const ALLOWED_ORIGINS = [
   "http://localhost",
+  "https://localhost",
   "capacitor://localhost",
 ];
 
