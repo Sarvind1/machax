@@ -2,7 +2,7 @@
 quick_id: 260519-kq3
 slug: fix-2-per-character-private-memory
 description: Per-character private memory for chat engine (Generative Agents pattern)
-status: incomplete
+status: complete
 date: 2026-05-19
 ---
 
@@ -72,9 +72,23 @@ Run dev server with `bash dev.sh` (per project memory — never manual commands)
 - [ ] Media (gifs/stickers) still resolve and display.
 - [ ] `replyTo` arrows in the UI still render correctly.
 
-### Resume signal
+### Verify run — 2026-05-19
 
-Type **"approved"** if all four Fix 1 scenarios pass and the did-not-witness check shows C's prompt does not contain topic-A content verbatim. Otherwise describe what regressed.
+Programmatic test agent drove all 5 scenarios via `POST /api/chat` against the dev server (Convex + Next.js).
+
+| # | Scenario | Speakers | Result |
+|---|---|---|---|
+| 1 | Delhi heat | 2 (priya, simran) | ✓ no "linkedin"/"dead end" |
+| 2 | @reeva mention | 3 (reeva, simran, divya) | ✓ reeva in pod, cap ≤3 |
+| 3 | "developed" word | 2 (aarushi, simran) | ✓ no crash, sane response |
+| 4 | dog died | 2 (aarushi, divya) | ✓ sympathetic, no derailment |
+| 5 | did-not-witness | reeva responded | ✓ no "manali" in reply |
+
+Scenario 5 evidence: reeva's turn-B prompt opened with `[Your private memory of what you missed: you missed 12 messages from aarushi, priya, simran about: ...]` and her visible transcript contained only her own messages + user messages. Topic-A bot content was provably excluded — confirmed by inspecting engine-log.jsonl and re-running `buildCharacterMemory` programmatically.
+
+Raw artifacts: `/tmp/fix2-test-results.txt`.
+
+**Status:** approved.
 
 ## Known stubs / future work
 

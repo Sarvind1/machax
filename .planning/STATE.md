@@ -2,18 +2,18 @@
 
 **Project:** MachaX
 **Milestone:** chat-realism-context-fixes
-**Last activity:** 2026-05-19 — Quick task 260519-kq3 implementation complete (15 unit tests + orchestrator wiring; 21/21 tests pass; typecheck clean). Awaiting human verify in dev-Convex.
+**Last activity:** 2026-05-19 — Quick task 260519-kq3 verified in dev: 5/5 scenarios pass (4 Fix-1 regressions + new did-not-witness). Reeva's turn-B prompt confirmed to open with `[Your private memory of what you missed:` marker and exclude topic-A bot transcript.
 
 ## Active Phase
 
-Phase 2: Per-character private memory — implementation done, awaiting human verify
+None — Fix 1 and Fix 2 both verified.
 
 ## Phases
 
 | # | Phase | Status |
 |---|-------|--------|
 | 1 | Speaker-selection gate | ✓ Verified |
-| 2 | Per-character private memory | Awaiting human verify |
+| 2 | Per-character private memory | ✓ Verified |
 
 ## Blockers/Concerns
 
@@ -28,4 +28,4 @@ None.
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260519-gzz | Speaker-selection gate for chat engine | 2026-05-19 | 4589442 | Verified ✓ | [260519-gzz-speaker-selection-gate-for-chat-engine-r](./quick/260519-gzz-speaker-selection-gate-for-chat-engine-r/) |
-| 260519-kq3 | Per-character private memory (Fix 2) | 2026-05-19 | d87dcf0 | checkpoint:human-verify | [260519-kq3-fix-2-per-character-private-memory](./quick/260519-kq3-fix-2-per-character-private-memory/) |
+| 260519-kq3 | Per-character private memory (Fix 2) | 2026-05-19 | d87dcf0 | Verified ✓ | [260519-kq3-fix-2-per-character-private-memory](./quick/260519-kq3-fix-2-per-character-private-memory/) |
