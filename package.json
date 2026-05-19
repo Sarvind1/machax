@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "build:android": "./scripts/build-android.sh",
-    "cap:open": "npx cap open android"
+    "cap:open": "npx cap open android",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.64",
@@ -30,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.6"
   }
 }

@@ -22,6 +22,7 @@ import type {
 } from "./engine-types";
 import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
 import { resolveMedia } from "./media-service";
+import { DEFAULT_TALKATIVENESS } from "./speaker-selection";
 
 const ENGINE_LOG = join(process.cwd(), "engine-log.jsonl");
 function engineLog(entry: Record<string, unknown>): void {
@@ -383,6 +384,7 @@ function getTraits(friendId: string): AgentTraits {
     verbosityRange: [5, 40],
     confidenceLevel: 0.5,
     lurkerChance: d.lurkerChance ?? 0.15,
+    talkativeness: DEFAULT_TALKATIVENESS,
   };
 }
 

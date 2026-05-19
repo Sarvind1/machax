@@ -10,6 +10,7 @@ export interface AgentTraits {
   tangentProbability?: number; // 0-1, chance of going off-topic instead of replying to the scored message
   attentionWindow?: number; // how many recent messages the agent reads before replying (default derived from responseSpeed)
   mediaSendProbability?: number; // 0-1, chance of including a GIF/sticker reaction
+  talkativeness: number; // 0.0–1.0: how eagerly this character joins; default 0.5
 }
 
 // Presence lifecycle states
