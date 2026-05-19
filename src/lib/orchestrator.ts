@@ -22,7 +22,7 @@ import type {
 } from "./engine-types";
 import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
 import { resolveMedia } from "./media-service";
-import { DEFAULT_TALKATIVENESS } from "./speaker-selection";
+import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
 
 const ENGINE_LOG = join(process.cwd(), "engine-log.jsonl");
 function engineLog(entry: Record<string, unknown>): void {
@@ -1270,8 +1270,26 @@ export async function* orchestrateChat(params: {
   // Track whether any agent has engaged the user with a follow-up question
   let userEngaged = false;
 
+  // ── Per-turn speaker-selection gate ──
+  // Call selectSpeakers once per user turn to narrow the pod to 1–3 speakers.
+  // Edge case: single-bot pod skips gating — per-iteration mention check below remains.
+  // The per-iteration mention check (line ~1340) is kept as a safety net so replyTo
+  // chains and follow-up mentions within the same turn still route correctly.
+  let speakerIds = podFriendIds;
+  if (podFriendIds.length > 1) {
+    const selection = selectSpeakers({
+      podFriendIds,
+      userMessage: message,
+      friendsById: FRIENDS_BY_ID,
+    });
+    speakerIds = selection.chosen;
+    console.log("[engine] speaker-selection", JSON.stringify(selection.reasons), "scores:", JSON.stringify(
+      Object.fromEntries(Object.entries(selection.scores).map(([id, s]) => [id, { t: s.talkativeness.toFixed(2), fit: s.topicFit.toFixed(2), p: s.pRespond.toFixed(2), mention: s.mention }]))
+    ));
+  }
+
   // ── Initialize presence for all agents ──
-  const agents: AgentPresence[] = podFriendIds.map((id) => initPresence(id));
+  const agents: AgentPresence[] = speakerIds.map((id) => initPresence(id));
   // Sort by arrival time so fast agents come online first
   agents.sort((a, b) => a.arriveAtMs - b.arriveAtMs);
 
