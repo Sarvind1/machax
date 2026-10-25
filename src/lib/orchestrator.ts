@@ -1,4 +1,5 @@
 import { generateText } from "ai";
+import Anthropic from "@anthropic-ai/sdk";
 import { google } from "@ai-sdk/google";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -191,7 +192,6 @@ async function callAiSdk(
       modelName = modelOverride || getRotatedModel();
       break;
     case "openai":
-    case "anthropic":
       console.warn(`[orchestrator] Provider "${provider.name}" not yet supported by AI SDK, falling back to Gemini`);
       modelName = modelOverride || getRotatedModel();
       break;
@@ -276,6 +276,38 @@ async function callAiSdk(
   }
 }
 
+// ── Anthropic API call (Sonnet 5.5) ──
+// Thinking is always on for Sonnet 5.5 and counts against max_tokens, so the
+// requested reply length is a floor on top of a thinking allowance.
+const ANTHROPIC_THINKING_ALLOWANCE = 32_000;
+type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+let anthropicClient: Anthropic | null = null;
+
+async function callAnthropic(
+  system: string,
+  userPrompt: string,
+  model: string,
+  maxTokens: number,
+): Promise<string> {
+  anthropicClient ??= new Anthropic();
+  const effort = (process.env.ANTHROPIC_EFFORT || "max") as AnthropicEffort;
+  const stream = anthropicClient.beta.messages.stream({
+    model,
+    max_tokens: maxTokens + ANTHROPIC_THINKING_ALLOWANCE,
+    system,
+    messages: [{ role: "user", content: userPrompt }],
+    thinking: { type: "adaptive" },
+    output_config: { effort },
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+  });
+  const msg = await stream.finalMessage();
+  if (msg.stop_reason === "refusal") throw new Error(`anthropic refusal: ${msg.stop_details?.category ?? "unknown"}`);
+  const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  if (!text) throw new Error(`anthropic returned no text (stop_reason=${msg.stop_reason})`);
+  return text;
+}
+
 // ── Unified call function ──
 async function callModel(
   system: string,
@@ -286,6 +318,15 @@ async function callModel(
 ): Promise<{ text: string; model: string; paid: boolean }> {
   if (provider.name === "claude-cli") {
     return { text: await callClaudeCli(system, userPrompt, provider.model, maxTokens), model: provider.model, paid: false };
+  }
+  if (provider.name === "anthropic") {
+    try {
+      return { text: await callAnthropic(system, userPrompt, provider.model, maxTokens), model: provider.model, paid: true };
+    } catch (err) {
+      console.warn(`[orchestrator] Anthropic call failed, falling back to Gemini: ${err}`);
+      engineLog({ ts: new Date().toISOString(), event: "anthropic-fallback", error: String(err).slice(0, 200) });
+      return callAiSdk(system, userPrompt, { ...provider, name: "gemini" }, maxTokens);
+    }
   }
   return callAiSdk(system, userPrompt, provider, maxTokens, modelOverride);
 }

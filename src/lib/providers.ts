@@ -4,7 +4,7 @@
 //   1. Claude CLI (claude -p) — uses existing Claude Code auth, no API key needed
 //   2. Gemini — via GOOGLE_GENERATIVE_AI_API_KEY
 //   3. OpenAI — via OPENAI_API_KEY (future)
-//   4. Anthropic API — via ANTHROPIC_API_KEY (future)
+//   4. Anthropic API — via ANTHROPIC_API_KEY
 //
 // Model rotation: when using Gemini, we rotate across multiple models to
 // multiply free-tier quota (each model has its own RPD/RPM limits).
@@ -27,7 +27,9 @@ export interface ProviderConfig {
 
 // The priority order — edit this array to change preference
 // Gemini first for batch content generation (Claude CLI too slow for parallel)
+// Anthropic API first when ANTHROPIC_API_KEY is set; Gemini is the fallback
 const PROVIDER_PRIORITY: ProviderName[] = [
+  "anthropic",
   "gemini",
   "claude-cli",
   "openai",
@@ -146,9 +148,9 @@ const MODEL_MAP: Record<
     label: "OpenAI (GPT-4o Mini)",
   },
   anthropic: {
-    model: "claude-haiku-4-5-20251001",
-    synthesisModel: "claude-haiku-4-5-20251001",
-    label: "Anthropic API (Haiku)",
+    model: "claude-sonnet-5-5",
+    synthesisModel: "claude-sonnet-5-5",
+    label: "Anthropic API (Sonnet 5.5)",
   },
 };
 
