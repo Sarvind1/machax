@@ -28,9 +28,12 @@ export interface ProviderConfig {
 // The priority order — edit this array to change preference
 // Gemini first for batch content generation (Claude CLI too slow for parallel)
 // Anthropic API first when ANTHROPIC_API_KEY is set; Gemini is the fallback
+// Gemini is switched off until its billing is fixed (both keys return 402)
+export const GEMINI_ENABLED = false;
+
 const PROVIDER_PRIORITY: ProviderName[] = [
   "anthropic",
-  "gemini",
+  ...(GEMINI_ENABLED ? (["gemini"] as ProviderName[]) : []),
   "claude-cli",
   "openai",
   "anthropic",

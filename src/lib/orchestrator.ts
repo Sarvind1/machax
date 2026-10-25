@@ -15,7 +15,7 @@ import {
   NEUTRAL_TOPIC_AFFINITY,
 } from "./friends";
 import type { Friend } from "./friends";
-import { getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
+import { GEMINI_ENABLED, getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
 import type {
   EngineEvent,
@@ -335,6 +335,7 @@ async function callModel(
     try {
       return { text: await callAnthropic(system, userPrompt, provider.model, maxTokens), model: provider.model, paid: true };
     } catch (err) {
+      if (!GEMINI_ENABLED) throw err;
       console.warn(`[orchestrator] Anthropic call failed, falling back to Gemini: ${err}`);
       engineLog({ ts: new Date().toISOString(), event: "anthropic-fallback", error: String(err).slice(0, 200) });
       return callAiSdk(system, userPrompt, { ...provider, name: "gemini" }, maxTokens);
@@ -1253,7 +1254,7 @@ async function callFriend(
 
     // Last resort: try paid Gemini key before giving up
     const paidKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY_PAID;
-    if (paidKey) {
+    if (GEMINI_ENABLED && paidKey) {
       try {
         engineLog({ ts: new Date().toISOString(), event: "agent-paid-rescue", agent: friendId });
         const origKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;

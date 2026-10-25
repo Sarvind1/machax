@@ -5,7 +5,7 @@
 
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
-import { getRotatedModel, isGemmaModel } from "./providers";
+import { GEMINI_ENABLED, getRotatedModel, isGemmaModel } from "./providers";
 import { readFileSync, appendFileSync } from "fs";
 import { join } from "path";
 
@@ -64,6 +64,7 @@ export async function generateSearchQueries(vibeText: string): Promise<[string, 
   const timeout = setTimeout(() => controller.abort(), 3000);
 
   try {
+    if (!GEMINI_ENABLED) throw new Error("gemini disabled");
     const modelName = getRotatedModel();
     const result = await generateText({
       model: google(modelName),
@@ -252,7 +253,7 @@ async function validateMediaRelevance(
   vibeText: string,
   mediaTitle: string,
 ): Promise<boolean> {
-  if (!conversationTopic || !mediaTitle) return true; // skip if no context
+  if (!conversationTopic || !mediaTitle || !GEMINI_ENABLED) return true; // skip if no context or Gemini is off
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2000);
