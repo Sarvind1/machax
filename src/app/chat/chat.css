@@ -1066,3 +1066,39 @@
   color: white;
   letter-spacing: 0.04em;
 }
+
+/* ── Message actions (share / report) ── */
+.chat-msg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+  padding-left: 2px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-faint);
+}
+.chat-msg-actions button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+.chat-msg-actions button:hover { opacity: 1; text-decoration: underline; }
+.chat-msg-report-reasons { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+
+.chat-sidebar-legal {
+  display: flex;
+  gap: 14px;
+  padding: 4px 16px 12px;
+  font-family: var(--font-mono), monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+.chat-sidebar-legal a { color: var(--ink-faint); text-decoration: none; }
+.chat-sidebar-legal a:hover { text-decoration: underline; }

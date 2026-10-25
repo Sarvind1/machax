@@ -651,6 +651,8 @@ export default function ConfigurePage({ userName }: { userName: string }) {
           <button className="config-reset-btn" onClick={resetDefaults}>
             reset to defaults
           </button>
+          <Link href="/privacy" className="config-legal-link">privacy</Link>
+          <Link href="/delete-account" className="config-legal-link">delete account</Link>
           <Link href="/chat" className="config-back-link">
             &larr; back to chat
           </Link>

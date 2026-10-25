@@ -1,6 +1,10 @@
 "use client";
 
+import { useState } from "react";
+import { Share } from "@capacitor/share";
 import { FRIENDS_BY_ID } from "@/lib/friends";
+
+const REPORT_REASONS = ["offensive", "harmful or unsafe", "sexual", "other"];
 
 interface ChatMessageProps {
   from: string;
@@ -12,9 +16,10 @@ interface ChatMessageProps {
   mediaUrl?: string;
   mediaThumbnailUrl?: string;
   mediaAltText?: string;
+  onReport?: (reason: string) => Promise<void>;
 }
 
-export default function ChatMessage({ from, text, isUser, replyTo, replyToText, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText }: ChatMessageProps) {
+export default function ChatMessage({ from, text, isUser, replyTo, replyToText, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, onReport }: ChatMessageProps) {
   // System messages (joins, events)
   if (from === "system") {
     return (
@@ -93,7 +98,61 @@ export default function ChatMessage({ from, text, isUser, replyTo, replyToText, 
             />
           )}
         </div>
+        <MessageActions
+          shareText={`${friend?.name ?? from}: ${showText ? text : mediaUrl ?? ""}`}
+          onReport={onReport}
+        />
       </div>
+    </div>
+  );
+}
+
+function MessageActions({ shareText, onReport }: { shareText: string; onReport?: (reason: string) => Promise<void> }) {
+  const [state, setState] = useState<"idle" | "picking" | "sending" | "reported">("idle");
+
+  const share = async () => {
+    const text = `${shareText}\n\n— from my machaX group chat · machax.xyz`;
+    try {
+      if ((await Share.canShare()).value) {
+        await Share.share({ text, dialogTitle: "share message" });
+      } else if (navigator.share) {
+        await navigator.share({ text });
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+    } catch {
+      /* user cancelled */
+    }
+  };
+
+  const report = async (reason: string) => {
+    if (!onReport) return;
+    setState("sending");
+    try {
+      await onReport(reason);
+      setState("reported");
+    } catch {
+      setState("idle");
+    }
+  };
+
+  return (
+    <div className="chat-msg-actions">
+      <button type="button" onClick={share}>share</button>
+      {onReport && state === "idle" && (
+        <button type="button" onClick={() => setState("picking")}>report</button>
+      )}
+      {state === "picking" && (
+        <span className="chat-msg-report-reasons">
+          report as:
+          {REPORT_REASONS.map((r) => (
+            <button key={r} type="button" onClick={() => report(r)}>{r}</button>
+          ))}
+          <button type="button" onClick={() => setState("idle")}>cancel</button>
+        </span>
+      )}
+      {state === "sending" && <span>reporting…</span>}
+      {state === "reported" && <span>reported, thanks — we&apos;ll review it</span>}
     </div>
   );
 }

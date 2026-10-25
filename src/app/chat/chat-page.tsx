@@ -229,6 +229,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
   const sendMessage = useMutation(api.messages.send);
   const upsertDecision = useMutation(api.decisions.upsert);
   const selectDecision = useMutation(api.decisions.select);
+  const createReport = useMutation(api.reports.create);
 
   // Load messages from Convex when conversation changes
   const convexMessages = useSafeQuery<any[]>(
@@ -688,6 +689,10 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
               ⚙ configure pod
             </a>
           )}
+          <div className="chat-sidebar-legal">
+            <a href="/privacy">privacy</a>
+            {!demoMode && <a href="/delete-account">delete account</a>}
+          </div>
         </aside>
 
         {/* Landing center */}
@@ -896,6 +901,10 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
             ⚙ configure pod
           </a>
         )}
+        <div className="chat-sidebar-legal">
+          <a href="/privacy">privacy</a>
+          {!demoMode && <a href="/delete-account">delete account</a>}
+        </div>
       </aside>
 
       {/* Center */}
@@ -991,6 +1000,15 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
               mediaUrl={m.mediaUrl}
               mediaThumbnailUrl={m.mediaThumbnailUrl}
               mediaAltText={m.mediaAltText}
+              onReport={async (reason) => {
+                await createReport({
+                  username: settingsUsername ?? undefined,
+                  conversationId: activeConversation ?? undefined,
+                  from: m.from,
+                  text: m.text || m.mediaUrl || "",
+                  reason,
+                });
+              }}
             />
             );
           })}

@@ -1,5 +1,12 @@
 apply plugin: 'com.android.application'
 
+// Signing secrets live in android/keystore.properties (gitignored), not in this file
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace = "xyz.machax.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -18,10 +25,12 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file('machax-release.keystore')
-            storePassword 'machax2026'
-            keyAlias 'machax'
-            keyPassword 'machax2026'
+            if (keystorePropsFile.exists()) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
         }
     }
     buildTypes {

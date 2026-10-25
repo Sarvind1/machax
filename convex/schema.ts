@@ -92,7 +92,19 @@ export default defineSchema({
     finalEnergy: v.number(),
     iterations: v.string(), // JSON stringified array of iteration trace objects
     createdAt: v.number(),
-  }).index("by_created", ["createdAt"]),
+  }).index("by_created", ["createdAt"])
+    .index("by_conversation", ["conversationId"]),
+
+  // User reports of offensive / harmful AI messages (Play AI-content policy)
+  reports: defineTable({
+    username: v.optional(v.string()),
+    conversationId: v.optional(v.id("conversations")),
+    from: v.string(),
+    text: v.string(),
+    reason: v.string(),
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"])
+    .index("by_username", ["username"]),
 
   evalRuns: defineTable({
     name: v.string(),
