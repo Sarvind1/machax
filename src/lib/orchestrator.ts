@@ -276,11 +276,14 @@ async function callAiSdk(
   }
 }
 
-// ── Anthropic API call (Sonnet 5.5) ──
-// Thinking is always on for Sonnet 5.5 and counts against max_tokens, so the
-// requested reply length is a floor on top of a thinking allowance.
-const ANTHROPIC_THINKING_ALLOWANCE = 32_000;
+// ── Anthropic API call ──
+// Sonnet 5.5 (friend replies): thinking is always on and counts against
+// max_tokens, so the reply budget sits on top of a thinking allowance sized
+// by effort. Haiku 4.5 (helper calls): no thinking, no effort setting.
+const THINKING_ALLOWANCE: Record<AnthropicEffort, number> = { low: 2_000, medium: 4_000, high: 8_000, xhigh: 16_000, max: 32_000 };
 type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+// Fail over to Gemini quickly instead of the SDK's 10-minute default
+const ANTHROPIC_REQUEST_OPTIONS = { timeout: 30_000, maxRetries: 1 };
 let anthropicClient: Anthropic | null = null;
 
 async function callAnthropic(
@@ -290,17 +293,26 @@ async function callAnthropic(
   maxTokens: number,
 ): Promise<string> {
   anthropicClient ??= new Anthropic();
-  const effort = (process.env.ANTHROPIC_EFFORT || "max") as AnthropicEffort;
-  const stream = anthropicClient.beta.messages.stream({
-    model,
-    max_tokens: maxTokens + ANTHROPIC_THINKING_ALLOWANCE,
-    system,
-    messages: [{ role: "user", content: userPrompt }],
-    thinking: { type: "adaptive" },
-    output_config: { effort },
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-  });
+  const stream = model.startsWith("claude-haiku")
+    ? anthropicClient.beta.messages.stream({
+        model,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: "user", content: userPrompt }],
+      }, ANTHROPIC_REQUEST_OPTIONS)
+    : (() => {
+        const effort = (process.env.ANTHROPIC_EFFORT || "medium") as AnthropicEffort;
+        return anthropicClient!.beta.messages.stream({
+          model,
+          max_tokens: maxTokens + (THINKING_ALLOWANCE[effort] ?? 4_000),
+          system,
+          messages: [{ role: "user", content: userPrompt }],
+          thinking: { type: "adaptive" },
+          output_config: { effort },
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+        }, ANTHROPIC_REQUEST_OPTIONS);
+      })();
   const msg = await stream.finalMessage();
   if (msg.stop_reason === "refusal") throw new Error(`anthropic refusal: ${msg.stop_details?.category ?? "unknown"}`);
   const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
@@ -1784,7 +1796,7 @@ export async function* orchestrateChat(params: {
     const { text: synthesisText } = await callModel(
       `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`,
       `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 3-4 distinct options/perspectives that emerged. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. Return 3-4 options.`,
-      provider,
+      { ...provider, model: provider.synthesisModel },
       600,
     );
 

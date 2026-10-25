@@ -149,7 +149,7 @@ const MODEL_MAP: Record<
   },
   anthropic: {
     model: "claude-sonnet-5-5",
-    synthesisModel: "claude-sonnet-5-5",
+    synthesisModel: "claude-haiku-4-5", // topic context + decision synthesis
     label: "Anthropic API (Sonnet 5.5)",
   },
 };
