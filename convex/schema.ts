@@ -121,6 +121,14 @@ export default defineSchema({
     used: v.boolean(),
   }).index("by_token", ["token"]).index("by_email", ["email"]),
 
+  // Meta ad-attribution events already sent per user, so each fires once
+  metaEvents: defineTable({
+    username: v.string(),
+    eventName: v.string(),
+    eventId: v.string(),
+    createdAt: v.number(),
+  }).index("by_username_event", ["username", "eventName"]),
+
   evalResults: defineTable({
     evalRunId: v.id("evalRuns"),
     prompt: v.string(),

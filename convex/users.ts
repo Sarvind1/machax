@@ -210,6 +210,12 @@ export const deleteAccount = mutation({
       .collect();
     for (const r of reports) await ctx.db.delete(r._id);
 
+    const metaEvents = await ctx.db
+      .query("metaEvents")
+      .withIndex("by_username_event", (q) => q.eq("username", username))
+      .collect();
+    for (const m of metaEvents) await ctx.db.delete(m._id);
+
     if (email) {
       const resets = await ctx.db
         .query("passwordResets")
