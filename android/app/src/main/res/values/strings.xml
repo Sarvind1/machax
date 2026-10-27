@@ -4,4 +4,6 @@
     <string name="title_activity_main">MachaX</string>
     <string name="package_name">xyz.machax.app</string>
     <string name="custom_url_scheme">xyz.machax.app</string>
+    <string name="facebook_app_id">2651263281996052</string>
+    <string name="facebook_client_token">ca50ff623c50cfc326bcf677e5da900e</string>
 </resources>

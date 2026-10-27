@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { API_BASE } from "@/lib/api-base";
+import { logCompleteRegistration } from "@/lib/meta-events";
 import { api } from "../../convex/_generated/api";
 import { useRouter } from "next/navigation";
 import "./login.css";
@@ -306,6 +307,7 @@ export default function LoginPage() {
 
       if (result.success) {
         const realUsername = formData.username.trim();
+        logCompleteRegistration();
         localStorage.setItem("machax-user", JSON.stringify({ username: realUsername, name: formData.name.trim() }));
         // Claim demo conversation if exists
         try {
