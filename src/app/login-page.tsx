@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation } from "convex/react";
 import { API_BASE } from "@/lib/api-base";
 import { logCompleteRegistration } from "@/lib/meta-events";
+import { logEvent, setAnalyticsUser } from "@/lib/analytics";
 import { api } from "../../convex/_generated/api";
 import { useRouter } from "next/navigation";
 import "./login.css";
@@ -249,6 +250,8 @@ export default function LoginPage() {
         const name = result.name ?? formData.username.trim();
         const realUsername = formData.username.trim();
         localStorage.setItem("machax-user", JSON.stringify({ username: realUsername, name }));
+        setAnalyticsUser(result.username);
+        logEvent("login", { method: "password" });
         // Claim demo conversation if exists
         try {
           const demo = localStorage.getItem("machax-demo");
@@ -307,7 +310,9 @@ export default function LoginPage() {
 
       if (result.success) {
         const realUsername = formData.username.trim();
-        logCompleteRegistration();
+        logCompleteRegistration(realUsername);
+        setAnalyticsUser(realUsername);
+        logEvent("sign_up", { method: "email" });
         localStorage.setItem("machax-user", JSON.stringify({ username: realUsername, name: formData.name.trim() }));
         // Claim demo conversation if exists
         try {

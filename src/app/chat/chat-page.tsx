@@ -4,6 +4,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { API_BASE } from "@/lib/api-base";
+import { logEvent } from "@/lib/analytics";
+import { logActivated } from "@/lib/meta-events";
 import { api } from "../../../convex/_generated/api";
 
 function useSafeQuery<T>(query: any, args?: any): T | null {
@@ -201,6 +203,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
   }, [moodOpen]);
 
   const toggleMode = useCallback((modeId: string) => {
+    logEvent("mood_changed", { mood_type: "mode", mood: modeId });
     setSessionModes(prev =>
       prev.includes(modeId) ? prev.filter(m => m !== modeId) : [...prev, modeId]
     );
@@ -392,6 +395,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
                   timestamp: Date.now(),
                 };
                 setMessages((prev) => [...prev, newMsg]);
+                if (data.mediaType) logEvent("gif_received", { media_type: data.mediaType });
 
                 // Persist to Convex
                 try {
@@ -519,6 +523,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
         });
 
         setActiveConversation(convoId);
+        logEvent("dilemma_posted", { pod_size: podIds.length, topic: tag, demo: demoMode ? 1 : 0 });
 
         const userMsg: ChatMessageType = {
           id: `user-${Date.now()}`,
@@ -613,6 +618,8 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
         optionId,
         username: settingsUsername,
       });
+      logEvent("decision_picked", { option_count: decision?.options.length ?? 0 });
+      logActivated(settingsUsername);
       router.push("/decisions");
     } catch (err) {
       console.error("Failed to select decision:", err);
@@ -746,7 +753,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
                       <button
                         key={opt}
                         className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
-                        onClick={() => setSessionPacing(opt)}
+                        onClick={() => { setSessionPacing(opt); logEvent("mood_changed", { mood_type: "pacing", mood: opt }); }}
                       >
                         {opt}
                       </button>
@@ -761,7 +768,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
                       <button
                         key={opt}
                         className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
-                        onClick={() => setSessionEnergy(opt)}
+                        onClick={() => { setSessionEnergy(opt); logEvent("mood_changed", { mood_type: "energy", mood: opt }); }}
                       >
                         {opt}
                       </button>

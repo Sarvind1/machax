@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { logEvent } from "@/lib/analytics";
 import { FRIENDS, FRIENDS_BY_ID } from "@/lib/friends";
 import type { Friend } from "@/lib/friends";
 import { ATTENTION_WINDOWS } from "@/lib/engine-types";
@@ -203,11 +204,21 @@ export default function ConfigurePage({ userName }: { userName: string }) {
   }, [doSave]);
 
   // ── Updaters ──────────────────────────────────────────────────────
+  // One friend_configured per friend per visit, not one per slider tick
+  const tunedFriends = useRef(new Set<string>());
+
   const updateOverride = (id: string, patch: Partial<CharacterOverride>) => {
+    if (!tunedFriends.current.has(id)) {
+      tunedFriends.current.add(id);
+      logEvent("friend_configured", { friend_id: id, action: "tuned" });
+    }
     setCharacterOverrides((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   };
 
   const toggleCharacter = (id: string) => {
+    if (selectedPod.includes(id) || selectedPod.length < podSize) {
+      logEvent("friend_configured", { friend_id: id, action: selectedPod.includes(id) ? "removed" : "added" });
+    }
     setSelectedPod((prev) => {
       if (prev.includes(id)) {
         // Remove from pod
@@ -226,6 +237,7 @@ export default function ConfigurePage({ userName }: { userName: string }) {
   };
 
   const changePodSize = (newSize: number) => {
+    logEvent("pod_size_selected", { pod_size: newSize });
     setPodSize(newSize);
     setGroupSettings((s) => ({ ...s, podSize: newSize }));
     // Auto-truncate if current selection exceeds new size

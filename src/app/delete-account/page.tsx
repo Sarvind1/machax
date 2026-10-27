@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { setAnalyticsUser } from "@/lib/analytics";
 
 const CONTACT = "sarvind@gritlabsai.co";
 
@@ -41,6 +42,7 @@ export default function DeleteAccountPage() {
         for (const key of ["machax-user", "machax-session-mood", "machax-demo"]) {
           localStorage.removeItem(key);
         }
+        setAnalyticsUser(null);
         setStatus("success");
       } else {
         setError("Wrong username/email or password.");

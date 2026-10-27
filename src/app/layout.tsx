@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Space_Grotesk, Fraunces, Caveat, JetBrains_Mono } from "next/font/google";
 import ConvexClientProvider from "./convex-provider";
+import AnalyticsTracker from "./analytics-tracker";
 import { StructuredData } from "@/components/structured-data";
 import "./globals.css";
 
@@ -74,6 +75,7 @@ export default function RootLayout({
             url: "https://machax.xyz",
           }}
         />
+        <AnalyticsTracker />
         <ConvexClientProvider>{children}</ConvexClientProvider>
       </body>
     </html>
