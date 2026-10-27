@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MachaX feature shots v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;0,9..144,900;1,9..144,500;1,9..144,600;1,9..144,700;1,9..144,900&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #F4F1E8;
+  --ink: #1E1C16;
+  --matcha: #6BAE7E;
+  --deep: #3E7A50;
+  --deeper: #24492F;
+  --light: #c8e6cc;
+  --serif: "Fraunces", serif;
+  --body: "Space Grotesk", system-ui, sans-serif;
+  --mono: "JetBrains Mono", monospace;
+  --hand: "Caveat", cursive;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #888; font-family: var(--body); }
+
+.shot {
+  width: 1080px; height: 1920px; position: relative; overflow: hidden;
+  color: var(--paper); margin-bottom: 40px;
+  background:
+    radial-gradient(1000px 800px at 10% 0%, rgba(200,230,204,0.28), transparent 70%),
+    linear-gradient(170deg, #4A8A5C 0%, var(--deep) 45%, var(--deeper) 100%);
+}
+.shot .grain { position: absolute; inset: 0; pointer-events: none; opacity: .08;
+  background-image: radial-gradient(rgba(255,255,255,.9) 1px, transparent 1.2px); background-size: 6px 6px; }
+
+.hl {
+  position: absolute; left: 80px; right: 80px; top: 120px; z-index: 10;
+  font-family: var(--serif); font-style: italic; font-weight: 700;
+  font-size: 128px; line-height: 0.94; letter-spacing: -4px; text-wrap: balance;
+}
+.sub { position: absolute; left: 84px; right: 84px; z-index: 10;
+  font-size: 44px; line-height: 1.22; font-weight: 500; color: rgba(244,241,232,0.86); }
+
+.av { border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-family: var(--body); flex-shrink: 0; }
+.bub { border-radius: 36px; padding: 26px 34px; font-size: 40px; line-height: 1.28; font-weight: 500;
+  box-shadow: 0 30px 60px -24px rgba(0,0,0,.5); }
+.bub .who { display: block; font-family: var(--mono); font-size: 24px; letter-spacing: .04em; margin-bottom: 6px; opacity: .85; font-weight: 500; }
+.hand { font-family: var(--hand); font-weight: 700; }
+
+/* ================= 04 debate ================= */
+#s4 .split { position: absolute; inset: 0; }
+#s4 .side-a { position: absolute; inset: 0; background: linear-gradient(160deg, #E7B3C8, #D28AA8); clip-path: polygon(0 640px, 100% 560px, 100% 100%, 0 100%); }
+#s4 .side-b { position: absolute; inset: 0; background: linear-gradient(160deg, #9FD0DC, #5FA6B8); clip-path: polygon(0 1260px, 100% 1180px, 100% 100%, 0 100%); }
+#s4 .ask { position: absolute; left: 50%; top: 440px; transform: translateX(-50%) rotate(-2deg); z-index: 6;
+  background: var(--ink); color: var(--paper); font-size: 46px; font-weight: 500; padding: 28px 44px; border-radius: 40px 40px 10px 40px;
+  white-space: nowrap; box-shadow: 0 30px 60px -20px rgba(0,0,0,.6); }
+#s4 .team { position: absolute; left: 70px; font-family: var(--serif); font-style: italic; font-weight: 900; font-size: 96px; letter-spacing: -3px; line-height: 1; }
+#s4 .team small { display: block; font-family: var(--mono); font-style: normal; font-weight: 500; font-size: 26px; letter-spacing: .02em; margin-bottom: 10px; }
+#s4 .faces { position: absolute; display: flex; }
+#s4 .faces .av { width: 110px; height: 110px; font-size: 50px; border: 6px solid rgba(255,255,255,.9); margin-left: -26px; box-shadow: 0 14px 30px -12px rgba(0,0,0,.4); }
+#s4 .faces .av:first-child { margin-left: 0; }
+#s4 .vs { position: absolute; left: 540px; top: 1225px; transform: translate(-50%, -50%) rotate(-8deg); z-index: 8;
+  width: 230px; height: 230px; border-radius: 50%; background: var(--ink); color: var(--paper);
+  display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-style: italic; font-weight: 900; font-size: 120px; letter-spacing: -4px;
+  box-shadow: 0 0 0 14px var(--paper), 0 40px 70px -20px rgba(0,0,0,.6); }
+#s4 .bub { position: absolute; max-width: 640px; background: var(--paper) !important; border-left: 14px solid; }
+#s4 .bolt { position: absolute; z-index: 7; }
+
+/* ================= 05 pick your gang ================= */
+#s5 .stage { position: absolute; left: 0; right: 0; top: 610px; height: 1000px; }
+#s5 .member { position: absolute; display: flex; flex-direction: column; align-items: center; text-align: center; }
+#s5 .member .av { box-shadow: 0 30px 50px -20px rgba(0,0,0,.55), inset 0 -12px 0 rgba(0,0,0,.12); border: 8px solid var(--paper); }
+#s5 .member .nm { margin-top: 14px; font-family: var(--serif); font-style: italic; font-weight: 700; font-size: 50px; letter-spacing: -1px; line-height: 1; }
+#s5 .member .rl { font-family: var(--hand); font-size: 40px; color: var(--light); line-height: 1; margin-top: 6px; }
+#s5 .spot { position: absolute; left: 50%; top: 460px; width: 1300px; height: 900px; transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(244,241,232,.20), transparent); }
+#s5 .sizes { position: absolute; left: 80px; right: 80px; bottom: 170px; display: flex; gap: 28px; justify-content: center; }
+#s5 .sizes div { width: 200px; height: 200px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-family: var(--serif); font-weight: 900; font-size: 120px; color: rgba(244,241,232,.8); border: 5px solid rgba(244,241,232,.6); position: relative; }
+#s5 .sizes div.on { background: var(--paper); color: var(--deep); border-color: var(--paper); transform: rotate(-6deg) scale(1.08); box-shadow: 0 30px 50px -18px rgba(0,0,0,.55); }
+#s5 .sizes .tag { position: absolute; top: -78px; left: 50%; transform: translateX(-50%) rotate(-4deg); white-space: nowrap;
+  font-family: var(--hand); font-size: 46px; color: var(--paper); font-weight: 700; }
+
+/* ================= 06 tune + mood ================= */
+#s6 .console { position: absolute; left: 70px; right: 70px; top: 800px; height: 760px; border-radius: 56px;
+  background: linear-gradient(180deg, #2B2822, #1A1814); box-shadow: 0 60px 90px -30px rgba(0,0,0,.7), inset 0 2px 0 rgba(255,255,255,.08); padding: 50px 56px; }
+#s6 .who { display: flex; align-items: center; gap: 22px; }
+#s6 .who .av { width: 96px; height: 96px; font-size: 46px; }
+#s6 .who b { font-family: var(--serif); font-style: italic; font-size: 56px; font-weight: 700; display: block; line-height: 1; }
+#s6 .who span { font-family: var(--hand); font-size: 40px; color: #E9A795; }
+#s6 .faders { display: flex; justify-content: space-between; margin-top: 46px; }
+#s6 .fader { width: 270px; display: flex; flex-direction: column; align-items: center; }
+#s6 .fader .end { font-family: var(--mono); font-size: 24px; color: rgba(244,241,232,.6); }
+#s6 .fader .track { position: relative; width: 22px; height: 300px; border-radius: 12px; background: #0E0D0B; margin: 16px 0; box-shadow: inset 0 2px 6px rgba(0,0,0,.8); }
+#s6 .fader .fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 12px; background: #C87560; }
+#s6 .fader .cap { position: absolute; left: 50%; width: 130px; height: 64px; border-radius: 16px; transform: translate(-50%, 50%);
+  background: linear-gradient(180deg, #F8F5EC, #D9D4C4); box-shadow: 0 14px 22px -6px rgba(0,0,0,.7); }
+#s6 .fader .cap::after { content: ""; position: absolute; left: 18px; right: 18px; top: 30px; height: 4px; background: #C87560; border-radius: 2px; }
+#s6 .fader .lbl { margin-top: 18px; font-size: 32px; font-weight: 600; color: var(--paper); }
+#s6 .chipcloud { position: absolute; left: 0; right: 0; top: 500px; height: 300px; }
+#s6 .chip { position: absolute; padding: 20px 36px; border-radius: 999px; font-size: 38px; font-weight: 600; white-space: nowrap;
+  background: var(--paper); color: var(--deep); box-shadow: 0 20px 40px -18px rgba(0,0,0,.5); }
+#s6 .chip.on { background: var(--ink); color: var(--paper); }
+#s6 .chip.on::before { content: ""; display: inline-block; width: 18px; height: 18px; border-radius: 50%; background: var(--matcha); margin-right: 14px; vertical-align: middle; position: relative; top: -3px; }
+#s6 .note { position: absolute; font-family: var(--hand); font-size: 48px; color: var(--paper); font-weight: 700; }
+
+/* ================= 07 decisions ================= */
+#s7 .rail { position: absolute; left: 132px; top: 600px; bottom: 0; width: 6px; background: repeating-linear-gradient(180deg, rgba(244,241,232,.5) 0 18px, transparent 18px 34px); }
+#s7 .dcard { position: absolute; left: 190px; width: 820px; background: var(--paper); color: var(--ink); border-radius: 36px; padding: 40px 46px 40px;
+  box-shadow: 0 40px 70px -26px rgba(0,0,0,.6); }
+#s7 .dcard .q { font-family: var(--serif); font-style: italic; font-size: 48px; font-weight: 600; line-height: 1.12; letter-spacing: -1px; }
+#s7 .dcard .move { display: inline-flex; align-items: center; gap: 16px; margin-top: 22px; padding: 14px 26px 14px 16px; border-radius: 999px; font-size: 34px; font-weight: 700; color: #fff; }
+#s7 .dcard .move i { width: 46px; height: 46px; border-radius: 50%; background: rgba(255,255,255,.25); display: flex; align-items: center; justify-content: center; font-style: normal; font-size: 28px; }
+#s7 .dcard .when { position: absolute; right: 40px; top: 40px; font-family: var(--mono); font-size: 24px; color: #8A8374; }
+#s7 .dcard .backed { display: flex; align-items: center; gap: 12px; margin-top: 18px; font-size: 26px; color: #5A554A; }
+#s7 .dcard .backed .av { width: 50px; height: 50px; font-size: 22px; border: 4px solid var(--paper); margin-right: -22px; }
+#s7 .dcard .backed span { margin-left: 30px; }
+#s7 .node { position: absolute; left: 112px; width: 46px; height: 46px; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 10px rgba(244,241,232,.2); }
+#s7 .stamp { position: absolute; right: 70px; z-index: 5; transform: rotate(-12deg); border: 7px solid #C87560; color: #C87560; border-radius: 18px;
+  padding: 8px 24px; font-family: var(--serif); font-weight: 900; font-size: 64px; letter-spacing: 1px; background: rgba(244,241,232,.0); }
+
+/* ================= 08 night ================= */
+#s8 { background:
+  radial-gradient(700px 700px at 78% 22%, rgba(200,230,204,.16), transparent 70%),
+  linear-gradient(180deg, #0E1E15 0%, #14301F 55%, #1E4A2E 100%); }
+#s8 .star { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--paper); }
+#s8 .moon { position: absolute; right: 70px; top: 470px; width: 210px; height: 210px; border-radius: 50%;
+  box-shadow: -46px 26px 0 0 #F1E6C2; transform: rotate(-12deg); }
+#s8 .clock { position: absolute; left: 80px; top: 470px; font-family: var(--serif); font-weight: 900; font-size: 260px; letter-spacing: -12px; line-height: 1; color: var(--paper); }
+#s8 .clock small { font-family: var(--mono); font-weight: 500; font-size: 56px; letter-spacing: 0; margin-left: 18px; color: var(--light); }
+#s8 .chat { position: absolute; left: 80px; right: 80px; top: 860px; display: flex; flex-direction: column; gap: 26px; }
+#s8 .me { align-self: flex-end; background: var(--paper); color: var(--ink); border-radius: 40px 40px 10px 40px; font-size: 44px; padding: 28px 40px; max-width: 760px; font-weight: 500; box-shadow: 0 30px 60px -24px rgba(0,0,0,.7); }
+#s8 .typing { display: flex; align-items: center; gap: 20px; font-family: var(--mono); font-size: 30px; color: rgba(244,241,232,.8); }
+#s8 .typing .avs { display: flex; }
+#s8 .typing .av { width: 64px; height: 64px; font-size: 28px; border: 5px solid #14301F; margin-left: -18px; }
+#s8 .typing .av:first-child { margin-left: 0; }
+#s8 .dots { display: flex; gap: 8px; background: rgba(244,241,232,.12); padding: 22px 26px; border-radius: 30px; }
+#s8 .dots i { width: 14px; height: 14px; border-radius: 50%; background: var(--paper); opacity: .5; }
+#s8 .dots i:nth-child(2) { opacity: 1; transform: translateY(-5px); }
+#s8 .topics { position: absolute; left: 80px; right: 80px; top: 1230px; display: flex; flex-wrap: wrap; gap: 18px; }
+#s8 .topics span { font-size: 36px; font-weight: 500; padding: 16px 30px; border-radius: 999px; border: 3px solid rgba(244,241,232,.35); color: rgba(244,241,232,.9); }
+#s8 .brand { position: absolute; left: 0; right: 0; bottom: 130px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+#s8 .logo { display: flex; align-items: center; gap: 22px; font-family: var(--serif); font-weight: 700; font-size: 120px; letter-spacing: -3px; }
+#s8 .logo em { color: var(--light); }
+#s8 .tag { font-size: 40px; font-weight: 500; color: rgba(244,241,232,.8); }
+</style>
+</head>
+<body>
+
+<!-- 04 DEBATE: team vs team -->
+<section class="shot" id="s4">
+  <div class="split"><div class="side-a"></div><div class="side-b"></div></div>
+  <div class="grain"></div>
+  <div class="hl">They won't just agree with you.</div>
+  <div class="ask">should i text first after a week?</div>
+
+  <!-- team A on pink band -->
+  <div class="team" style="top:690px;color:#5C2140"><small>team</small>send it.</div>
+  <div class="faces" style="right:70px;top:700px"></div>
+  <div class="bub" data-f="aarushi" style="left:60px;top:850px;transform:rotate(-2deg);max-width:560px">life's too short. one text won't kill you</div>
+  <div class="bub" data-f="dev" style="right:60px;top:975px;transform:rotate(3deg);max-width:560px">send a meme. zero risk</div>
+
+  <div class="vs">vs</div>
+
+  <!-- team B on blue band -->
+  <div class="team" style="top:1290px;color:#173A43"><small>team</small>hold it.</div>
+  <div class="faces" style="right:70px;top:1300px"></div>
+  <div class="bub" data-f="mira" style="right:60px;top:1460px;transform:rotate(2deg);max-width:600px">bestie they saw your story. they know</div>
+  <div class="bub" data-f="noor" style="left:60px;top:1680px;transform:rotate(-3deg);max-width:600px">they went quiet first. let them move</div>
+</section>
+
+<!-- 05 PICK YOUR GANG: cast poster -->
+<section class="shot" id="s5">
+  <div class="grain"></div>
+  <div class="spot"></div>
+  <div class="hl">Pick your gang.</div>
+  <div class="sub" style="top:290px">100 AI friends. Each one a whole personality.</div>
+  <div class="stage" id="cast"></div>
+  <div class="sizes">
+    <div>3</div><div>5</div><div class="on">7<span class="tag">tonight</span></div><div>9</div>
+  </div>
+</section>
+
+<!-- 06 TUNE + MOOD: mixing console -->
+<section class="shot" id="s6">
+  <div class="grain"></div>
+  <div class="hl">Tune them. Set the mood.</div>
+  <div class="chipcloud">
+    <div class="chip on" style="left:70px;top:0;transform:rotate(-4deg)">lovingly roast</div>
+    <div class="chip" style="left:560px;top:-6px;transform:rotate(3deg)">hype mode</div>
+    <div class="chip" style="left:90px;top:130px;transform:rotate(2deg)">devil's advocate</div>
+    <div class="chip on" style="left:640px;top:128px;transform:rotate(-3deg)">late night</div>
+      </div>
+  <div class="console">
+    <div class="who"><div class="av" style="background:#C87560">M</div><div><b>mira</b><span>the roaster</span></div></div>
+    <div class="faders">
+      <div class="fader"><div class="end">agreeable</div><div class="track"><div class="fill" style="height:22%"></div><div class="cap" style="bottom:22%"></div></div><div class="end">contrarian</div><div class="lbl">personality</div></div>
+      <div class="fader"><div class="end">talkative</div><div class="track"><div class="fill" style="height:85%"></div><div class="cap" style="bottom:85%"></div></div><div class="end">quiet</div><div class="lbl">chattiness</div></div>
+      <div class="fader"><div class="end">always</div><div class="track"><div class="fill" style="height:62%"></div><div class="cap" style="bottom:62%"></div></div><div class="end">never</div><div class="lbl">gif reactions</div></div>
+    </div>
+  </div>
+  <div class="note" style="left:560px;top:1600px;transform:rotate(-5deg)">more savage, please</div>
+  <svg class="arrow" style="position:absolute;left:420px;top:1520px" width="130" height="110" viewBox="0 0 130 110" fill="none" stroke="#F4F1E8" stroke-width="6" stroke-linecap="round"><path d="M120 90 C 80 95, 30 70, 22 18"/><path d="M8 34 L22 14 L40 30"/></svg>
+  <div class="sub" style="top:1720px;font-size:40px">Tune each friend. Switch the mood mid-chat.</div>
+</section>
+
+<!-- 07 DECISIONS: timeline of moves -->
+<section class="shot" id="s7">
+  <div class="grain"></div>
+  <div class="hl">Every decision, saved.</div>
+  <div class="sub" style="top:400px">What you picked, and who backed it.</div>
+  <div class="rail"></div>
+  <div id="decs"></div>
+</section>
+
+<!-- 08 NIGHT: 3am closer -->
+<section class="shot" id="s8">
+  <div id="stars"></div>
+  <div class="hl">Ask anything. Even at 3am.</div>
+  <div class="clock">3:07<small>am</small></div>
+  <div class="moon"></div>
+  <div class="chat">
+    <div class="me">can't sleep. is it dumb to move cities for someone?</div>
+    <div class="typing"><div class="avs" id="night-avs"></div><div class="dots"><i></i><i></i><i></i></div><span>7 friends typing</span></div>
+  </div>
+  <div class="topics"><span>career</span><span>money</span><span>love</span><span>what to buy</span><span>overthinking</span><span>hot takes</span></div>
+  <div class="brand">
+    <div class="logo">
+      <svg width="96" height="118" viewBox="0 0 52 64" fill="none"><path d="M6 8 L4 52 Q4 60 12 60 L32 60 Q40 60 40 52 L38 8 Z" fill="#c8e6cc"/><path d="M38 18 Q50 18 50 32 Q50 44 40 44" stroke="#c8e6cc" stroke-width="4" fill="none" stroke-linecap="round"/><text x="21" y="44" text-anchor="middle" fill="#24492F" font-weight="800" font-size="32" font-family="sans-serif">X</text></svg>
+      <span>macha<em>X</em></span>
+    </div>
+    <div class="tag">your AI group chat. always awake.</div>
+  </div>
+</section>
+
+<script>
+// colours from src/lib/friends.ts
+const F = {
+  reeva:   { c: "#6BAE7E", bg: "#DCEBD8", ink: "#2D5438", role: "the career one" },
+  aarushi: { c: "#D28AA8", bg: "#F4DCE5", ink: "#7A3855", role: "the soft one" },
+  noor:    { c: "#5FA6B8", bg: "#CFE3E9", ink: "#204751", role: "the spreadsheet" },
+  tanmay:  { c: "#7A8BD4", bg: "#DDE1F3", ink: "#2E3B78", role: "the overthinker" },
+  dev:     { c: "#E2A34A", bg: "#F5E3C2", ink: "#7A4F14", role: "the chaos gremlin" },
+  mira:    { c: "#C87560", bg: "#EFD4C9", ink: "#6E2F1F", role: "the roaster" },
+  arjun:   { c: "hsl(200,45%,55%)", bg: "hsl(200,30%,92%)", ink: "hsl(200,40%,25%)", role: "the strategist" },
+  karan:   { c: "hsl(210,45%,55%)", bg: "hsl(210,30%,92%)", ink: "hsl(210,40%,25%)", role: "the debater" },
+  priya:   { c: "hsl(330,45%,55%)", bg: "hsl(330,30%,92%)", ink: "hsl(330,40%,25%)", role: "the empath" },
+};
+const av = (k, style = "") => `<div class="av" style="background:${F[k].c};${style}">${k[0].toUpperCase()}</div>`;
+
+// chat bubbles
+document.querySelectorAll(".bub[data-f]").forEach(b => {
+  const k = b.dataset.f, f = F[k];
+  b.style.background = f.bg; b.style.color = f.ink; b.style.borderLeftColor = f.c;
+  b.innerHTML = `<span class="who">${k}</span>` + b.innerHTML;
+});
+// team faces
+const faces = document.querySelectorAll("#s4 .faces");
+faces[0].innerHTML = ["aarushi", "dev", "priya"].map(k => av(k)).join("");
+faces[1].innerHTML = ["mira", "noor", "tanmay"].map(k => av(k)).join("");
+
+// cast poster: back row of 3, front row of 4 (7 = selected pod)
+const cast = [
+  ["noor", 150, 40, 200], ["tanmay", 450, 0, 200], ["arjun", 750, 40, 200],
+  ["reeva", 30, 400, 230], ["mira", 290, 360, 250], ["dev", 560, 360, 250], ["aarushi", 830, 400, 230],
+];
+document.getElementById("cast").innerHTML = cast.map(([k, x, y, s]) =>
+  `<div class="member" style="left:${x}px;top:${y}px;width:${s}px">${av(k, `width:${s}px;height:${s}px;font-size:${s * 0.46}px`)}<div class="nm">${k}</div><div class="rl">${F[k].role.replace("the ", "")}</div></div>`).join("");
+
+// decision timeline
+const decs = [
+  ["Quit my job for the startup?", "negotiate first", "#7A8BD4", ["arjun", "noor"], "2h ago", 600, -1],
+  ["Move out or keep saving?", "save 6 more months", "#5FA6B8", ["noor", "tanmay", "reeva"], "yesterday", 960, 1.5],
+  ["iPhone or finally try Android?", "try android", "#E2A34A", ["dev", "reeva"], "3d ago", 1320, -1.5],
+  ["Text first after a silent week?", "send the text", "#D28AA8", ["aarushi", "dev", "priya"], "1w ago", 1680, 1],
+];
+document.getElementById("decs").innerHTML = decs.map(([q, m, c, who, w, top, r]) =>
+  `<div class="node" style="top:${top + 60}px"></div>
+   <div class="dcard" style="top:${top}px;transform:rotate(${r}deg)"><div class="when">${w}</div><div class="q" style="padding-right:150px">${q}</div>
+   <div class="move" style="background:${c}"><i>✓</i>${m}</div>
+   <div class="backed">${who.map(k => av(k)).join("")}<span>backed by ${who.slice(0, 2).join(" + ")}</span></div></div>`).join("")
+  + `<div class="stamp" style="top:800px;right:60px">picked</div>`;
+
+// stars
+let s = "", seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+for (let i = 0; i < 70; i++) { const y = 380 + rnd() * 500, x = rnd() * 1080, o = 0.2 + rnd() * 0.7, z = 3 + rnd() * 5;
+  s += `<div class="star" style="left:${x}px;top:${y}px;opacity:${o};width:${z}px;height:${z}px"></div>`; }
+for (let i = 0; i < 30; i++) { const y = rnd() * 380, x = rnd() * 1080; s += `<div class="star" style="left:${x}px;top:${y}px;opacity:.25"></div>`; }
+document.getElementById("stars").innerHTML = s;
+document.getElementById("night-avs").innerHTML = ["reeva", "aarushi", "noor", "tanmay", "dev", "mira", "arjun"].map(k => av(k)).join("");
+</script>
+</body>
+</html>
