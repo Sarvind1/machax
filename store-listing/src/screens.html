@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MachaX Play screenshots</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Caveat:wght@600&display=swap" rel="stylesheet">
+<style>
+/* Tokens copied from src/app/chat/chat.css and src/app/globals.css */
+:root {
+  --paper: #F4F1E8;
+  --ink: #1E1C16;
+  --ink-soft: #5A554A;
+  --ink-faint: #8A8374;
+  --matcha: #6BAE7E;
+  --matcha-deep: #3E7A50;
+  --matcha-light: #c8e6cc;
+  --rule: rgba(30, 28, 22, 0.12);
+  --serif: "Fraunces", serif;
+  --body: "Space Grotesk", system-ui, sans-serif;
+  --mono: "JetBrains Mono", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #ccc; font-family: var(--body); }
+
+/* ===== Store shot canvas: 1080x1920 ===== */
+.shot {
+  width: 1080px; height: 1920px; position: relative; overflow: hidden;
+  background: var(--paper); color: var(--ink);
+  margin-bottom: 40px;
+}
+.shot.deep { background: var(--matcha-deep); color: var(--paper); }
+.shot.ink { background: var(--ink); color: var(--paper); }
+.shot::before { /* faint matcha glow, same idea as globals.css body gradient */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(900px 600px at 85% 8%, rgba(107,174,126,0.18), transparent 70%);
+}
+.shot.deep::before { background: radial-gradient(900px 700px at 15% 0%, rgba(200,230,204,0.22), transparent 70%); }
+
+.copy { position: absolute; left: 90px; right: 90px; top: 118px; }
+.headline {
+  text-wrap: balance;
+  font-family: var(--serif); font-style: italic; font-weight: 600;
+  font-size: 104px; line-height: 0.98; letter-spacing: -2.5px;
+}
+.sub {
+  margin-top: 30px; font-size: 42px; line-height: 1.25; font-weight: 500;
+  color: var(--ink-soft); max-width: 860px;
+}
+.deep .sub, .ink .sub { color: rgba(244,241,232,0.82); }
+
+/* ===== Phone frame ===== */
+.phone {
+  position: absolute; left: 50%; top: 640px; transform: translateX(-50%);
+  width: 880px; height: 1900px; border-radius: 96px;
+  background: #1a1915; padding: 22px;
+  box-shadow: 0 40px 90px -30px rgba(30,28,22,0.45), 0 0 0 3px rgba(255,255,255,0.06) inset;
+}
+.deep .phone, .ink .phone { box-shadow: 0 40px 90px -20px rgba(0,0,0,0.5); }
+.screen {
+  width: 836px; height: 1856px; border-radius: 76px; overflow: hidden;
+  background: var(--paper); position: relative;
+}
+/* the app UI is authored at 390px wide and scaled up, so it matches a real phone */
+.app {
+  width: 390px; height: 866px; transform: scale(2.1436); transform-origin: 0 0;
+  display: flex; flex-direction: column; color: var(--ink); font-family: var(--body);
+  background: var(--paper); position: relative;
+}
+.status {
+  height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 26px 0; font-size: 13px; font-weight: 600;
+}
+.status .icons { display: flex; gap: 5px; align-items: center; }
+.status .bar { width: 16px; height: 9px; border: 1.4px solid var(--ink); border-radius: 2.5px; position: relative; }
+.status .bar::after { content: ""; position: absolute; inset: 1.2px; right: 3px; background: var(--ink); border-radius: 1px; }
+.status .sig { display: flex; gap: 1.5px; align-items: flex-end; height: 9px; }
+.status .sig i { width: 2.6px; background: var(--ink); border-radius: 1px; }
+
+/* chat header (mobile layout, chat.css) */
+.chat-header {
+  padding: 10px 16px 12px; border-bottom: 1px solid var(--rule);
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+}
+.chat-header-title { font-family: var(--serif); font-style: italic; font-size: 18px; font-weight: 600; }
+.chat-header-tag {
+  font-family: var(--mono); font-size: 8.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-faint); padding: 3px 7px; border: 1px solid var(--rule); border-radius: 999px;
+}
+.hbtn {
+  margin-left: auto; border: 1px solid var(--rule); border-radius: 8px; padding: 4px 8px;
+  font-size: 12px; display: flex; align-items: center; gap: 5px; color: var(--ink);
+}
+.hbtn + .hbtn { margin-left: 0; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--matcha); }
+
+.messages { flex: 1; padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.row { display: flex; gap: 8px; max-width: 84%; }
+.row.user { align-self: flex-end; flex-direction: row-reverse; }
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 16px;
+}
+.bc { display: flex; flex-direction: column; gap: 2px; }
+.name { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; padding-left: 2px; }
+.reply { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); padding-left: 2px; }
+.bubble { padding: 9px 13px; border-radius: 16px; font-size: 14px; line-height: 1.45; }
+.row.user .bubble { background: var(--ink); color: #F4F1E8; border-bottom-right-radius: 4px; }
+.row.friend .bubble { border-top-left-radius: 4px; }
+.bubble img { display: block; max-width: 180px; border-radius: 8px; }
+.typing { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--ink-faint); padding: 2px 4px; }
+.typing .dots { display: flex; gap: 3px; }
+.typing .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-faint); opacity: .5; }
+.typing .dots i:nth-child(2) { opacity: 1; transform: translateY(-3px); }
+.sys { align-self: center; font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+
+.composer-wrap { padding: 8px 14px 18px; flex-shrink: 0; }
+.composer {
+  display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--rule);
+  border-radius: 14px; padding: 6px 6px 6px 14px; font-size: 14px; color: var(--ink-faint);
+}
+.send { margin-left: auto; width: 34px; height: 34px; border-radius: 10px; background: var(--matcha-deep); display: flex; align-items: center; justify-content: center; }
+
+/* drill-down bottom sheet */
+.scrim { position: absolute; inset: 0; background: rgba(30,28,22,0.32); }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 82%;
+  background: var(--paper); border-radius: 20px 20px 0 0; padding: 10px 18px 18px;
+  display: flex; flex-direction: column; box-shadow: 0 -10px 30px rgba(30,28,22,0.18);
+}
+.grab { width: 40px; height: 4px; border-radius: 4px; background: var(--rule); align-self: center; margin-bottom: 14px; }
+.dd-label { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); }
+.dd-q { font-family: var(--serif); font-style: italic; font-weight: 700; font-size: 21px; line-height: 1.2; margin-top: 8px; }
+.dd-only { font-family: "Caveat", cursive; font-size: 14px; color: var(--ink-faint); margin: 4px 0 12px; }
+.opt { background: #fff; border: 1px solid var(--rule); border-left: 3px solid; border-radius: 10px; padding: 11px 13px; margin-bottom: 9px; }
+.opt.sel { box-shadow: 0 0 0 2px var(--matcha); }
+.opt h4 { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+.opt p { font-size: 12px; line-height: 1.45; color: var(--ink-soft); }
+.loud { display: flex; align-items: center; gap: 5px; margin-top: 7px; font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); }
+.loud .mini { width: 15px; height: 15px; border-radius: 50%; color: #fff; font-size: 8px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.loud .mini + .mini { margin-left: -9px; border: 1.5px solid #fff; }
+.pick { margin-top: auto; background: var(--matcha-deep); color: #fff; text-align: center; font-weight: 600; font-size: 14px; padding: 12px; border-radius: 10px; }
+
+/* configure page */
+.cfg { padding: 14px 18px; flex: 1; overflow: hidden; }
+.cfg-title { font-family: var(--serif); font-weight: 700; font-size: 21px; }
+.cfg-title em { color: var(--matcha-deep); }
+.cfg-sub { font-family: var(--serif); font-style: italic; font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
+.sec { display: flex; align-items: baseline; gap: 8px; margin: 18px 0 12px; padding-bottom: 9px; border-bottom: 1px solid var(--rule); }
+.sec small { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
+.sec b { font-family: var(--serif); font-size: 17px; }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.card { background: rgba(255,255,255,0.5); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 4px 9px; text-align: center; opacity: .55; }
+.card.on { opacity: 1; background: #EEF0E6; border-color: var(--matcha); }
+.card .av { width: 38px; height: 38px; border-radius: 50%; margin: 0 auto 6px; color: #fff; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; position: relative; }
+.card.on .av::after { content: "✓"; position: absolute; right: -3px; bottom: -3px; width: 15px; height: 15px; border-radius: 50%; background: var(--matcha); border: 1.5px solid #fff; font-size: 8px; display: flex; align-items: center; justify-content: center; }
+.card .n { font-size: 12.5px; font-weight: 600; }
+.card .r { font-family: var(--serif); font-style: italic; font-size: 10.5px; color: var(--ink-faint); margin-top: 1px; }
+.podsize { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-family: var(--mono); font-size: 11px; color: var(--ink-soft); }
+.seg { display: inline-flex; background: #E8E5DA; border-radius: 8px; padding: 3px; gap: 2px; }
+.seg span { padding: 4px 10px; border-radius: 6px; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.seg span.on { background: #fff; color: var(--ink); font-weight: 500; }
+.count { margin-left: auto; color: var(--matcha-deep); }
+
+/* tune panel */
+.tabs { display: flex; gap: 6px; overflow: hidden; margin-bottom: 10px; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 6px 10px 6px 6px; border-radius: 10px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.tab.on { background: #fff; box-shadow: 0 1px 3px rgba(30,28,22,0.08); }
+.tab .av { width: 22px; height: 22px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.panel { background: #fff; border: 1px solid var(--rule); border-radius: 12px; padding: 14px; }
+.who { font-size: 12.5px; margin-bottom: 14px; color: var(--ink-soft); }
+.who b { color: var(--ink); }
+.ctl { margin-bottom: 15px; }
+.ctl-h { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 500; margin-bottom: 8px; }
+.ctl-h span { font-family: var(--mono); font-size: 9.5px; color: var(--ink-faint); font-weight: 400; }
+.track { height: 4px; background: #EAE7DD; border-radius: 4px; position: relative; }
+.track .fill { position: absolute; left: 0; top: 0; bottom: 0; background: #C9C6BA; border-radius: 4px; }
+.track .knob { position: absolute; top: 50%; width: 13px; height: 13px; border-radius: 50%; background: var(--ink); transform: translate(-50%, -50%); }
+.ends { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9px; color: var(--ink-faint); margin-top: 7px; }
+.seg3 { display: flex; background: #EFEDE5; border-radius: 8px; padding: 3px; }
+.seg3 span { flex: 1; text-align: center; padding: 5px 0; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); border-radius: 6px; }
+.seg3 span.on { background: #fff; color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgba(30,28,22,0.08); }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { font-family: var(--mono); font-size: 10px; padding: 4px 9px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink-soft); }
+.chip.on { color: #fff; border-color: transparent; }
+
+/* mood panel */
+.mood { position: absolute; left: 12px; right: 12px; top: 92px; background: #F4F1E8; border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 14px 34px -10px rgba(30,28,22,0.3); padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.mood-sec:not(:last-child) { padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+.mood-label { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 9px; }
+.pills { display: flex; flex-wrap: wrap; gap: 7px; }
+.pill { padding: 6px 12px; border: 1px solid var(--rule); border-radius: 999px; background: #fff; font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
+.pill.on { background: var(--matcha-deep); color: #fff; border-color: var(--matcha-deep); }
+.msegs { display: inline-flex; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: #fff; }
+.msegs span { padding: 6px 16px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-soft); }
+.msegs span:not(:last-child) { border-right: 1px solid var(--rule); }
+.msegs span.on { background: var(--matcha-deep); color: #fff; }
+.done { align-self: flex-end; background: var(--ink); color: var(--paper); font-size: 12.5px; padding: 7px 18px; border-radius: 8px; }
+
+/* decisions page */
+.dec { padding: 12px 18px; flex: 1; overflow: hidden; }
+.dec-top { display: flex; justify-content: space-between; align-items: center; }
+.dec-logo { font-family: "Caveat", cursive; font-size: 28px; color: var(--matcha-deep); }
+.dec-back { font-family: var(--mono); font-size: 10.5px; color: var(--ink-soft); }
+.dec-h { font-family: var(--serif); font-style: italic; font-weight: 700; font-size: 30px; margin: 14px 0 16px; }
+.dcard { background: #fff; border: 1px solid var(--rule); border-left: 3px solid var(--matcha); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+.dcard .t { font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+.dcard .q { font-family: var(--serif); font-style: italic; font-size: 15.5px; line-height: 1.25; margin: 5px 0 8px; }
+.dcard .c { font-weight: 700; font-size: 13px; color: var(--matcha-deep); }
+.dcard .b { font-size: 11.5px; color: var(--ink-soft); line-height: 1.4; margin-top: 2px; }
+.dcard .when { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); margin-top: 7px; }
+
+/* start screen */
+.start { flex: 1; padding: 34px 22px 0; overflow: hidden; display: flex; flex-direction: column; }
+.start h2 { font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 30px; line-height: 1.1; }
+.start p { font-size: 13.5px; color: var(--ink-soft); line-height: 1.5; margin: 10px 0 26px; }
+.starter { display: flex; align-items: center; gap: 10px; background: #fff; border: 1px solid var(--rule); border-radius: 12px; padding: 11px 13px; font-size: 13.5px; margin-bottom: 8px; }
+.starter .e { width: 26px; height: 26px; border-radius: 8px; background: #EEF0E6; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.starter .tag { margin-left: auto; font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
+
+/* floating callout bubble that leaves the phone (hero only) */
+.float { position: absolute; z-index: 5; font-size: 34px; line-height: 1.35; padding: 22px 30px; border-radius: 32px; box-shadow: 0 24px 50px -18px rgba(0,0,0,0.45); font-weight: 500; }
+.float .fn { display: block; font-family: var(--mono); font-size: 22px; letter-spacing: 0.06em; margin-bottom: 4px; opacity: .8; }
+
+/* ===== Feature graphic 1024x500 ===== */
+.fg { width: 1024px; height: 500px; position: relative; overflow: hidden; background: var(--matcha-deep); color: var(--paper); margin-bottom: 40px; }
+.fg::before { content: ""; position: absolute; inset: 0; background: radial-gradient(600px 420px at 0% 0%, rgba(200,230,204,0.25), transparent 70%); }
+.fg-left { position: absolute; left: 70px; top: 0; bottom: 0; width: 470px; display: flex; flex-direction: column; justify-content: center; }
+.fg-logo { display: flex; align-items: center; gap: 8px; font-family: var(--serif); font-weight: 700; font-size: 40px; letter-spacing: -1px; }
+.fg-logo em { font-style: italic; color: var(--matcha-light); }
+.fg-h { font-family: var(--serif); font-style: italic; font-weight: 600; font-size: 60px; line-height: 1; letter-spacing: -1.5px; margin-top: 22px; text-wrap: balance; }
+.fg-sub { text-wrap: balance; font-size: 23px; line-height: 1.3; margin-top: 18px; color: rgba(244,241,232,0.85); font-weight: 500; }
+.fg-right { position: absolute; right: 56px; top: 50%; transform: translateY(-50%); width: 390px; display: flex; flex-direction: column; gap: 12px; }
+.fg-right .row { max-width: 100%; }
+.fg-right .bubble { font-size: 16.5px; box-shadow: 0 10px 24px -12px rgba(0,0,0,0.4); }
+.fg-right .name { color: rgba(244,241,232,0.85) !important; }
+.fg-right .row.user .bubble { background: var(--paper); color: var(--ink); }
+</style>
+</head>
+<body>
+
+<!-- 1. HERO -->
+<section class="shot deep" id="s1">
+  <div class="copy">
+    <div class="headline">7 AI friends debate your dilemma.</div>
+    <div class="sub">You pick the move.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-chat="hero"></div></div></div>
+</section>
+
+<!-- 2. DISAGREEMENT -->
+<section class="shot" id="s2">
+  <div class="copy">
+    <div class="headline">They don't just agree with you.</div>
+    <div class="sub">Real arguments from friends with real opinions.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-chat="argue"></div></div></div>
+</section>
+
+<!-- 3. DRILL-DOWN -->
+<section class="shot" id="s3">
+  <div class="copy">
+    <div class="headline">See every option. Pick one.</div>
+    <div class="sub">The chat turns into clear choices, with who backed each.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-chat="drill"></div></div></div>
+</section>
+
+<!-- 4. POD -->
+<section class="shot deep" id="s4">
+  <div class="copy">
+    <div class="headline">Pick your gang. 3, 5, 7 or 9.</div>
+    <div class="sub">100 AI characters. Each with a personality.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-screen="pod"></div></div></div>
+</section>
+
+<!-- 5. TUNE -->
+<section class="shot" id="s5">
+  <div class="copy">
+    <div class="headline">Tune every friend.</div>
+    <div class="sub">Chatty or quiet. Agreeable or contrarian. Your call.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-screen="tune"></div></div></div>
+</section>
+
+<!-- 6. MOOD -->
+<section class="shot" id="s6">
+  <div class="copy">
+    <div class="headline">Set the mood.</div>
+    <div class="sub">Late night, hot takes, roast or hype. Switch any time.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-screen="mood"></div></div></div>
+</section>
+
+<!-- 7. DECISIONS -->
+<section class="shot deep" id="s7">
+  <div class="copy">
+    <div class="headline">Every decision, saved.</div>
+    <div class="sub">Look back at what you chose and why.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-screen="decisions"></div></div></div>
+</section>
+
+<!-- 8. START -->
+<section class="shot" id="s8">
+  <div class="copy">
+    <div class="headline">Ask anything. Even at 3am.</div>
+    <div class="sub">Career, money, love, or just a hot take.</div>
+  </div>
+  <div class="phone"><div class="screen"><div class="app" data-screen="start"></div></div></div>
+</section>
+
+<!-- FEATURE GRAPHIC -->
+<section class="fg" id="fg">
+  <div class="fg-left">
+    <div class="fg-logo">
+      <svg width="40" height="49" viewBox="0 0 52 64" fill="none"><path d="M6 8 L4 52 Q4 60 12 60 L32 60 Q40 60 40 52 L38 8 Z" fill="#c8e6cc"/><path d="M38 18 Q50 18 50 32 Q50 44 40 44" stroke="#c8e6cc" stroke-width="4" fill="none" stroke-linecap="round"/><text x="21" y="44" text-anchor="middle" fill="#3E7A50" font-weight="800" font-size="32" font-family="sans-serif">X</text></svg>
+      <span>macha<em>X</em></span>
+    </div>
+    <div class="fg-h">Your AI group chat.</div>
+    <div class="fg-sub">7 AI friends debate your dilemma. You pick the move.</div>
+  </div>
+  <div class="fg-right" data-chat="fg"></div>
+</section>
+
+<script>
+// Characters and colours from src/lib/friends.ts
+const F = {
+  reeva:   { n: "reeva",   c: "#6BAE7E", bg: "#DCEBD8", ink: "#2D5438", role: "the career one" },
+  aarushi: { n: "aarushi", c: "#D28AA8", bg: "#F4DCE5", ink: "#7A3855", role: "the soft one" },
+  noor:    { n: "noor",    c: "#5FA6B8", bg: "#CFE3E9", ink: "#204751", role: "the spreadsheet" },
+  tanmay:  { n: "tanmay",  c: "#7A8BD4", bg: "#DDE1F3", ink: "#2E3B78", role: "the overthinker" },
+  dev:     { n: "dev",     c: "#E2A34A", bg: "#F5E3C2", ink: "#7A4F14", role: "the chaos gremlin" },
+  mira:    { n: "mira",    c: "#C87560", bg: "#EFD4C9", ink: "#6E2F1F", role: "the roaster" },
+  arjun:   { n: "arjun",   c: "hsl(200,45%,55%)", bg: "hsl(200,30%,92%)", ink: "hsl(200,40%,25%)", role: "the strategist" },
+  simran:  { n: "simran",  c: "hsl(345,45%,55%)", bg: "hsl(345,30%,92%)", ink: "hsl(345,40%,25%)", role: "the romantic" },
+  kunal:   { n: "kunal",   c: "hsl(40,45%,55%)",  bg: "hsl(40,30%,92%)",  ink: "hsl(40,40%,25%)",  role: "the hype man" },
+  priya:   { n: "priya",   c: "hsl(330,45%,55%)", bg: "hsl(330,30%,92%)", ink: "hsl(330,40%,25%)", role: "the empath" },
+  karan:   { n: "karan",   c: "hsl(210,45%,55%)", bg: "hsl(210,30%,92%)", ink: "hsl(210,40%,25%)", role: "the debater" },
+  meera:   { n: "meera",   c: "hsl(320,45%,55%)", bg: "hsl(320,30%,92%)", ink: "hsl(320,40%,25%)", role: "the devotee" },
+};
+const cap = s => s[0].toUpperCase() + s.slice(1);
+const av = (f, cls = "avatar") => `<div class="${cls}" style="background:${f.c}">${f.n[0].toUpperCase()}</div>`;
+
+const status = `<div class="status"><span>9:41</span><span class="icons"><span class="sig"><i style="height:3px"></i><i style="height:5px"></i><i style="height:7px"></i><i style="height:9px"></i></span><span class="bar"></span></span></div>`;
+const header = (n, extra = "") => `<div class="chat-header"><span class="chat-header-title">the lounge</span><span class="chat-header-tag">${n} friends in the room</span><span class="hbtn"><span class="dot"></span>set the mood</span>${extra}</div>`;
+const sendIcon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>`;
+const composer = (ph = "say something back...") => `<div class="composer-wrap"><div class="composer">${ph}<span class="send">${sendIcon}</span></div></div>`;
+
+function msgs(list) {
+  return list.map(m => {
+    if (m.u) return `<div class="row user"><div class="bc"><div class="bubble">${m.u}</div></div></div>`;
+    if (m.typing) return `<div class="typing"><span class="dots"><i></i><i></i><i></i></span><span>${m.typing}</span></div>`;
+    if (m.sys) return `<div class="sys">${m.sys}</div>`;
+    const f = F[m.f];
+    const reply = m.re ? `<div class="reply">↩ ${m.re}</div>` : "";
+    const body = m.gif ? `<img src="${m.gif}">` : m.t;
+    return `<div class="row friend">${av(f)}<div class="bc"><div class="name" style="color:${f.ink}">${f.n}</div>${reply}<div class="bubble" style="background:${f.bg};color:${f.ink}">${body}</div></div></div>`;
+  }).join("");
+}
+
+const CHATS = {
+  hero: [
+    { u: "got a startup offer. 40% less pay. do i quit my stable job?" },
+    { f: "reeva", t: "you've wanted this for 2 years. go." },
+    { f: "noor", t: "40% less is fine if you have 8 months of runway. do you?" },
+    { f: "tanmay", t: "wait. what if the startup folds in 6 months though" },
+    { f: "dev", t: "tanmay has never taken a risk in his life 💀" },
+    { f: "aarushi", t: "how do you <i>feel</i> when you imagine saying yes?" },
+    { typing: `<span style="color:${F.mira.c}">mira</span> and <span style="color:${F.arjun.c}">arjun</span> are typing...` },
+  ],
+  argue: [
+    { u: "my friend cancelled plans again. am i overreacting?" },
+    { f: "aarushi", t: "no!! third time this month. you're allowed to feel hurt" },
+    { f: "karan", t: "counterpoint: did you ask why? maybe something's going on" },
+    { f: "mira", re: "karan · counterpoint", t: "bestie karan is defending a serial canceller. iconic" },
+    { f: "karan", t: "i'm defending context, mira. not the cancelling" },
+    { f: "noor", t: "data: 3 cancels, 0 reschedules from their side. that's a pattern" },
+    { f: "dev", t: "this group chat is better than any web series 🍿" },
+  ],
+  drill: [
+    { u: "got a startup offer. 40% less pay. do i quit my stable job?" },
+    { f: "reeva", t: "you've wanted this for 2 years. go." },
+    { f: "noor", t: "40% less is fine if you have 8 months of runway." },
+  ],
+  fg: [
+    { u: "move out or keep saving?" },
+    { f: "noor", t: "rent is 38% of your pay. save 6 more months." },
+    { f: "dev", t: "or move out and learn to cook dal. growth" },
+    { f: "aarushi", t: "what does your gut say though?" },
+  ],
+};
+
+document.querySelectorAll("[data-chat]").forEach(el => {
+  const k = el.dataset.chat;
+  if (k === "fg") { el.innerHTML = msgs(CHATS.fg); return; }
+  if (k === "drill") {
+    const opts = [
+      { c: "#6BAE7E", h: "Take the startup offer", p: "You've wanted this for years. The pay cut works if you have runway.", who: ["reeva", "noor", "dev"] },
+      { c: "#7A8BD4", h: "Negotiate first, then decide", p: "Ask for more equity or a pay bump before you say yes.", who: ["arjun", "noor"] },
+      { c: "#D28AA8", h: "Stay one more year", p: "Build savings, keep learning, try again later with less risk.", who: ["tanmay"] },
+    ];
+    el.innerHTML = status + header(7) + `<div class="messages">${msgs(CHATS.drill)}</div>` + composer() +
+      `<div class="scrim"></div><div class="sheet"><div class="grab"></div><div class="dd-label">the drill-down</div>
+       <div class="dd-q">Should you quit your job to join the startup?</div><div class="dd-only">only you see this</div>` +
+      opts.map((o, i) => `<div class="opt${i === 0 ? " sel" : ""}" style="border-left-color:${o.c}"><h4>${o.h}</h4><p>${o.p}</p>
+        <div class="loud">${o.who.map(w => av(F[w], "mini")).join("")}<span style="margin-left:4px">loudest from ${o.who.map(w => cap(w)).slice(0, 2).join(", ")}</span></div></div>`).join("") +
+      `<div class="pick">pick one</div></div>`;
+    return;
+  }
+  el.innerHTML = status + header(7) + `<div class="messages">${msgs(CHATS[k])}</div>` + composer();
+});
+
+const SCREENS = {
+  pod() {
+    const all = ["reeva", "aarushi", "noor", "tanmay", "dev", "mira", "arjun", "simran", "kunal", "priya", "karan", "meera", "_"];
+    const on = new Set(["reeva", "aarushi", "noor", "tanmay", "dev", "mira", "arjun"]);
+    const cards = all.slice(0, 12).map(k => { const f = F[k]; return `<div class="card${on.has(k) ? " on" : ""}">${av(f, "av")}<div class="n">${f.n}</div><div class="r">${f.role}</div></div>`; }).join("");
+    return status + `<div class="cfg"><div class="cfg-title">macha<em>x</em> · configure your pod</div><div class="cfg-sub">tune the people in your group chat.</div>
+      <div class="sec"><small>01</small><b>pick your pod</b></div><div class="grid">${cards}</div>
+      <div class="podsize">pod size: <span class="seg"><span>3</span><span>5</span><span class="on">7</span><span>9</span></span><span class="count">7/7 selected</span></div></div>`;
+  },
+  tune() {
+    const tabs = ["mira", "reeva", "noor", "dev"].map((k, i) => `<div class="tab${i === 0 ? " on" : ""}">${av(F[k], "av")}${cap(k)}</div>`).join("");
+    const slider = (label, val, pos, a, b, fill) => `<div class="ctl"><div class="ctl-h">${label}<span>${val}</span></div><div class="track">${fill ? `<div class="fill" style="width:${pos}%"></div>` : ""}<div class="knob" style="left:${pos}%"></div></div><div class="ends"><span>${a}</span><span>${b}</span></div></div>`;
+    const topics = [["career", 0], ["feelings", 0], ["fun", 1], ["hot-takes", 1], ["life", 0], ["money", 0], ["relationship", 1], ["what-to-buy", 0]];
+    return status + `<div class="cfg"><div class="cfg-title">macha<em>x</em> · configure your pod</div><div class="cfg-sub">tune the people in your group chat.</div>
+      <div class="sec"><small>02</small><b>tune your people</b></div><div class="tabs">${tabs}</div>
+      <div class="panel"><div class="who"><b>Mira</b>, the roaster. Says "bestie", then destroys you.</div>
+      ${slider("personality", "-0.60", 20, "contrarian", "agreeable")}
+      <div class="ctl"><div class="ctl-h">reply speed<span>impulsive</span></div><div class="seg3"><span class="on">impulsive</span><span>normal</span><span>thoughtful</span></div></div>
+      ${slider("chattiness", "85%", 85, "quiet", "talkative")}
+      ${slider("msg length", "4-20w", 40, "1w", "50w", true)}
+      ${slider("gif reactions", "60%", 60, "never", "always")}
+      <div class="ctl"><div class="ctl-h">topics</div><div class="chips">${topics.map(([t, o]) => `<span class="chip${o ? " on" : ""}" style="${o ? `background:${F.mira.c}` : ""}">${t}</span>`).join("")}</div></div>
+      </div></div>`;
+  },
+  mood() {
+    const modes = [["late night", 1], ["hot takes", 0], ["deep dive", 0], ["devil's advocate", 0], ["emotional support", 0], ["lovingly roast", 1], ["hype mode", 0], ["debate club", 0]];
+    return status + header(5) + `<div class="messages" style="opacity:.45">${msgs([
+      { u: "everyone's getting married and i'm tired" },
+      { f: "mira", t: "bestie you've been to 4 weddings this year. you're not tired, you're broke" },
+      { f: "aarushi", t: "it's okay to feel left out. that's real" },
+    ])}</div>` + composer() +
+      `<div class="mood"><div class="mood-sec"><div class="mood-label">mode</div><div class="pills">${modes.map(([m, o]) => `<span class="pill${o ? " on" : ""}">${m}</span>`).join("")}</div></div>
+       <div class="mood-sec"><div class="mood-label">pacing</div><div class="msegs"><span>snappy</span><span class="on">natural</span><span>slow</span></div></div>
+       <div class="mood-sec"><div class="mood-label">energy</div><div class="msegs"><span class="on">low</span><span>settled</span><span>up</span></div></div>
+       <div class="done">done</div></div>`;
+  },
+  decisions() {
+    const items = [
+      ["career", "Should I quit my job to join the startup?", "Negotiate first, then decide", "Ask for more equity or a pay bump before you say yes.", "2h ago"],
+      ["money", "Move out or keep saving?", "Save 6 more months", "Rent is 38% of pay right now. Revisit in April.", "yesterday"],
+      ["what to buy", "iPhone or finally try Android?", "Try Android", "Same budget, better camera. Dev will not stop talking about it.", "3d ago"],
+      ["relationship", "Text first after a silent week?", "Send the text", "Short and light. No essay.", "1w ago"],
+    ];
+    return status + `<div class="dec"><div class="dec-top"><span class="dec-logo">machaX</span><span class="dec-back">← back to chat</span></div>
+      <div class="dec-h">your decisions</div>` +
+      items.map(([t, q, c, b, w]) => `<div class="dcard"><div class="t">${t}</div><div class="q">${q}</div><div class="c">${c}</div><div class="b">${b}</div><div class="when">${w}</div></div>`).join("") + `</div>`;
+  },
+  start() {
+    const st = [["💼", "I got an offer but I'm weirdly not excited", "career"], ["💬", "My friend cancelled plans again. Overreacting?", "relationship"], ["🛒", "iPhone or should I finally try Android", "what-to-buy"], ["🌀", "Is it weird to text first after a silent week", "overthinking"], ["₹", "Should I move out or keep saving", "money"]];
+    return status + header(7) + `<div class="start"><h2>what's on your mind?</h2><p>dump your messiest thought. your council of AI friends will hash it out.</p>` +
+      st.map(([e, t, g]) => `<div class="starter"><span class="e">${e}</span>${t}</div>`).join("") + `</div>` + composer("type it out...");
+  },
+};
+document.querySelectorAll("[data-screen]").forEach(el => { el.innerHTML = SCREENS[el.dataset.screen](); });
+
+// Place each phone just under its copy, and size the app so its bottom edge lands on the canvas edge
+// (the phone body bleeds off the bottom, the composer and buttons stay visible).
+const SCALE = 2.1436, PAD = 22;
+document.querySelectorAll(".shot").forEach(shot => {
+  const copy = shot.querySelector(".copy"), phone = shot.querySelector(".phone"), app = shot.querySelector(".app");
+  const top = Math.round(copy.offsetTop + copy.offsetHeight + 80);
+  phone.style.top = top + "px";
+  app.style.height = Math.floor((1920 - top - PAD) / SCALE) + "px";
+});
+</script>
+</body>
+</html>
