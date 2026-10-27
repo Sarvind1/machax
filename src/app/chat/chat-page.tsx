@@ -37,13 +37,6 @@ import "./chat.css";
 
 type ConversationId = Id<"conversations">;
 
-interface ProviderInfo {
-  name: string;
-  label: string;
-  available: boolean;
-  priority: number;
-}
-
 const MODES = [
   { id: "late-night", label: "late night", desc: "soft, 2am energy" },
   { id: "hot-take", label: "hot takes", desc: "spicy, fun" },
@@ -152,8 +145,6 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
   const [isLoading, setIsLoading] = useState(false);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
   const [mobileDecisionOpen, setMobileDecisionOpen] = useState(false);
-  const [activeProvider, setActiveProvider] = useState<string | null>(null);
-  const [providerList, setProviderList] = useState<ProviderInfo[]>([]);
   const [joinedAgents, setJoinedAgents] = useState<string[]>([]);
   const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
   const [isWindingDown, setIsWindingDown] = useState(false);
@@ -207,17 +198,6 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
     setSessionModes(prev =>
       prev.includes(modeId) ? prev.filter(m => m !== modeId) : [...prev, modeId]
     );
-  }, []);
-
-  // Probe providers on mount
-  useEffect(() => {
-    fetch(`${API_BASE}/api/providers`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.active) setActiveProvider(data.active.label);
-        if (data.providers) setProviderList(data.providers);
-      })
-      .catch(() => {});
   }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -351,10 +331,6 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
 
             try {
               const data = JSON.parse(jsonStr);
-
-              if (data.provider) {
-                setActiveProvider(data.provider);
-              }
 
               if (data.joined) {
                 const friend = FRIENDS_BY_ID[data.joined];
@@ -806,21 +782,6 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
             ))}
           </div>
 
-          {/* Provider status hint */}
-          {providerList.length > 0 && (
-            <div className="provider-status">
-              {providerList.map((p) => (
-                <span
-                  key={p.name}
-                  className={`provider-dot ${p.available ? "available" : "unavailable"}`}
-                  title={p.available ? `${p.label} — ready` : `${p.label} — not configured`}
-                >
-                  <span className="provider-indicator" />
-                  {p.label}
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       </div>
     );
@@ -921,11 +882,6 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
           {pod.length > 0 && (
             <span className="chat-header-tag">
               {pod.length} friends in the room
-            </span>
-          )}
-          {activeProvider && (
-            <span className="chat-header-provider" title="Active AI provider">
-              via {activeProvider}
             </span>
           )}
           <button
