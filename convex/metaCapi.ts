@@ -3,7 +3,7 @@ import { v } from "convex/values";
 
 // Meta Conversions API (server-side app events) for ad attribution.
 // The native app logs the same event through the Meta SDK with the same event_id,
-// so Meta dedups the pair. Env: META_CAPI_TOKEN, META_DATASET_ID, optional META_TEST_EVENT_CODE.
+// so Meta dedups the pair. Env: MACHAX_META_CAPI_TOKEN, MACHAX_META_DATASET_ID, optional MACHAX_META_TEST_EVENT_CODE.
 
 const GRAPH_VERSION = "v23.0";
 const REGISTRATION_WINDOW_MS = 30 * 60 * 1000;
@@ -79,8 +79,8 @@ export const send = internalAction({
     extinfo: v.array(v.string()),
   },
   handler: async (_ctx, args) => {
-    const token = process.env.META_CAPI_TOKEN;
-    const datasetId = process.env.META_DATASET_ID;
+    const token = process.env.MACHAX_META_CAPI_TOKEN;
+    const datasetId = process.env.MACHAX_META_DATASET_ID;
     if (!token || !datasetId) {
       console.warn("Meta CAPI not configured; skipping", args.eventName);
       return;
@@ -110,7 +110,7 @@ export const send = internalAction({
         },
       ],
     };
-    const testCode = process.env.META_TEST_EVENT_CODE;
+    const testCode = process.env.MACHAX_META_TEST_EVENT_CODE;
     if (testCode) body.test_event_code = testCode;
 
     const res = await fetch(
