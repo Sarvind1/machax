@@ -126,10 +126,11 @@ export const ensure = internalMutation({
 });
 
 // Race guard. Read-then-write in one mutation; Convex serializes mutations,
-// so two concurrent calls cannot both pass.
+// so two concurrent calls cannot both pass. The lock records the message's
+// ledger ref, so only that message's settle releases it.
 export const beginMessage = internalMutation({
-  args: { uid: v.string() },
-  handler: async (ctx, { uid }) => {
+  args: { uid: v.string(), ref: v.string() },
+  handler: async (ctx, { uid, ref }) => {
     const row = await getRow(ctx, uid);
     if (!row) return { ok: false as const, reason: "no_account" as const };
 
@@ -140,14 +141,18 @@ export const beginMessage = internalMutation({
     if (row.balanceMicros <= 0) {
       return { ok: false as const, reason: "out_of_credit" as const };
     }
-    await ctx.db.patch(row._id, { inFlightSince: now });
+    await ctx.db.patch(row._id, { inFlightSince: now, inFlightRef: ref });
     return { ok: true as const };
   },
 });
 
 // Charge the real cost after the model call. May drive the balance negative.
 // Idempotent on ref: the route retries a settle whose response may have been
-// lost, so a ref already in the ledger only clears the lock and charges nothing.
+// lost, so a ref already in the ledger charges nothing.
+// The lock is cleared only when this message holds it (inFlightRef === ref, or
+// a lock with no ref from before refs existed). A message that outlived the
+// stale window must not free the lock of the message that started after it.
+// Returns null when the credits row is gone (account deleted mid-message).
 export const settleMessage = internalMutation({
   args: {
     uid: v.string(),
@@ -158,15 +163,18 @@ export const settleMessage = internalMutation({
   handler: async (ctx, { uid, costMicros, ref, meta }) => {
     assertInteger("costMicros", costMicros);
     if (costMicros < 0) throw new Error("credits: costMicros must be >= 0");
-    const row = await requireRow(ctx, uid);
+    const row = await getRow(ctx, uid);
+    if (!row) return null;
     const now = Date.now();
+    const ownsLock = row.inFlightRef === undefined || row.inFlightRef === ref;
+    const release = ownsLock ? { inFlightSince: undefined, inFlightRef: undefined } : {};
     const dup = await ctx.db
       .query("ledger")
       .withIndex("by_ref", (q) => q.eq("ref", ref))
       .first();
     if (dup) {
-      if (row.inFlightSince !== undefined) {
-        await ctx.db.patch(row._id, { inFlightSince: undefined, updatedAt: now });
+      if (ownsLock && row.inFlightSince !== undefined) {
+        await ctx.db.patch(row._id, { ...release, updatedAt: now });
       }
       return summarize(row);
     }
@@ -177,7 +185,7 @@ export const settleMessage = internalMutation({
       balanceMicros,
       lifetimeSpentMicros,
       messageCount,
-      inFlightSince: undefined,
+      ...release,
       updatedAt: now,
     });
     await ctx.db.insert("ledger", {

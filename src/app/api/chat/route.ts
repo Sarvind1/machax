@@ -95,7 +95,7 @@ function iteratorToStream(
   opts: {
     convex: AdminMutations;
     conversationId?: string;
-    settle: () => Promise<CreditEvent>;
+    settle: () => Promise<CreditEvent | null>;
   },
 ): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<CreditEvent | null> } {
   let settling: Promise<CreditEvent | null> | null = null;
@@ -246,7 +246,9 @@ export async function POST(request: Request) {
     }
 
     const convex = getConvexAdmin() as unknown as AdminMutations;
-    const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid });
+    // The ledger ref of this message; the in-flight lock is tagged with it.
+    const ref = `${convId ?? "noconv"}:${crypto.randomUUID()}`;
+    const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid, ref });
     if (!begin.ok) {
       if (begin.reason === "out_of_credit") {
         return Response.json(
@@ -262,8 +264,8 @@ export async function POST(request: Request) {
     }
 
     const collector = new CostCollector();
-    const ref = `${convId ?? "noconv"}:${crypto.randomUUID()}`;
-    const settle = async (): Promise<CreditEvent> => {
+    // null: the account was deleted mid-message, so there is nothing to report.
+    const settle = async (): Promise<CreditEvent | null> => {
       const costMicros = collector.totalMicros;
       const after = await convex.mutation(internal.credits.settleMessage, {
         uid: user.uid,
@@ -271,6 +273,7 @@ export async function POST(request: Request) {
         ref,
         meta: collector.toMeta(),
       });
+      if (!after) return null;
       const summary = summarize(after);
       return {
         balanceMicros: summary.balanceMicros,

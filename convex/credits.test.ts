@@ -92,7 +92,7 @@ describe("credits.get", () => {
 describe("credits.beginMessage", () => {
   test("no_account when there is no credits row", async () => {
     const t = setup();
-    expect(await t.mutation(internal.credits.beginMessage, { uid: "ghost" })).toEqual({
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "ghost", ref: "m1" })).toEqual({
       ok: false,
       reason: "no_account",
     });
@@ -101,9 +101,9 @@ describe("credits.beginMessage", () => {
   test("ok with credit, then busy on an immediate second call", async () => {
     const t = setup();
     await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
-    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1" })).toEqual({ ok: true });
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({ ok: true });
     expect((await creditsRow(t, "u1"))?.inFlightSince).toBeTypeOf("number");
-    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1" })).toEqual({
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({
       ok: false,
       reason: "busy",
     });
@@ -116,7 +116,7 @@ describe("credits.beginMessage", () => {
       const row = (await ctx.db.query("credits").first())!;
       await ctx.db.patch(row._id, { balanceMicros: 0 });
     });
-    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1" })).toEqual({
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({
       ok: false,
       reason: "out_of_credit",
     });
@@ -129,7 +129,7 @@ describe("credits.beginMessage", () => {
       const row = (await ctx.db.query("credits").first())!;
       await ctx.db.patch(row._id, { inFlightSince: Date.now() - 100_000 });
     });
-    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1" })).toEqual({ ok: true });
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({ ok: true });
   });
 
   test("a fresh inFlightSince (10 s old) blocks", async () => {
@@ -139,7 +139,7 @@ describe("credits.beginMessage", () => {
       const row = (await ctx.db.query("credits").first())!;
       await ctx.db.patch(row._id, { inFlightSince: Date.now() - 10_000 });
     });
-    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1" })).toEqual({
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({
       ok: false,
       reason: "busy",
     });
@@ -150,7 +150,7 @@ describe("credits.settleMessage", () => {
   test("charges the cost, bumps counters, clears inFlightSince, writes a charge row", async () => {
     const t = setup();
     await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
-    await t.mutation(internal.credits.beginMessage, { uid: "u1" });
+    await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:1" });
     const res = await t.mutation(internal.credits.settleMessage, {
       uid: "u1",
       costMicros: 300_000,
@@ -174,15 +174,15 @@ describe("credits.settleMessage", () => {
   test("can push the balance negative", async () => {
     const t = setup();
     await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
-    await t.mutation(internal.credits.beginMessage, { uid: "u1" });
+    await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:big" });
     const res = await t.mutation(internal.credits.settleMessage, {
       uid: "u1",
       costMicros: 1_200_000,
       ref: "msg:big",
       meta: null,
     });
-    expect(res.balanceMicros).toBe(-200_000);
-    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1" })).toEqual({
+    expect(res?.balanceMicros).toBe(-200_000);
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:big" })).toEqual({
       ok: false,
       reason: "out_of_credit",
     });
@@ -191,9 +191,9 @@ describe("credits.settleMessage", () => {
   test("settle is idempotent on ref: a retried settle charges once and clears the lock", async () => {
     const t = setup();
     await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
-    await t.mutation(internal.credits.beginMessage, { uid: "u1" });
+    await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "dup" });
     const first = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
-    // a lock left set (e.g. the retry raced a fresh begin) is cleared by the duplicate too
+    // a lock with no ref (set before refs existed) is cleared by the duplicate too
     await t.run(async (ctx) => {
       const row = await ctx.db.query("credits").withIndex("by_uid", (q) => q.eq("uid", "u1")).unique();
       await ctx.db.patch(row!._id, { inFlightSince: Date.now() });
@@ -208,6 +208,42 @@ describe("credits.settleMessage", () => {
     expect(row?.inFlightSince).toBeUndefined();
     const charges = (await ledgerRows(t, "u1")).filter((r) => r.kind === "charge");
     expect(charges).toHaveLength(1);
+  });
+
+  test("a settle for another message leaves the lock alone", async () => {
+    const t = setup();
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    // msg:old outlived the stale window, so msg:new took the lock
+    await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:new" });
+    const res = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 50_000, ref: "msg:old", meta: null });
+    expect(res).toEqual({ balanceMicros: 950_000, lifetimeSpentMicros: 50_000, messageCount: 1 });
+    expect(await creditsRow(t, "u1")).toMatchObject({ inFlightRef: "msg:new", inFlightSince: expect.any(Number) });
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:third" })).toEqual({
+      ok: false,
+      reason: "busy",
+    });
+    // a retried duplicate of the old settle leaves it alone too
+    await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 50_000, ref: "msg:old", meta: null });
+    expect((await creditsRow(t, "u1"))?.inFlightRef).toBe("msg:new");
+
+    await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 10_000, ref: "msg:new", meta: null });
+    const row = await creditsRow(t, "u1");
+    expect(row?.inFlightSince).toBeUndefined();
+    expect(row?.inFlightRef).toBeUndefined();
+  });
+
+  test("returns null without throwing when the credits row is gone", async () => {
+    const t = setup();
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:1" });
+    await t.run(async (ctx) => {
+      const row = (await ctx.db.query("credits").first())!;
+      await ctx.db.delete(row._id); // account deleted mid-message
+    });
+    expect(
+      await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 10_000, ref: "msg:1", meta: null }),
+    ).toBeNull();
+    expect((await ledgerRows(t, "u1")).filter((r) => r.kind === "charge")).toHaveLength(0);
   });
 });
 

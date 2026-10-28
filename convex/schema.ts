@@ -126,7 +126,8 @@ export default defineSchema({
   }).index("by_username_event", ["username", "eventName"]),
 
   // Per-account credit balance, in integer micro-dollars (1_000_000 = $1.00).
-  // Keyed by Firebase uid. inFlightSince is the one-message-at-a-time guard.
+  // Keyed by Firebase uid. inFlightSince is the one-message-at-a-time guard;
+  // inFlightRef is the ledger ref of the message that holds it.
   credits: defineTable({
     uid: v.string(),
     username: v.string(),
@@ -134,6 +135,7 @@ export default defineSchema({
     lifetimeSpentMicros: v.number(),
     messageCount: v.number(),
     inFlightSince: v.optional(v.number()),
+    inFlightRef: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_uid", ["uid"]),

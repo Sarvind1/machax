@@ -198,14 +198,14 @@ describe("POST /api/chat", () => {
 
     const begins = callsTo("credits:beginMessage");
     expect(begins).toHaveLength(1);
-    expect(begins[0][1]).toEqual({ uid: "u1" });
+    expect(begins[0][1]).toEqual({ uid: "u1", ref: expect.stringMatching(/^c1:[0-9a-f-]{36}$/) });
 
     const settles = callsTo("credits:settleMessage");
     expect(settles).toHaveLength(1);
     const args = settles[0][1] as { uid: string; costMicros: number; ref: string; meta: string };
     expect(args.uid).toBe("u1");
     expect(args.costMicros).toBe(1_234);
-    expect(args.ref).toMatch(/^c1:[0-9a-f-]{36}$/);
+    expect(args.ref).toBe((begins[0][1] as { ref: string }).ref); // the lock owner settles it
     expect(JSON.parse(args.meta)).toMatchObject({ calls: 2 });
 
     // identity comes from the token, not the body
@@ -307,6 +307,16 @@ describe("POST /api/chat", () => {
     expect(await res.json()).toEqual({ error: "invalid conversationId" });
     expect(callsTo("credits:beginMessage")).toHaveLength(0);
     expect(orchestrateChat).not.toHaveBeenCalled();
+  });
+
+  it("ends with done and no credit line when the account was deleted mid-message", async () => {
+    convex({ settle: () => null });
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+    });
+    const ev = await events(await POST(req()));
+    expect(ev).toEqual([{ from: "a", text: "yo" }, { done: true }]);
+    expect(callsTo("credits:settleMessage")).toHaveLength(1); // no retry: null is not a failure
   });
 
   it("retries settleMessage once after a transient failure and still sends credit", async () => {
