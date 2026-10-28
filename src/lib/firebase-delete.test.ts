@@ -117,6 +117,14 @@ describe("deleteCurrentUser on Android", () => {
     expect(plugin.deleteUser).toHaveBeenCalledTimes(2);
   });
 
+  it("stops with wrong_account when the re-sign-in picks a different Google account", async () => {
+    plugin.getCurrentUser.mockResolvedValue({ user: { uid: "u1" } });
+    fb.signInWithCredential.mockResolvedValueOnce({ user: { uid: "u2", email: "b@c.com", displayName: "B" } });
+    const { deleteCurrentUser } = await load();
+    expect(await deleteCurrentUser()).toBe("wrong_account");
+    expect(plugin.deleteUser).toHaveBeenCalledTimes(1); // the other account is never deleted
+  });
+
   it("returns kept when the user is still there after the retry", async () => {
     plugin.getCurrentUser.mockResolvedValue({ user: { uid: "u1" } });
     const { deleteCurrentUser } = await load();

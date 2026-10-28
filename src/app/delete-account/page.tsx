@@ -18,6 +18,7 @@ import { authedFetch, AuthRequired } from "@/lib/api";
 const CONTACT = "sarvind@gritlabsai.co";
 const SIGN_IN_RECORD_KEPT =
   "your data is deleted. sign out and back in, then delete once more to remove your google sign-in record.";
+const WRONG_ACCOUNT = "signed into a different google account — sign out and try again";
 
 // Account deletion for Google sign-in users. The Firebase ID token proves
 // ownership, so the only extra step is typing "delete" to confirm.
@@ -29,7 +30,7 @@ export default function DeleteAccountPage() {
   const [status, setStatus] = useState<"idle" | "signing-in" | "submitting" | "success">("idle");
   const [error, setError] = useState("");
   // Set when the app data is gone but Firebase kept the Google sign-in record.
-  const [signInKept, setSignInKept] = useState(false);
+  const [signInNote, setSignInNote] = useState<string | null>(null);
 
   useEffect(() => {
     let unsub = () => {};
@@ -55,10 +56,10 @@ export default function DeleteAccountPage() {
   // After success, sign-out has already happened; send them to login. Not when
   // there is a note to read about the sign-in record.
   useEffect(() => {
-    if (status !== "success" || signInKept) return;
+    if (status !== "success" || signInNote) return;
     const timer = setTimeout(() => router.replace("/login"), 2500);
     return () => clearTimeout(timer);
-  }, [status, signInKept, router]);
+  }, [status, signInNote, router]);
 
   const handleSignIn = async () => {
     setError("");
@@ -89,7 +90,9 @@ export default function DeleteAccountPage() {
       if (!res.ok) throw new Error(`delete failed: ${res.status}`);
       // App data is gone; now the Google sign-in record in Firebase Auth.
       const firebaseUser = await deleteCurrentUser();
-      setSignInKept(firebaseUser === "kept");
+      setSignInNote(
+        firebaseUser === "kept" ? SIGN_IN_RECORD_KEPT : firebaseUser === "wrong_account" ? WRONG_ACCOUNT : null,
+      );
       for (const key of ["machax-session-mood", "machax-demo"]) localStorage.removeItem(key);
       setAnalyticsUser(null);
       await signOut().catch(() => {});
@@ -116,7 +119,7 @@ export default function DeleteAccountPage() {
             your profile, chats, settings, credit balance and reports are gone for good. payment and credit records
             stay for our financial records, under an id that no longer links to you.
           </p>
-          {signInKept && <p style={styles.error}>{SIGN_IN_RECORD_KEPT}</p>}
+          {signInNote && <p style={styles.error}>{signInNote}</p>}
           <Link href="/login" style={styles.link}>back to machax</Link>
         </div>
       </div>

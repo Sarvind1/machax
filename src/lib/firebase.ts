@@ -133,7 +133,9 @@ export async function signOut(): Promise<void> {
 }
 
 // "kept": Firebase still has the Google sign-in record (the caller tells the user).
-export type DeleteCurrentUserResult = "deleted" | "kept";
+// "wrong_account": the re-sign-in picked a different Google account, so nothing
+// was deleted for it.
+export type DeleteCurrentUserResult = "deleted" | "kept" | "wrong_account";
 
 const RECENT_LOGIN = "auth/requires-recent-login";
 
@@ -161,6 +163,8 @@ async function deleteWebUserOnce(): Promise<void> {
 export async function deleteCurrentUser(): Promise<DeleteCurrentUserResult> {
   const native = Capacitor.isNativePlatform();
   const once = native ? deleteNativeUserOnce : deleteWebUserOnce;
+  // The account being deleted; a re-sign-in must come back to this one.
+  const startUid = getFirebaseAuth().currentUser?.uid;
   try {
     await once();
     return "deleted";
@@ -171,11 +175,16 @@ export async function deleteCurrentUser(): Promise<DeleteCurrentUserResult> {
     }
   }
   try {
+    if (!startUid) return "kept";
     if (native) {
-      await signInWithGoogle();
+      // The account picker lets the user choose any Google account; deleting
+      // whichever one they picked would delete the wrong sign-in record.
+      const again = await signInWithGoogle();
+      if (again.uid !== startUid) return "wrong_account";
     } else {
       // Same Google popup as sign-in, as a re-auth. No redirect fallback: a
       // redirect would leave this page in the middle of the delete.
+      // Firebase itself refuses a different account here (auth/user-mismatch).
       const user = getFirebaseAuth().currentUser;
       if (!user) return "kept";
       await reauthenticateWithPopup(user, new GoogleAuthProvider());
