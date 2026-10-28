@@ -150,7 +150,7 @@ export default defineSchema({
     uid: v.string(),
     kind: v.union(
       v.literal("grant"),
-      v.literal("spend"),
+      v.literal("charge"),
       v.literal("purchase"),
       v.literal("adjust")
     ),

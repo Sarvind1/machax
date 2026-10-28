@@ -157,7 +157,8 @@ export const upsertFromFirebase = internalMutation({
           .query("users")
           .withIndex("by_email", (q) => q.eq("email", candidate))
           .first();
-        if (byEmail) {
+        // A row already owned by a different Firebase account is never re-linked.
+        if (byEmail && !byEmail.firebaseUid) {
           await ctx.db.patch(byEmail._id, { firebaseUid: uid });
           return { username: byEmail.username, name: byEmail.name ?? name, created: false };
         }

@@ -35,12 +35,21 @@ async function requireRow(ctx: Pick<MutationCtx, "db">, uid: string) {
   return row;
 }
 
+function assertInteger(name: string, n: number) {
+  if (!Number.isInteger(n)) throw new Error(`credits: ${name} must be an integer, got ${n}`);
+}
+
 // Shared by grantPurchase and adjust: apply a signed amount once per ledger ref.
 async function applyOnce(
   ctx: MutationCtx,
   args: { uid: string; amountMicros: number; ref: string; meta?: unknown },
   kind: "purchase" | "adjust"
 ) {
+  assertInteger("amountMicros", args.amountMicros);
+  if (args.amountMicros === 0) throw new Error("credits: amountMicros must be non-zero");
+  if (kind === "purchase" && args.amountMicros < 0) {
+    throw new Error("credits: purchase amountMicros must be positive");
+  }
   const row = await requireRow(ctx, args.uid);
   const dup = await ctx.db
     .query("ledger")
@@ -71,6 +80,26 @@ export const ensure = internalMutation({
     if (existing) return summarize(existing);
 
     const now = Date.now();
+    // The free grant is unique by ref. If its ledger row already exists but the
+    // credits row is gone, recreate the row empty instead of granting $1 again.
+    const freeRef = `free:${uid}`;
+    const alreadyGranted = await ctx.db
+      .query("ledger")
+      .withIndex("by_ref", (q) => q.eq("ref", freeRef))
+      .first();
+    if (alreadyGranted) {
+      await ctx.db.insert("credits", {
+        uid,
+        username,
+        balanceMicros: 0,
+        lifetimeSpentMicros: 0,
+        messageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { balanceMicros: 0, lifetimeSpentMicros: 0, messageCount: 0 };
+    }
+
     await ctx.db.insert("credits", {
       uid,
       username,
@@ -85,7 +114,7 @@ export const ensure = internalMutation({
       kind: "grant",
       amountMicros: FREE_GRANT_MICROS,
       balanceAfterMicros: FREE_GRANT_MICROS,
-      ref: `free:${uid}`,
+      ref: freeRef,
       createdAt: now,
     });
     return { balanceMicros: FREE_GRANT_MICROS, lifetimeSpentMicros: 0, messageCount: 0 };
@@ -122,6 +151,8 @@ export const settleMessage = internalMutation({
     meta: v.optional(v.any()),
   },
   handler: async (ctx, { uid, costMicros, ref, meta }) => {
+    assertInteger("costMicros", costMicros);
+    if (costMicros < 0) throw new Error("credits: costMicros must be >= 0");
     const row = await requireRow(ctx, uid);
     const now = Date.now();
     const balanceMicros = row.balanceMicros - costMicros;
@@ -136,7 +167,7 @@ export const settleMessage = internalMutation({
     });
     await ctx.db.insert("ledger", {
       uid,
-      kind: "spend",
+      kind: "charge",
       amountMicros: -costMicros,
       balanceAfterMicros: balanceMicros,
       ref,

@@ -55,6 +55,27 @@ describe("credits.ensure", () => {
   });
 });
 
+describe("credits.ensure ledger guard", () => {
+  test("a deleted credits row does not get a second free grant", async () => {
+    const t = setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("ledger", {
+        uid: "u1",
+        kind: "grant",
+        amountMicros: 1_000_000,
+        balanceAfterMicros: 1_000_000,
+        ref: "free:u1",
+        createdAt: 1,
+      });
+    });
+    const res = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    expect(res).toEqual({ balanceMicros: 0, lifetimeSpentMicros: 0, messageCount: 0 });
+    expect((await creditsRow(t, "u1"))?.balanceMicros).toBe(0);
+    const grants = (await ledgerRows(t, "u1")).filter((r) => r.kind === "grant");
+    expect(grants).toHaveLength(1);
+  });
+});
+
 describe("credits.get", () => {
   test("null when no account, triple when present", async () => {
     const t = setup();
@@ -126,7 +147,7 @@ describe("credits.beginMessage", () => {
 });
 
 describe("credits.settleMessage", () => {
-  test("charges the cost, bumps counters, clears inFlightSince, writes a spend row", async () => {
+  test("charges the cost, bumps counters, clears inFlightSince, writes a charge row", async () => {
     const t = setup();
     await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
     await t.mutation(internal.credits.beginMessage, { uid: "u1" });
@@ -142,7 +163,7 @@ describe("credits.settleMessage", () => {
     const rows = await ledgerRows(t, "u1");
     expect(rows).toHaveLength(2);
     expect(rows[1]).toMatchObject({
-      kind: "spend",
+      kind: "charge",
       ref: "msg:1",
       amountMicros: -300_000,
       balanceAfterMicros: 700_000,
@@ -173,6 +194,62 @@ describe("credits.settleMessage", () => {
     await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
     const res = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
     expect(res).toEqual({ balanceMicros: 800_000, lifetimeSpentMicros: 200_000, messageCount: 2 });
+  });
+});
+
+describe("amount validation", () => {
+  async function withAccount() {
+    const t = setup();
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    return t;
+  }
+
+  test("settleMessage rejects a negative cost", async () => {
+    const t = await withAccount();
+    await expect(
+      t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: -1, ref: "m", meta: null })
+    ).rejects.toThrow();
+    expect((await creditsRow(t, "u1"))?.balanceMicros).toBe(1_000_000);
+  });
+
+  test("settleMessage rejects a fractional cost", async () => {
+    const t = await withAccount();
+    await expect(
+      t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 10.5, ref: "m", meta: null })
+    ).rejects.toThrow();
+  });
+
+  test("settleMessage accepts a zero cost", async () => {
+    const t = await withAccount();
+    const res = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 0, ref: "m", meta: null });
+    expect(res).toEqual({ balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 1 });
+  });
+
+  test("grantPurchase rejects zero", async () => {
+    const t = await withAccount();
+    await expect(
+      t.mutation(internal.credits.grantPurchase, { uid: "u1", amountMicros: 0, ref: "p", meta: null })
+    ).rejects.toThrow();
+  });
+
+  test("grantPurchase rejects negative and fractional amounts", async () => {
+    const t = await withAccount();
+    await expect(
+      t.mutation(internal.credits.grantPurchase, { uid: "u1", amountMicros: -5, ref: "p1", meta: null })
+    ).rejects.toThrow();
+    await expect(
+      t.mutation(internal.credits.grantPurchase, { uid: "u1", amountMicros: 1.5, ref: "p2", meta: null })
+    ).rejects.toThrow();
+  });
+
+  test("adjust rejects zero and fractional amounts", async () => {
+    const t = await withAccount();
+    await expect(
+      t.mutation(internal.credits.adjust, { uid: "u1", amountMicros: 0, ref: "a1", meta: null })
+    ).rejects.toThrow();
+    await expect(
+      t.mutation(internal.credits.adjust, { uid: "u1", amountMicros: -0.5, ref: "a2", meta: null })
+    ).rejects.toThrow();
   });
 });
 
@@ -251,6 +328,28 @@ describe("users.upsertFromFirebase", () => {
     const rows = await t.run(async (ctx) => ctx.db.query("users").collect());
     expect(rows).toHaveLength(1);
     expect(rows[0].firebaseUid).toBe("fb-bob");
+  });
+
+  test("does not re-link an email-matched row that already has a different firebaseUid", async () => {
+    const t = setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        username: "erin",
+        email: "erin@example.com",
+        password: "",
+        firebaseUid: "fb-original",
+        createdAt: 1,
+      });
+    });
+    const res = await t.mutation(internal.users.upsertFromFirebase, {
+      uid: "fb-other",
+      email: "erin@example.com",
+    });
+    expect(res).toMatchObject({ username: "erin-2", created: true });
+    const rows = await t.run(async (ctx) => ctx.db.query("users").collect());
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.username === "erin")?.firebaseUid).toBe("fb-original");
+    expect(rows.find((r) => r.username === "erin-2")?.firebaseUid).toBe("fb-other");
   });
 
   test("second call with the same uid returns the same username", async () => {
