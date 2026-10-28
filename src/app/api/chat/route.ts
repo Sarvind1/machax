@@ -74,6 +74,10 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
 }
 
 const DONE_LINE = encoder.encode(`data: {"done":true}\n\n`);
+const SETTLE_RETRY_MS = 500;
+
+// conversationId ends up in the ledger ref, so keep it short and plain.
+const CONVERSATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 // Streams engine events as SSE. When the engine finishes, throws, or the client
 // disconnects, the message is settled exactly once. The cost is read only after
@@ -99,6 +103,13 @@ function iteratorToStream(
     } catch (err) {
       console.error("Stream close error:", err);
     }
+    // One retry so a transient Convex failure doesn't leave the lock set and the message free.
+    try {
+      return await opts.settle();
+    } catch (err) {
+      console.error("Credit settle failed, retrying:", err);
+    }
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_RETRY_MS));
     try {
       return await opts.settle();
     } catch (err) {
@@ -185,12 +196,21 @@ export async function POST(request: Request) {
       characterOverrides?: string | null;
       conversationDepth?: string;
       userEngagementFrequency?: number;
-      conversationId?: string;
+      conversationId?: string | null;
     };
 
     if (!message || !podFriendIds?.length) {
       return Response.json(
         { error: "message and podFriendIds are required" },
+        { status: 400, headers: cors }
+      );
+    }
+
+    // null counts as absent; anything else must be a short plain id.
+    const convId = conversationId ?? undefined;
+    if (convId !== undefined && (typeof convId !== "string" || !CONVERSATION_ID_RE.test(convId))) {
+      return Response.json(
+        { error: "invalid conversationId" },
         { status: 400, headers: cors }
       );
     }
@@ -212,7 +232,7 @@ export async function POST(request: Request) {
     }
 
     const collector = new CostCollector();
-    const ref = `${conversationId ?? "noconv"}:${crypto.randomUUID()}`;
+    const ref = `${convId ?? "noconv"}:${crypto.randomUUID()}`;
     const settle = async (): Promise<CreditEvent> => {
       const costMicros = collector.totalMicros;
       const after = await convex.mutation(internal.credits.settleMessage, {
@@ -242,7 +262,7 @@ export async function POST(request: Request) {
       collector,
     });
 
-    const stream = iteratorToStream(generator, { convex, conversationId, settle });
+    const stream = iteratorToStream(generator, { convex, conversationId: convId, settle });
 
     return new Response(stream, {
       headers: {

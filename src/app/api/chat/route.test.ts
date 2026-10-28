@@ -150,7 +150,7 @@ describe("POST /api/chat", () => {
       p.collector.add({ model: "m", costMicros: 1_200, source: "anthropic" });
       yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
       p.collector.add({ model: "m", costMicros: 34, source: "anthropic" });
-      yield { type: "done" } satisfies EngineEvent;
+      yield { type: "typing", agentId: "a" } satisfies EngineEvent;
     });
 
     const res = await POST(req());
@@ -158,18 +158,22 @@ describe("POST /api/chat", () => {
     expect(res.headers.get("content-type")).toBe("text/event-stream");
     const ev = await events(res);
 
-    expect(ev[0]).toEqual({ from: "a", text: "yo" });
-    expect(ev.at(-1)).toEqual({ done: true });
-    expect(ev.at(-2)).toEqual({
-      credit: {
-        balanceMicros: 1_000_000 - 1_234,
-        messagesLeft: 6,
-        costMicros: 1_234,
-        topupMessages: 13,
+    // engine events, then exactly one credit line, then exactly one done
+    expect(ev).toEqual([
+      { from: "a", text: "yo" },
+      { typing: "a" },
+      {
+        credit: {
+          balanceMicros: 1_000_000 - 1_234,
+          messagesLeft: 6,
+          costMicros: 1_234,
+          topupMessages: 13,
+        },
       },
-    });
-    // exactly one credit line and one final done
-    expect(ev.filter((e) => "credit" in e)).toHaveLength(1);
+      { done: true },
+    ]);
+    expect(ev.filter((e) => "done" in e)).toHaveLength(1);
+    expect(ev.findIndex((e) => "credit" in e)).toBe(ev.length - 2);
 
     const begins = callsTo("credits:beginMessage");
     expect(begins).toHaveLength(1);
@@ -207,7 +211,7 @@ describe("POST /api/chat", () => {
     expect((settles[0][1] as { costMicros: number }).costMicros).toBe(500);
   });
 
-  it("ends with done but no credit line when settleMessage itself fails", async () => {
+  it("ends with done but no credit line when settleMessage fails twice", async () => {
     convex({
       settle: () => {
         throw new Error("convex down");
@@ -219,18 +223,22 @@ describe("POST /api/chat", () => {
 
     const ev = await events(await POST(req()));
     expect(ev).toEqual([{ from: "a", text: "yo" }, { done: true }]);
-    expect(callsTo("credits:settleMessage")).toHaveLength(1);
+    expect(callsTo("credits:settleMessage")).toHaveLength(2); // first try + one retry
     expect(callsTo("credits:beginMessage")).toHaveLength(1);
     expect(console.error).toHaveBeenCalled();
   });
 
-  it("settles once when the client disconnects mid-stream", async () => {
+  it("settles once, after the generator ends, when the client disconnects during a pending next()", async () => {
     convex({});
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
     let finished = false;
     orchestrateChat.mockImplementation(async function* (p: { collector: CostCollector }) {
       try {
         p.collector.add({ model: "m", costMicros: 700, source: "anthropic" });
         yield { type: "message", from: "a", text: "one" } satisfies EngineEvent;
+        await gate; // a model call still running when the client leaves
+        p.collector.add({ model: "m", costMicros: 50, source: "anthropic" });
         yield { type: "message", from: "a", text: "two" } satisfies EngineEvent;
       } finally {
         finished = true;
@@ -239,13 +247,18 @@ describe("POST /api/chat", () => {
 
     const res = await POST(req());
     const reader = res.body!.getReader();
-    await reader.read();
-    await reader.cancel();
+    await reader.read(); // "one"; the stream now pulls again and next() waits on the gate
+    await Promise.resolve();
+
+    const cancelling = reader.cancel();
+    expect(callsTo("credits:settleMessage")).toHaveLength(0); // waits for the generator first
+    release();
+    await cancelling;
 
     expect(finished).toBe(true);
     const settles = callsTo("credits:settleMessage");
     expect(settles).toHaveLength(1);
-    expect((settles[0][1] as { costMicros: number }).costMicros).toBe(700);
+    expect((settles[0][1] as { costMicros: number }).costMicros).toBe(750);
   });
 
   it("uses username when the account has no display name and ref falls back to noconv", async () => {
@@ -257,6 +270,44 @@ describe("POST /api/chat", () => {
     expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ userName: "alice" });
     const args = callsTo("credits:settleMessage")[0][1] as { ref: string };
     expect(args.ref).toMatch(/^noconv:[0-9a-f-]{36}$/);
+  });
+
+  it.each([
+    ["oversized", "x".repeat(2_000_000)],
+    ["65 chars", "a".repeat(65)],
+    ["bad characters", "c1:../x"],
+    ["empty", ""],
+    ["not a string", 123],
+  ])("returns 400 for a %s conversationId and never begins the message", async (_label, conversationId) => {
+    convex({});
+    const res = await POST(req({ ...body, conversationId }));
+    expect(res.status).toBe(400);
+    expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost");
+    expect(await res.json()).toEqual({ error: "invalid conversationId" });
+    expect(callsTo("credits:beginMessage")).toHaveLength(0);
+    expect(orchestrateChat).not.toHaveBeenCalled();
+  });
+
+  it("retries settleMessage once after a transient failure and still sends credit", async () => {
+    let attempts = 0;
+    convex({
+      settle: (args) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("transient");
+        return { balanceMicros: 1_000_000 - args.costMicros, lifetimeSpentMicros: args.costMicros, messageCount: 1 };
+      },
+    });
+    orchestrateChat.mockImplementation(async function* (p: { collector: CostCollector }) {
+      p.collector.add({ model: "m", costMicros: 900, source: "anthropic" });
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+    });
+
+    const ev = await events(await POST(req()));
+    const settles = callsTo("credits:settleMessage");
+    expect(settles).toHaveLength(2);
+    expect(settles[0][1]).toEqual(settles[1][1]); // same ref and cost on the retry
+    expect(ev.at(-2)).toMatchObject({ credit: { costMicros: 900, balanceMicros: 999_100 } });
+    expect(ev.at(-1)).toEqual({ done: true });
   });
 
   it("returns 500, not 401, when bootstrap fails for a non-auth reason", async () => {
