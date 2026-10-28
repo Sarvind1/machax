@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { generateKeyPair, SignJWT, type JWTVerifyGetKey, type CryptoKey } from "jose";
+import { errors, generateKeyPair, SignJWT, type JWTVerifyGetKey, type CryptoKey } from "jose";
 import { requireUser, authErrorResponse, AuthError } from "./server-auth";
 
 const PROJECT = "machax-b8796";
@@ -56,6 +56,32 @@ describe("requireUser", () => {
     await expect(requireUser(req(`Bearer ${token}`), { jwks })).rejects.toBeInstanceOf(AuthError);
   });
 
+  it("accepts a lowercase bearer scheme", async () => {
+    const token = await sign();
+    const user = await requireUser(req(`bearer ${token}`), { jwks });
+    expect(user.uid).toBe("uid1");
+  });
+
+  it("rethrows a key-resolver failure unchanged instead of mapping it to AuthError", async () => {
+    const boom = new Error("boom");
+    const failing: JWTVerifyGetKey = async () => {
+      throw boom;
+    };
+    const token = await sign();
+    const err = await requireUser(req(`Bearer ${token}`), { jwks: failing }).catch((e) => e);
+    expect(err).toBe(boom);
+    expect(err).not.toBeInstanceOf(AuthError);
+  });
+
+  it("rethrows a JWKS timeout unchanged", async () => {
+    const timeout = new errors.JWKSTimeout();
+    const failing: JWTVerifyGetKey = async () => {
+      throw timeout;
+    };
+    const token = await sign();
+    await expect(requireUser(req(`Bearer ${token}`), { jwks: failing })).rejects.toBe(timeout);
+  });
+
   it("rejects a missing Authorization header", async () => {
     await expect(requireUser(req(), { jwks })).rejects.toBeInstanceOf(AuthError);
   });
@@ -78,7 +104,9 @@ describe("requireUser", () => {
       iat: now,
       exp: now + 3600,
     })}.`;
-    await expect(requireUser(req(`Bearer ${token}`), { jwks })).rejects.toBeInstanceOf(AuthError);
+    const err = await requireUser(req(`Bearer ${token}`), { jwks }).catch((e) => e);
+    expect(err).toBeInstanceOf(AuthError);
+    expect(err.cause).toBeInstanceOf(errors.JOSEAlgNotAllowed);
   });
 
   it("rejects an HS256 token", async () => {
@@ -90,7 +118,9 @@ describe("requireUser", () => {
       .setIssuedAt()
       .setExpirationTime("1h")
       .sign(new TextEncoder().encode("a-shared-secret-of-sufficient-length-32b"));
-    await expect(requireUser(req(`Bearer ${token}`), { jwks })).rejects.toBeInstanceOf(AuthError);
+    const err = await requireUser(req(`Bearer ${token}`), { jwks }).catch((e) => e);
+    expect(err).toBeInstanceOf(AuthError);
+    expect(err.cause).toBeInstanceOf(errors.JOSEAlgNotAllowed);
   });
 
   it("rejects a token with no subject", async () => {

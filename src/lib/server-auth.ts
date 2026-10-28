@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTVerifyGetKey } from "jose";
 import { corsHeaders } from "./cors";
 
 // Verifies Firebase ID tokens with Google's public keys. No firebase-admin,
@@ -10,10 +10,27 @@ export type AuthedUser = { uid: string; email?: string; name?: string };
 
 export class AuthError extends Error {
   readonly status = 401 as const;
-  constructor(message = "unauthorized") {
-    super(message);
+  constructor(message = "unauthorized", options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "AuthError";
   }
+}
+
+// Errors that mean "this token is bad". Anything else (JWKS timeout, network
+// failure, invalid JWKS, misconfigured key) is a server-side problem and must
+// not look like bad credentials, so it is rethrown for the route to return 5xx.
+function isTokenError(err: unknown): boolean {
+  return (
+    err instanceof errors.JWTClaimValidationFailed ||
+    err instanceof errors.JWTExpired ||
+    err instanceof errors.JWSSignatureVerificationFailed ||
+    err instanceof errors.JWSInvalid ||
+    err instanceof errors.JWTInvalid ||
+    err instanceof errors.JOSEAlgNotAllowed ||
+    err instanceof errors.JOSENotSupported ||
+    err instanceof errors.JWKSNoMatchingKey ||
+    err instanceof errors.JWKSMultipleMatchingKeys
+  );
 }
 
 let remoteJwks: JWTVerifyGetKey | undefined;
@@ -47,7 +64,8 @@ export async function requireUser(
     };
   } catch (err) {
     if (err instanceof AuthError) throw err;
-    throw new AuthError("invalid token");
+    if (isTokenError(err)) throw new AuthError("invalid token", { cause: err });
+    throw err;
   }
 }
 
