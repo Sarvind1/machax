@@ -2,9 +2,9 @@ export const dynamic = "force-dynamic";
 
 import { orchestrateChat } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
-import { ConvexHttpClient } from "convex/browser";
 import { internal } from "../../../../convex/_generated/api";
 import { corsHeaders, handleCorsOptions } from "@/lib/cors";
+import { getConvexAdmin } from "@/lib/convex-server";
 
 export async function OPTIONS(request: Request) {
   return handleCorsOptions(request) ?? new Response(null, { status: 204 });
@@ -50,13 +50,13 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
   }
 }
 
-function getConvexClient(): ConvexHttpClient | null {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  const deployKey = process.env.CONVEX_DEPLOY_KEY;
-  if (!convexUrl || !deployKey) return null;
-  const client = new ConvexHttpClient(convexUrl);
-  (client as any).setAdminAuth(deployKey);
-  return client;
+// Trace saving is best-effort: no admin env means skip, not fail.
+function getConvexClient() {
+  try {
+    return getConvexAdmin();
+  } catch {
+    return null;
+  }
 }
 
 function iteratorToStream(
