@@ -1,10 +1,33 @@
 export const dynamic = "force-dynamic";
 
+import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server";
 import { orchestrateChat } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
 import { internal } from "../../../../convex/_generated/api";
+import type { Id } from "../../../../convex/_generated/dataModel";
 import { corsHeaders, handleCorsOptions } from "@/lib/cors";
 import { getConvexAdmin } from "@/lib/convex-server";
+import { bootstrapUser } from "@/lib/bootstrap-user";
+import { CostCollector } from "@/lib/cost-collector";
+import { summarize } from "@/lib/credits";
+import { authErrorResponse } from "@/lib/server-auth";
+
+// ConvexHttpClient's own types only accept public functions. The admin client
+// can call internal ones, so narrow it to a typed mutation caller.
+type AdminMutations = {
+  mutation<F extends FunctionReference<"mutation", "internal">>(
+    ref: F,
+    args: FunctionArgs<F>,
+  ): Promise<FunctionReturnType<F>>;
+};
+
+// Sent as `data: {"credit": ...}` right before `{"done":true}`.
+type CreditEvent = {
+  balanceMicros: number;
+  messagesLeft: number;
+  costMicros: number;
+  topupMessages: number;
+};
 
 export async function OPTIONS(request: Request) {
   return handleCorsOptions(request) ?? new Response(null, { status: 204 });
@@ -50,70 +73,110 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
   }
 }
 
-// Trace saving is best-effort: no admin env means skip, not fail.
-function getConvexClient() {
-  try {
-    return getConvexAdmin();
-  } catch {
-    return null;
-  }
-}
+const DONE_LINE = encoder.encode(`data: {"done":true}\n\n`);
 
+// Streams engine events as SSE. When the engine finishes, throws, or the client
+// disconnects, the message is settled exactly once. The cost is read only after
+// the generator has fully ended, so every model call it made is counted.
 function iteratorToStream(
   iterator: AsyncGenerator<EngineEvent>,
-  conversationId?: string
+  opts: {
+    convex: AdminMutations;
+    conversationId?: string;
+    settle: () => Promise<CreditEvent>;
+  },
 ): ReadableStream<Uint8Array> {
+  let settled = false;
+  let cancelled = false;
+
+  // Stop the generator (runs its finally blocks; no-op if it already ended),
+  // then charge. A bookkeeping failure is logged, never thrown.
+  async function settleOnce(): Promise<CreditEvent | null> {
+    if (settled) return null;
+    settled = true;
+    try {
+      await iterator.return(undefined);
+    } catch (err) {
+      console.error("Stream close error:", err);
+    }
+    try {
+      return await opts.settle();
+    } catch (err) {
+      console.error("Credit settle failed:", err);
+      return null;
+    }
+  }
+
+  async function finish(controller: ReadableStreamDefaultController<Uint8Array>) {
+    if (settled) return;
+    const credit = await settleOnce();
+    if (cancelled) return;
+    if (credit) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ credit })}\n\n`));
+    }
+    controller.enqueue(DONE_LINE);
+    controller.close();
+  }
+
   return new ReadableStream({
     async pull(controller) {
       try {
         const { value, done } = await iterator.next();
+        if (cancelled) return;
         if (done) {
-          controller.enqueue(encoder.encode(`data: {"done":true}\n\n`));
-          controller.close();
-        } else {
-          // Save trace server-side instead of letting the client do it
-          if (value.type === "trace") {
-            const client = getConvexClient();
-            if (client && value.data) {
-              try {
-                await (client as any).mutation(internal.traces.save, {
-                  ...(conversationId ? { conversationId } : {}),
-                  prompt: value.data.prompt,
-                  userName: value.data.userName,
-                  podFriendIds: value.data.podFriendIds,
-                  provider: value.data.provider,
-                  sessionMood: value.data.sessionMood,
-                  totalTimeMs: value.data.totalTimeMs,
-                  totalIterations: value.data.totalIterations,
-                  totalMessages: value.data.totalMessages,
-                  finalEnergy: value.data.finalEnergy,
-                  iterations: typeof value.data.iterations === "string"
-                    ? value.data.iterations
-                    : JSON.stringify(value.data.iterations),
-                });
-              } catch (err) {
-                console.error("Trace save failed:", err);
-              }
-            }
-          }
-          const flat = translateEvent(value);
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(flat)}\n\n`)
-          );
+          await finish(controller);
+          return;
         }
+        // Save trace server-side instead of letting the client do it (best-effort)
+        if (value.type === "trace" && value.data) {
+          try {
+            await opts.convex.mutation(internal.traces.save, {
+              // conversationId comes from the client unchecked; Convex validates it as an Id.
+              ...(opts.conversationId ? { conversationId: opts.conversationId as Id<"conversations"> } : {}),
+              prompt: value.data.prompt,
+              userName: value.data.userName,
+              podFriendIds: value.data.podFriendIds,
+              provider: value.data.provider,
+              sessionMood: value.data.sessionMood,
+              totalTimeMs: value.data.totalTimeMs,
+              totalIterations: value.data.totalIterations,
+              totalMessages: value.data.totalMessages,
+              finalEnergy: value.data.finalEnergy,
+              iterations: typeof value.data.iterations === "string"
+                ? value.data.iterations
+                : JSON.stringify(value.data.iterations),
+            });
+          } catch (err) {
+            console.error("Trace save failed:", err);
+          }
+        }
+        if (cancelled) return;
+        const flat = translateEvent(value);
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(flat)}\n\n`)
+        );
       } catch (err) {
+        if (cancelled) return;
         console.error("Stream error:", err);
-        controller.enqueue(encoder.encode(`data: {"done":true}\n\n`));
-        controller.close();
+        await finish(controller);
       }
+    },
+    // Client disconnected: nobody is listening, but the calls made so far still cost money.
+    async cancel() {
+      cancelled = true;
+      await settleOnce();
     },
   });
 }
 
 export async function POST(request: Request) {
+  const cors = corsHeaders(request);
   try {
+    const { user, username, name, row } = await bootstrapUser(request);
+
     const body = await request.json();
-    const { message, podFriendIds, history, userName, sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, conversationId } = body as {
+    // userName is still accepted for old clients but ignored: identity comes from the token.
+    const { message, podFriendIds, history, sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, conversationId } = body as {
       message: string;
       podFriendIds: string[];
       history: { from: string; text: string }[];
@@ -125,35 +188,62 @@ export async function POST(request: Request) {
       conversationId?: string;
     };
 
-    // Require a non-empty username to prevent anonymous/bot access
-    if (typeof userName !== "string" || !userName.trim()) {
-      return Response.json(
-        { error: "userName is required" },
-        { status: 401 }
-      );
-    }
-
     if (!message || !podFriendIds?.length) {
       return Response.json(
         { error: "message and podFriendIds are required" },
-        { status: 400 }
+        { status: 400, headers: cors }
       );
     }
+
+    const convex = getConvexAdmin() as unknown as AdminMutations;
+    const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid });
+    if (!begin.ok) {
+      if (begin.reason === "out_of_credit") {
+        return Response.json(
+          { error: "out_of_credit", credits: summarize(row) },
+          { status: 402, headers: cors }
+        );
+      }
+      if (begin.reason === "busy") {
+        return Response.json({ error: "busy" }, { status: 409, headers: cors });
+      }
+      // no_account cannot happen after bootstrapUser's ensure; treat as a server fault.
+      throw new Error(`beginMessage refused: ${begin.reason} (uid ${user.uid})`);
+    }
+
+    const collector = new CostCollector();
+    const ref = `${conversationId ?? "noconv"}:${crypto.randomUUID()}`;
+    const settle = async (): Promise<CreditEvent> => {
+      const costMicros = collector.totalMicros;
+      const after = await convex.mutation(internal.credits.settleMessage, {
+        uid: user.uid,
+        costMicros,
+        ref,
+        meta: collector.toMeta(),
+      });
+      const summary = summarize(after);
+      return {
+        balanceMicros: summary.balanceMicros,
+        messagesLeft: summary.messagesLeft,
+        costMicros,
+        topupMessages: summary.topupMessages,
+      };
+    };
 
     const generator = orchestrateChat({
       message,
       podFriendIds,
       history: history || [],
-      userName: userName || "friend",
+      userName: name ?? username,
       sessionMood,
       characterOverrides: characterOverrides || undefined,
       conversationDepth,
       userEngagementFrequency,
+      collector,
     });
 
-    const stream = iteratorToStream(generator, conversationId);
+    const stream = iteratorToStream(generator, { convex, conversationId, settle });
 
-    const cors = corsHeaders(request);
     return new Response(stream, {
       headers: {
         ...cors,
@@ -163,7 +253,9 @@ export async function POST(request: Request) {
       },
     });
   } catch (err) {
+    const authResponse = authErrorResponse(err, request);
+    if (authResponse) return authResponse;
     console.error("Chat API error:", err);
-    return Response.json({ error: "Internal server error" }, { status: 500, headers: corsHeaders(request) });
+    return Response.json({ error: "Internal server error" }, { status: 500, headers: cors });
   }
 }
