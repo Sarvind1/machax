@@ -688,7 +688,7 @@ export default function ChatPage() {
       if (Capacitor.isNativePlatform()) {
         // Play Billing via RevenueCat. Fresh balance first, state if that fails.
         const before = await fetchCredits().catch(() => credits);
-        await buyTopupNative();
+        await buyTopupNative(getStoredUser()?.uid);
         // The purchase is done: free the sheet and wait for the credit in the background.
         closeRecharge();
         setBuying(false);

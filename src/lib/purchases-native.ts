@@ -69,12 +69,14 @@ function isUserCancel(err: unknown): boolean {
 }
 
 // Opens the Play purchase sheet for topup_219. Resolves once Play has the
-// payment; credit lands separately (see waitForCredit).
-export async function buyTopupNative(): Promise<{ started: true }> {
+// payment; credit lands separately (see waitForCredit). If setup failed earlier
+// (e.g. offline at launch), it is retried once for uid before giving up.
+export async function buyTopupNative(uid?: string): Promise<{ started: true }> {
   if (!Capacitor.isNativePlatform()) {
     throw new NativePurchaseError("unavailable", "play payments only work in the app");
   }
   await setup;
+  if (!configuredUid && uid) await configurePurchases(uid);
   if (!configuredUid) {
     throw new NativePurchaseError("unavailable", "payments aren't ready, try again in a bit");
   }

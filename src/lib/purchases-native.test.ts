@@ -140,6 +140,29 @@ describe("buyTopupNative", () => {
     expect(Purchases.purchaseStoreProduct).not.toHaveBeenCalled();
   });
 
+  it("retries a failed setup once before buying", async () => {
+    Purchases.configure.mockRejectedValueOnce(new Error("offline"));
+    const { configurePurchases, buyTopupNative } = await load();
+    await configurePurchases("u1"); // fails at launch
+    await expect(buyTopupNative("u1")).resolves.toEqual({ started: true });
+    expect(Purchases.configure).toHaveBeenCalledTimes(2);
+    expect(Purchases.purchaseStoreProduct).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up with unavailable when the retried setup fails too", async () => {
+    Purchases.configure.mockRejectedValue(new Error("offline"));
+    const { configurePurchases, buyTopupNative } = await load();
+    await configurePurchases("u1");
+    await expect(buyTopupNative("u1")).rejects.toMatchObject({
+      code: "unavailable",
+      message: "payments aren't ready, try again in a bit",
+    });
+    expect(Purchases.configure).toHaveBeenCalledTimes(2); // launch + one retry
+    expect(Purchases.getProducts).not.toHaveBeenCalled();
+    Purchases.configure.mockReset();
+    Purchases.configure.mockImplementation(async () => {});
+  });
+
   it("refuses to buy before RevenueCat is configured", async () => {
     vi.stubEnv("NEXT_PUBLIC_REVENUECAT_ANDROID_KEY", "");
     const { configurePurchases, buyTopupNative } = await load();
