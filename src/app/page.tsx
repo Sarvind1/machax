@@ -1,42 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import ChatPage from "./chat/chat-page";
+import { getStoredUser } from "@/lib/api";
 
-const DEMO_MESSAGE_LIMIT = 2;
-
+// Entry point: signed-in users go to chat, everyone else signs in first.
 export default function Page() {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const user = localStorage.getItem("machax-user");
-    if (user) {
-      try {
-        const parsed = JSON.parse(user);
-        if (parsed?.username) {
-          router.push("/chat");
-          return;
-        }
-      } catch {}
-    }
-    // Demo messages exhausted — go straight to login
-    try {
-      const demo = localStorage.getItem("machax-demo");
-      if (demo) {
-        const parsed = JSON.parse(demo);
-        if (parsed?.messageCount >= DEMO_MESSAGE_LIMIT) {
-          router.push("/login");
-          return;
-        }
-      }
-    } catch {}
-    // No logged-in user, demo still available — show demo chat
-    setReady(true);
+    router.replace(getStoredUser() ? "/chat" : "/login");
   }, [router]);
 
-  if (!ready) return null;
-
-  return <ChatPage demoMode />;
+  return null;
 }
