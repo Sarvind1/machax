@@ -12,7 +12,6 @@ export default function robots(): MetadataRoute.Robots {
         "/decisions",
         "/configure",
         "/login",
-        "/reset-password",
       ],
     },
     sitemap: "https://machax.xyz/sitemap.xml",

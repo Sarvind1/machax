@@ -124,11 +124,6 @@ async function deleteUserData(ctx: MutationCtx, user: Doc<"users">) {
   for (const m of metaEvents) await ctx.db.delete(m._id);
 
   if (email) {
-    const resets = await ctx.db
-      .query("passwordResets")
-      .withIndex("by_email", (q) => q.eq("email", email))
-      .collect();
-    for (const r of resets) await ctx.db.delete(r._id);
     const waitlist = await ctx.db
       .query("waitlist")
       .withIndex("by_email", (q) => q.eq("email", email))

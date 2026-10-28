@@ -117,13 +117,6 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_created", ["createdAt"]),
 
-  passwordResets: defineTable({
-    email: v.string(),
-    token: v.string(),
-    expiresAt: v.number(),
-    used: v.boolean(),
-  }).index("by_token", ["token"]).index("by_email", ["email"]),
-
   // Meta ad-attribution events already sent per user, so each fires once
   metaEvents: defineTable({
     username: v.string(),

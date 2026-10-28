@@ -2,29 +2,25 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getStoredUser } from "@/lib/stored-user";
 
-const ADMIN_USERNAME = "sarvind";
+// Comma-separated Firebase uids; unset or empty means nobody is admin.
+const ADMIN_UIDS = (process.env.NEXT_PUBLIC_ADMIN_UIDS ?? "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [authState, setAuthState] = useState<"checking" | "unauthorized" | "admin">("checking");
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem("machax-user");
-      if (!stored) {
-        router.push("/");
-        return;
-      }
-      const parsed = JSON.parse(stored);
-      if (parsed?.username === ADMIN_USERNAME) {
-        setAuthState("admin");
-      } else {
-        setAuthState("unauthorized");
-      }
-    } catch {
+    const user = getStoredUser();
+    if (!user) {
       router.push("/");
+      return;
     }
+    setAuthState(ADMIN_UIDS.includes(user.uid) ? "admin" : "unauthorized");
   }, [router]);
 
   if (authState === "checking") {
