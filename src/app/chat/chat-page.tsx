@@ -695,6 +695,11 @@ export default function ChatPage() {
         void awaitPlayCredit(before);
         return;
       }
+      // Web payments stay off until the Razorpay keys are set.
+      if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
+        setBuyError("We ran across an unknown issue, kindly reach out to sarvind@gritlabsai.co");
+        return;
+      }
       const { credits: next } = await buyTopupWeb();
       setCredits(next);
       setRechargeOpen(false);
