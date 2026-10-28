@@ -4,10 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { setAnalyticsUser } from "@/lib/analytics";
-import { completeRedirectSignIn, getIdToken, onAuthChange, signInWithGoogle, signOut, type AuthedUserClient } from "@/lib/firebase";
+import {
+  completeRedirectSignIn,
+  deleteCurrentUser,
+  getIdToken,
+  onAuthChange,
+  signInWithGoogle,
+  signOut,
+  type AuthedUserClient,
+} from "@/lib/firebase";
 import { authedFetch, AuthRequired } from "@/lib/api";
 
 const CONTACT = "sarvind@gritlabsai.co";
+const SIGN_IN_RECORD_KEPT =
+  "your data is deleted. sign out and back in, then delete once more to remove your google sign-in record.";
 
 // Account deletion for Google sign-in users. The Firebase ID token proves
 // ownership, so the only extra step is typing "delete" to confirm.
@@ -18,28 +28,37 @@ export default function DeleteAccountPage() {
   const [confirm, setConfirm] = useState("");
   const [status, setStatus] = useState<"idle" | "signing-in" | "submitting" | "success">("idle");
   const [error, setError] = useState("");
+  // Set when the app data is gone but Firebase kept the Google sign-in record.
+  const [signInKept, setSignInKept] = useState(false);
 
   useEffect(() => {
     let unsub = () => {};
+    let unmounted = false;
     (async () => {
       try {
         await completeRedirectSignIn();
         await getIdToken(); // waits for the saved session to load
+        // Unmounted during the awaits: don't attach a listener nobody removes.
+        if (unmounted) return;
         unsub = onAuthChange(setUser);
       } catch (err) {
         console.error("[delete-account] auth unavailable:", err);
-        setUser(null);
+        if (!unmounted) setUser(null);
       }
     })();
-    return () => unsub();
+    return () => {
+      unmounted = true;
+      unsub();
+    };
   }, []);
 
-  // After success, sign-out has already happened; send them to login.
+  // After success, sign-out has already happened; send them to login. Not when
+  // there is a note to read about the sign-in record.
   useEffect(() => {
-    if (status !== "success") return;
+    if (status !== "success" || signInKept) return;
     const timer = setTimeout(() => router.replace("/login"), 2500);
     return () => clearTimeout(timer);
-  }, [status, router]);
+  }, [status, signInKept, router]);
 
   const handleSignIn = async () => {
     setError("");
@@ -68,6 +87,9 @@ export default function DeleteAccountPage() {
       const res = await authedFetch("/api/account/delete", { method: "POST" });
       if (res.status === 401) throw new AuthRequired();
       if (!res.ok) throw new Error(`delete failed: ${res.status}`);
+      // App data is gone; now the Google sign-in record in Firebase Auth.
+      const firebaseUser = await deleteCurrentUser();
+      setSignInKept(firebaseUser === "kept");
       for (const key of ["machax-session-mood", "machax-demo"]) localStorage.removeItem(key);
       setAnalyticsUser(null);
       await signOut().catch(() => {});
@@ -90,7 +112,11 @@ export default function DeleteAccountPage() {
       <div style={styles.page}>
         <div style={styles.card}>
           <h1 style={styles.heading}>account deleted</h1>
-          <p style={styles.muted}>Your account, chats, settings, credit balance and reports are gone for good.</p>
+          <p style={styles.muted}>
+            your profile, chats, settings, credit balance and reports are gone for good. payment and credit records
+            stay for our financial records, under an id that no longer links to you.
+          </p>
+          {signInKept && <p style={styles.error}>{SIGN_IN_RECORD_KEPT}</p>}
           <Link href="/login" style={styles.link}>back to machax</Link>
         </div>
       </div>
@@ -102,9 +128,9 @@ export default function DeleteAccountPage() {
       <div style={styles.card}>
         <h1 style={styles.heading}>delete your account</h1>
         <p style={styles.muted}>
-          This permanently deletes your MachaX account, all conversations and messages, your pod settings,
-          your credit balance, and any reports you filed. It can&apos;t be undone. Payment records are kept
-          for accounting, without your name or email.
+          this permanently deletes your machax profile, all conversations and messages, your pod settings,
+          your credit balance, any reports you filed, and your google sign-in record. it can&apos;t be undone.
+          payment and credit records are kept for our financial records, without your name, email or chats.
         </p>
         {user === undefined ? (
           <p style={styles.muted}>checking your sign-in&hellip;</p>

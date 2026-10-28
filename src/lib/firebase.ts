@@ -2,12 +2,14 @@ import { Capacitor } from "@capacitor/core";
 import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { getApps, initializeApp, type FirebaseApp } from "firebase/app";
 import {
+  deleteUser as firebaseDeleteUser,
   getAuth,
   getRedirectResult,
   GoogleAuthProvider,
   indexedDBLocalPersistence,
   initializeAuth,
   onAuthStateChanged,
+  reauthenticateWithPopup,
   signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
@@ -128,4 +130,60 @@ export async function signOut(): Promise<void> {
   }
   clearStoredUser();
   await firebaseSignOut(getFirebaseAuth());
+}
+
+// "kept": Firebase still has the Google sign-in record (the caller tells the user).
+export type DeleteCurrentUserResult = "deleted" | "kept";
+
+const RECENT_LOGIN = "auth/requires-recent-login";
+
+// The Android plugin's deleteUser() resolves even when Firebase refuses the
+// delete (it ignores the task result), so read the outcome back: a deleted user
+// is also signed out natively. Any refusal is treated as "sign in again first".
+async function deleteNativeUserOnce(): Promise<void> {
+  await FirebaseAuthentication.deleteUser();
+  const { user } = await FirebaseAuthentication.getCurrentUser();
+  if (user) {
+    throw Object.assign(new Error("[firebase] native user still signed in after delete"), { code: RECENT_LOGIN });
+  }
+}
+
+async function deleteWebUserOnce(): Promise<void> {
+  const user = getFirebaseAuth().currentUser;
+  if (!user) throw new Error("[firebase] no signed-in user to delete");
+  await firebaseDeleteUser(user);
+}
+
+// Deletes the Firebase Auth user (the Google sign-in record) after the app data
+// is gone. Firebase refuses when the last sign-in is old, so on that error the
+// user signs in with Google once more and the delete is retried once.
+// Never throws; signing out stays the caller's job.
+export async function deleteCurrentUser(): Promise<DeleteCurrentUserResult> {
+  const native = Capacitor.isNativePlatform();
+  const once = native ? deleteNativeUserOnce : deleteWebUserOnce;
+  try {
+    await once();
+    return "deleted";
+  } catch (err) {
+    if (errorCode(err) !== RECENT_LOGIN) {
+      console.error("[firebase] delete user failed:", err);
+      return "kept";
+    }
+  }
+  try {
+    if (native) {
+      await signInWithGoogle();
+    } else {
+      // Same Google popup as sign-in, as a re-auth. No redirect fallback: a
+      // redirect would leave this page in the middle of the delete.
+      const user = getFirebaseAuth().currentUser;
+      if (!user) return "kept";
+      await reauthenticateWithPopup(user, new GoogleAuthProvider());
+    }
+    await once();
+    return "deleted";
+  } catch (err) {
+    console.error("[firebase] delete user failed after signing in again:", err);
+    return "kept";
+  }
 }
