@@ -9,7 +9,7 @@ const MIN_MESSAGES_FOR_OWN_AVERAGE = 3;
 
 export function defaultMessageCostMicros(): number {
   const n = Number(process.env.DEFAULT_MESSAGE_COST_MICROS);
-  return Number.isFinite(n) && n > 0 ? n : FALLBACK_MESSAGE_COST_MICROS;
+  return Number.isInteger(n) && n > 0 ? n : FALLBACK_MESSAGE_COST_MICROS;
 }
 
 export function avgCostMicros(s: { lifetimeSpentMicros: number; messageCount: number }): number {

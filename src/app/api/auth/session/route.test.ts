@@ -31,6 +31,7 @@ const req = () =>
   });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   requireUser.mockReset();
   mutation.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -46,16 +47,9 @@ describe("POST /api/auth/session", () => {
 
   it("returns uid, username, name and the credit summary", async () => {
     requireUser.mockResolvedValue({ uid: "u1", email: "a@b.com", name: "Alice" });
-    mutation.mockImplementation(async (ref: never) => {
-      const name = getFunctionName(ref);
-      if (name === "users:upsertFromFirebase") {
-        return { username: "a", name: "Alice", created: true };
-      }
-      if (name === "credits:ensure") {
-        return { balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 };
-      }
-      throw new Error(`unexpected ${name}`);
-    });
+    mutation
+      .mockResolvedValueOnce({ username: "a", name: "Alice", created: true })
+      .mockResolvedValueOnce({ balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 });
 
     const res = await POST(req());
     expect(res.status).toBe(200);
@@ -70,6 +64,19 @@ describe("POST /api/auth/session", () => {
         topupMessages: 13,
         avgCostMicros: 150_000,
       },
+    });
+
+    expect(mutation).toHaveBeenCalledTimes(2);
+    expect(getFunctionName(mutation.mock.calls[0][0])).toBe("users:upsertFromFirebase");
+    expect(mutation).toHaveBeenNthCalledWith(1, expect.anything(), {
+      uid: "u1",
+      email: "a@b.com",
+      name: "Alice",
+    });
+    expect(getFunctionName(mutation.mock.calls[1][0])).toBe("credits:ensure");
+    expect(mutation).toHaveBeenNthCalledWith(2, expect.anything(), {
+      uid: "u1",
+      username: "a",
     });
   });
 

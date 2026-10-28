@@ -40,6 +40,13 @@ describe("defaultMessageCostMicros", () => {
     vi.stubEnv("DEFAULT_MESSAGE_COST_MICROS", "-5");
     expect(defaultMessageCostMicros()).toBe(150_000);
   });
+
+  it("rejects non-integer env values so money stays whole micro-dollars", () => {
+    vi.stubEnv("DEFAULT_MESSAGE_COST_MICROS", "0.5");
+    expect(defaultMessageCostMicros()).toBe(150_000);
+    vi.stubEnv("DEFAULT_MESSAGE_COST_MICROS", "150000.7");
+    expect(defaultMessageCostMicros()).toBe(150_000);
+  });
 });
 
 describe("messagesLeft", () => {

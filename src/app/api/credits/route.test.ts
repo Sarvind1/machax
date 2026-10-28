@@ -30,6 +30,7 @@ const req = () =>
   });
 
 beforeEach(() => {
+  vi.clearAllMocks();
   requireUser.mockReset();
   mutation.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -46,18 +47,9 @@ describe("GET /api/credits", () => {
 
   it("upserts the user, ensures credits, and returns the summary with CORS", async () => {
     requireUser.mockResolvedValue({ uid: "u1", email: "a@b.com", name: "Alice" });
-    mutation.mockImplementation(async (ref: never, args: Record<string, unknown>) => {
-      const name = getFunctionName(ref);
-      if (name === "users:upsertFromFirebase") {
-        expect(args).toEqual({ uid: "u1", email: "a@b.com", name: "Alice" });
-        return { username: "a", name: "Alice", created: true };
-      }
-      if (name === "credits:ensure") {
-        expect(args).toEqual({ uid: "u1", username: "a" });
-        return { balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 };
-      }
-      throw new Error(`unexpected ${name}`);
-    });
+    mutation
+      .mockResolvedValueOnce({ username: "a", name: "Alice", created: true })
+      .mockResolvedValueOnce({ balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 });
 
     const res = await GET(req());
     expect(res.status).toBe(200);
@@ -67,6 +59,19 @@ describe("GET /api/credits", () => {
       messagesLeft: 6,
       topupMessages: 13,
       avgCostMicros: 150_000,
+    });
+
+    expect(mutation).toHaveBeenCalledTimes(2);
+    expect(getFunctionName(mutation.mock.calls[0][0])).toBe("users:upsertFromFirebase");
+    expect(mutation).toHaveBeenNthCalledWith(1, expect.anything(), {
+      uid: "u1",
+      email: "a@b.com",
+      name: "Alice",
+    });
+    expect(getFunctionName(mutation.mock.calls[1][0])).toBe("credits:ensure");
+    expect(mutation).toHaveBeenNthCalledWith(2, expect.anything(), {
+      uid: "u1",
+      username: "a",
     });
   });
 
