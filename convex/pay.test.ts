@@ -175,3 +175,64 @@ describe("pay.refundOrder", () => {
     await expect(t.mutation(internal.pay.refundOrder, { ...full, amountMicros: -1.5 })).rejects.toThrow();
   });
 });
+
+describe("pay.failOrder", () => {
+  test("marks a created order failed; a later capture still grants it", async () => {
+    const t = await setup();
+    expect(await t.mutation(internal.pay.failOrder, { providerOrderId: "order_1" })).toEqual({ outcome: "failed" });
+    expect((await order(t))?.status).toBe("failed");
+    const retry = await t.mutation(internal.pay.fulfillOrder, { providerOrderId: "order_1", ref: "order_1" });
+    expect(retry.outcome).toBe("granted");
+    expect(await order(t)).toMatchObject({ status: "paid", paidAt: expect.any(Number) });
+  });
+
+  test("never touches a paid order (the capture landed first)", async () => {
+    const t = await setup();
+    await t.mutation(internal.pay.fulfillOrder, { providerOrderId: "order_1", ref: "order_1" });
+    expect(await t.mutation(internal.pay.failOrder, { providerOrderId: "order_1" })).toEqual({
+      outcome: "ignored",
+      status: "paid",
+    });
+    expect((await order(t))?.status).toBe("paid");
+  });
+
+  test.each(["failed", "refunded"] as const)("ignores a %s order", async (status) => {
+    const t = await setup({ status });
+    expect(await t.mutation(internal.pay.failOrder, { providerOrderId: "order_1" })).toEqual({
+      outcome: "ignored",
+      status,
+    });
+    expect((await order(t))?.status).toBe(status);
+  });
+
+  test("no_order for an unknown order", async () => {
+    const t = await setup();
+    expect(await t.mutation(internal.pay.failOrder, { providerOrderId: "nope" })).toEqual({ outcome: "no_order" });
+  });
+});
+
+describe("pay.refundOrder reads paidAt, not status", () => {
+  const full = { providerOrderId: "order_1", amountMicros: -2_000_000, ref: "refund:r1" };
+
+  test("takes the credit back from a granted order whose status later moved to failed", async () => {
+    const t = await setup();
+    await t.mutation(internal.pay.fulfillOrder, { providerOrderId: "order_1", ref: "order_1" });
+    // the old race: a stale payment.failed overwrote paid
+    await t.run(async (ctx) => {
+      const o = await ctx.db
+        .query("orders")
+        .withIndex("by_providerOrderId", (q) => q.eq("providerOrderId", "order_1"))
+        .first();
+      await ctx.db.patch(o!._id, { status: "failed" });
+    });
+    expect(await t.mutation(internal.pay.refundOrder, full)).toEqual({ outcome: "adjusted" });
+    expect(await balance(t)).toBe(1_000_000);
+  });
+
+  test("closes a failed order that was never granted", async () => {
+    const t = await setup({ status: "failed" });
+    expect(await t.mutation(internal.pay.refundOrder, full)).toEqual({ outcome: "closed" });
+    expect(await ledger(t)).toHaveLength(0);
+    expect((await order(t))?.status).toBe("refunded");
+  });
+});

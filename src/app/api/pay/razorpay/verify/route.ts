@@ -58,7 +58,12 @@ export async function POST(request: Request) {
       await sleep(CAPTURE_RETRY_MS);
       payment = await fetchPayment(paymentId, keys.keyId, keys.keySecret);
     }
-    if (payment.status !== "captured" || payment.order_id !== orderId || payment.amount !== order.amountPaise) {
+    if (
+      payment.status !== "captured" ||
+      payment.order_id !== orderId ||
+      payment.amount !== order.amountPaise ||
+      payment.currency !== "INR"
+    ) {
       return reject(`payment ${paymentId} does not match order ${orderId}`);
     }
 

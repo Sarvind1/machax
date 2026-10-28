@@ -1,7 +1,7 @@
 import { getFunctionName } from "convex/server";
 
 // In-memory stand-in for the Convex calls the payment routes make, shared by
-// the Razorpay and RevenueCat route tests. pay.fulfillOrder / pay.refundOrder
+// the Razorpay and RevenueCat route tests. pay.fulfillOrder / failOrder / refundOrder
 // follow the same rules as convex/pay.ts (which convex/pay.test.ts checks for
 // real), so route tests exercise the outcomes, not a script of return values.
 
@@ -83,9 +83,14 @@ export function fakePayConvex(opts: {
         }
         return { outcome: fresh ? "granted" : "already", balanceMicros: state.balanceMicros };
       }
+      case "pay:failOrder":
+        if (!order) return { outcome: "no_order" };
+        if (order.status !== "created") return { outcome: "ignored", status: order.status };
+        order.status = "failed";
+        return { outcome: "failed" };
       case "pay:refundOrder": {
         if (!order) return { outcome: "no_order" };
-        const granted = order.status === "paid" || (order.status === "refunded" && order.paidAt !== undefined);
+        const granted = order.paidAt !== undefined;
         if (!granted) {
           order.status = "refunded";
           return { outcome: "closed" };

@@ -50,13 +50,31 @@ export const fulfillOrder = internalMutation({
   },
 });
 
+// Mark an order failed, but only while it is still open. A failed attempt can
+// precede a successful retry, and a capture can land between the webhook's read
+// and this write, so a paid (or refunded) order is never touched.
+//   failed: the order was created and is now failed
+//   ignored: the order was already paid, failed or refunded; nothing written
+//   no_order: no such order
+export const failOrder = internalMutation({
+  args: { providerOrderId: v.string() },
+  handler: async (ctx, { providerOrderId }) => {
+    const order = await getOrder(ctx, providerOrderId);
+    if (!order) return { outcome: "no_order" as const };
+    if (order.status !== "created") return { outcome: "ignored" as const, status: order.status };
+    await ctx.db.patch(order._id, { status: "failed" });
+    return { outcome: "failed" as const };
+  },
+});
+
 // Take back amountMicros (negative) once per ref and mark the order refunded.
 //   adjusted / already: taken back (already = this ref was applied before)
 //   closed: the order was never granted; it is now refunded so a late grant does nothing
 //   no_user: the account was deleted, nothing written
 //   no_order: no such order
-// paidAt marks a granted order, so a refunded order with paidAt still takes
-// further partial refunds.
+// paidAt marks a granted order (fulfillOrder sets it with the grant), so the
+// check reads paidAt alone: a refunded or failed order with paidAt still had its
+// credit granted and still takes refunds.
 export const refundOrder = internalMutation({
   args: {
     providerOrderId: v.string(),
@@ -71,7 +89,7 @@ export const refundOrder = internalMutation({
     const order = await getOrder(ctx, providerOrderId);
     if (!order) return { outcome: "no_order" as const };
 
-    const granted = order.status === "paid" || (order.status === "refunded" && order.paidAt !== undefined);
+    const granted = order.paidAt !== undefined;
     if (!granted) {
       if (order.status !== "refunded") await ctx.db.patch(order._id, { status: "refunded" });
       return { outcome: "closed" as const };

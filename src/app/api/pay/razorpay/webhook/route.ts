@@ -14,7 +14,7 @@ import { verifyWebhookSignature } from "@/lib/razorpay";
 // secret RAZORPAY_WEBHOOK_SECRET, events payment.captured, payment.failed,
 // refund.processed.
 
-type Entity = { id?: string; order_id?: string; payment_id?: string; amount?: number };
+type Entity = { id?: string; order_id?: string; payment_id?: string; amount?: number; currency?: string };
 type WebhookPayload = {
   event?: string;
   payload?: { payment?: { entity?: Entity }; refund?: { entity?: Entity } };
@@ -65,16 +65,18 @@ export async function POST(request: Request) {
     }
 
     if (event === "payment.failed") {
-      // A failed attempt can precede a successful retry: only open orders go to failed.
-      if (order.status === "created") {
-        await admin.mutation(internal.orders.setStatus, { providerOrderId: orderId, status: "failed" });
-      }
+      // A failed attempt can precede a successful retry: pay.failOrder moves only
+      // still-open orders to failed, in one mutation, so a capture racing it wins.
+      await admin.mutation(internal.pay.failOrder, { providerOrderId: orderId });
       return ok();
     }
 
     if (event === "payment.captured") {
-      if (payment?.amount !== order.amountPaise) {
-        console.error(LOG, `capture for order ${orderId} is ${payment?.amount} paise, order is ${order.amountPaise}: not granted`);
+      if (payment?.amount !== order.amountPaise || payment?.currency !== "INR") {
+        console.error(
+          LOG,
+          `capture for order ${orderId} is ${payment?.amount} ${payment?.currency}, order is ${order.amountPaise} INR paise: not granted`,
+        );
         return ok();
       }
       // Refunded orders, deleted accounts and repeats are handled in pay.fulfillOrder.

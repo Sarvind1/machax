@@ -61,12 +61,12 @@ export async function fetchPayment(
   paymentId: string,
   keyId: string,
   keySecret: string,
-): Promise<{ status: string; order_id: string; amount: number }> {
+): Promise<{ status: string; order_id: string; amount: number; currency: string }> {
   const res = await fetch(`${API}/payments/${encodeURIComponent(paymentId)}`, {
     headers: { Authorization: basicAuth(keyId, keySecret) },
   });
   if (!res.ok) throw new Error(`razorpay payment fetch failed: ${res.status} ${await res.text()}`);
-  return (await res.json()) as { status: string; order_id: string; amount: number };
+  return (await res.json()) as { status: string; order_id: string; amount: number; currency: string };
 }
 
 // API keys from the server env, or null when payments are not configured.

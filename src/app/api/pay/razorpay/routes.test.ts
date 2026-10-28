@@ -96,7 +96,9 @@ function convex(opts: { order?: OrderRow | null; user?: null; balanceMicros?: nu
 
 const captured = {
   event: "payment.captured",
-  payload: { payment: { entity: { id: "pay_1", order_id: "order_1", amount: 21_900, status: "captured" } } },
+  payload: {
+    payment: { entity: { id: "pay_1", order_id: "order_1", amount: 21_900, currency: "INR", status: "captured" } },
+  },
 };
 
 beforeEach(() => {
@@ -182,7 +184,7 @@ describe("POST /api/pay/razorpay/verify", () => {
     signature: signCheckout("order_1", "pay_1", KEY_SECRET),
   };
   const payment = (over: Record<string, unknown> = {}) =>
-    Response.json({ status: "captured", order_id: "order_1", amount: 21_900, ...over });
+    Response.json({ status: "captured", order_id: "order_1", amount: 21_900, currency: "INR", ...over });
 
   it("grants the order's credit and returns the new summary", async () => {
     convex({});
@@ -207,6 +209,14 @@ describe("POST /api/pay/razorpay/verify", () => {
   it("returns 400 with no grant when the payment amount differs (21800)", async () => {
     convex({});
     fetchMock.mockResolvedValue(payment({ amount: 21_800 }));
+    const res = await verifyPOST(authedReq("/api/pay/razorpay/verify", good));
+    expect(res.status).toBe(400);
+    expect(callsTo(mutation, "pay:fulfillOrder")).toHaveLength(0);
+  });
+
+  it("returns 400 with no grant when the payment currency is not INR", async () => {
+    convex({});
+    fetchMock.mockResolvedValue(payment({ currency: "USD" }));
     const res = await verifyPOST(authedReq("/api/pay/razorpay/verify", good));
     expect(res.status).toBe(400);
     expect(callsTo(mutation, "pay:fulfillOrder")).toHaveLength(0);
@@ -389,16 +399,28 @@ describe("POST /api/pay/razorpay/webhook", () => {
   });
 
   it("marks a still-open order failed on payment.failed", async () => {
-    convex({});
+    const state = convex({});
     const res = await webhookPOST(hookReq({ ...captured, event: "payment.failed" }));
     expect(res.status).toBe(200);
-    expect(namesOf(mutation)).toEqual(["orders:setStatus"]);
-    expect(mutation.mock.calls[0][1]).toEqual({ providerOrderId: "order_1", status: "failed" });
+    expect(namesOf(mutation)).toEqual(["pay:failOrder"]);
+    expect(mutation.mock.calls[0][1]).toEqual({ providerOrderId: "order_1" });
+    expect(state.orders.get("order_1")?.status).toBe("failed");
   });
 
   it("never marks a paid order failed", async () => {
-    convex({ order: { ...ORDER, status: "paid" as never } });
+    const state = convex({ order: { ...ORDER, status: "paid", paidAt: 5 } });
     const res = await webhookPOST(hookReq({ ...captured, event: "payment.failed" }));
+    expect(res.status).toBe(200);
+    expect(state.orders.get("order_1")?.status).toBe("paid");
+  });
+
+  it("does not grant when the captured currency is not INR", async () => {
+    convex({});
+    const usd = {
+      ...captured,
+      payload: { payment: { entity: { ...captured.payload.payment.entity, currency: "USD" } } },
+    };
+    const res = await webhookPOST(hookReq(usd));
     expect(res.status).toBe(200);
     expect(mutation).not.toHaveBeenCalled();
   });
