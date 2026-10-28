@@ -27,6 +27,8 @@ import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
 import { resolveMedia } from "./media-service";
 import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
 import { buildCharacterMemory } from "./private-memory";
+import type { CostCollector } from "./cost-collector";
+import type { Usage } from "./pricing";
 
 const ENGINE_LOG = join(process.cwd(), "engine-log.jsonl");
 function engineLog(entry: Record<string, unknown>): void {
@@ -86,14 +88,15 @@ async function callClaudeCli(
   userPrompt: string,
   model: string,
   maxTokens: number,
-): Promise<string> {
+): Promise<{ text: string; costUsd?: number }> {
   const bridgeUrl = process.env.BRIDGE_URL;
   const bridgeSecret = process.env.BRIDGE_SECRET;
 
   if (bridgeUrl && bridgeSecret) {
     return callClaudeViaBridge(bridgeUrl, bridgeSecret, system, userPrompt, model);
   }
-  return callClaudeLocal(system, userPrompt, model);
+  // Local `claude -p` path has no cost figure.
+  return { text: await callClaudeLocal(system, userPrompt, model), costUsd: undefined };
 }
 
 async function callClaudeViaBridge(
@@ -102,7 +105,7 @@ async function callClaudeViaBridge(
   system: string,
   userPrompt: string,
   model: string,
-): Promise<string> {
+): Promise<{ text: string; costUsd?: number }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
 
@@ -124,7 +127,10 @@ async function callClaudeViaBridge(
     }
 
     const data = await res.json();
-    return data.text || "";
+    return {
+      text: data.text || "",
+      costUsd: typeof data.costUsd === "number" ? data.costUsd : undefined,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "bridge request failed";
     if (message.includes("aborted")) {
@@ -291,7 +297,7 @@ async function callAnthropic(
   userPrompt: string,
   model: string,
   maxTokens: number,
-): Promise<string> {
+): Promise<{ text: string; model: string; usage: Usage }> {
   anthropicClient ??= new Anthropic();
   const stream = model.startsWith("claude-haiku")
     ? anthropicClient.beta.messages.stream({
@@ -317,7 +323,8 @@ async function callAnthropic(
   if (msg.stop_reason === "refusal") throw new Error(`anthropic refusal: ${msg.stop_details?.category ?? "unknown"}`);
   const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
   if (!text) throw new Error(`anthropic returned no text (stop_reason=${msg.stop_reason})`);
-  return text;
+  // msg.model is the model that actually ran (differs from `model` after a server-side fallback)
+  return { text, model: msg.model, usage: msg.usage };
 }
 
 // ── Unified call function ──
@@ -327,21 +334,30 @@ async function callModel(
   provider: ProviderConfig,
   maxTokens: number,
   modelOverride?: string,
+  collector?: CostCollector,
 ): Promise<{ text: string; model: string; paid: boolean }> {
   if (provider.name === "claude-cli") {
-    return { text: await callClaudeCli(system, userPrompt, provider.model, maxTokens), model: provider.model, paid: false };
+    const { text, costUsd } = await callClaudeCli(system, userPrompt, provider.model, maxTokens);
+    collector?.addBridge(costUsd);
+    return { text, model: provider.model, paid: false };
   }
   if (provider.name === "anthropic") {
     try {
-      return { text: await callAnthropic(system, userPrompt, provider.model, maxTokens), model: provider.model, paid: true };
+      const result = await callAnthropic(system, userPrompt, provider.model, maxTokens);
+      collector?.addAnthropic(result.model, result.usage);
+      return { text: result.text, model: provider.model, paid: true };
     } catch (err) {
       if (!GEMINI_ENABLED) throw err;
       console.warn(`[orchestrator] Anthropic call failed, falling back to Gemini: ${err}`);
       engineLog({ ts: new Date().toISOString(), event: "anthropic-fallback", error: String(err).slice(0, 200) });
-      return callAiSdk(system, userPrompt, { ...provider, name: "gemini" }, maxTokens);
+      const fallback = await callAiSdk(system, userPrompt, { ...provider, name: "gemini" }, maxTokens);
+      collector?.add({ model: fallback.model, costMicros: 0, source: "gemini" });
+      return fallback;
     }
   }
-  return callAiSdk(system, userPrompt, provider, maxTokens, modelOverride);
+  const result = await callAiSdk(system, userPrompt, provider, maxTokens, modelOverride);
+  collector?.add({ model: result.model, costMicros: 0, source: "gemini" });
+  return result;
 }
 
 // ── Clean up model response ──
@@ -947,6 +963,7 @@ async function callFriend(
   isMinimalPrompt: boolean = false,
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
   overrides: Record<string, any> = {},
+  collector?: CostCollector,
 ): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string; model?: string; paid?: boolean } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -1184,6 +1201,8 @@ async function callFriend(
       prompt,
       provider,
       maxTokens,
+      undefined,
+      collector,
     );
     text = cleanResponse(text, friend.name);
 
@@ -1236,7 +1255,7 @@ async function callFriend(
       const reason = text.length < 3 ? "too-short" : allMessages.some(m => m.text.toLowerCase() === text.toLowerCase()) ? "exact-dupe" : "incomplete";
       engineLog({ ts: new Date().toISOString(), event: "garbage-first", agent: friendId, text: text.slice(0, 120), reason, length: text.length });
       const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
-      ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150)));
+      ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150), undefined, collector));
       text = cleanResponse(text, friend.name);
 
       // If still garbage after retry, return null to skip this agent
@@ -1288,7 +1307,7 @@ async function callFriend(
 
 // ── Director agent: one-shot topic research ────────────────────────
 
-async function getTopicContext(message: string, provider: ProviderConfig): Promise<string> {
+async function getTopicContext(message: string, provider: ProviderConfig, collector?: CostCollector): Promise<string> {
   const topicPrompt = `Group chat message: "${message}"
 
 If this mentions something specific (game, movie, show, app, product, person, event, concept), give a 2-sentence factual summary. Include: what it is, current status, key facts.
@@ -1325,6 +1344,8 @@ If it's just a casual opinion question (like "pizza or burger" or "should I quit
       topicPrompt,
       { ...provider, model: provider.synthesisModel },
       80,
+      undefined,
+      collector,
     );
 
     const cleaned = text.trim();
@@ -1375,8 +1396,9 @@ export async function* orchestrateChat(params: {
   characterOverrides?: string; // JSON string from Convex
   conversationDepth?: string; // "quick" | "normal" | "deep"
   userEngagementFrequency?: number; // 0-1
+  collector?: CostCollector; // optional: accumulates cost of every model call
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency } = params;
+  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector } = params;
 
   // Parse character overrides once
   let parsedOverrides: Record<string, any> = {};
@@ -1409,7 +1431,7 @@ export async function* orchestrateChat(params: {
   // ── Director agent: research the topic (runs parallel with first batch) ──
   let topicContext = "";
   const topicContextPromise = Promise.race([
-    getTopicContext(message, provider).catch(() => ""),
+    getTopicContext(message, provider, collector).catch(() => ""),
     new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000)),
   ]);
 
@@ -1647,6 +1669,7 @@ export async function* orchestrateChat(params: {
           isMinimalPrompt,
           sessionMood,
           parsedOverrides,
+          collector,
         );
       }),
     );
@@ -1799,6 +1822,8 @@ export async function* orchestrateChat(params: {
       `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 3-4 distinct options/perspectives that emerged. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. Return 3-4 options.`,
       { ...provider, model: provider.synthesisModel },
       600,
+      undefined,
+      collector,
     );
 
     let cleaned = synthesisText.trim();
