@@ -12,6 +12,11 @@ export async function OPTIONS(request: Request) {
   return handleCorsOptions(request) ?? new Response(null, { status: 204 });
 }
 
+// Checkout can return a moment before auto-capture lands: an `authorized`
+// payment gets one more look after this delay.
+const CAPTURE_RETRY_MS = 1_000;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 type VerifyBody = { orderId?: unknown; paymentId?: unknown; signature?: unknown };
 
 // Called by the open tab right after Razorpay checkout succeeds, for an
@@ -47,7 +52,11 @@ export async function POST(request: Request) {
     }
 
     // Confirm with Razorpay directly: the client could be replaying anything.
-    const payment = await fetchPayment(paymentId, keys.keyId, keys.keySecret);
+    let payment = await fetchPayment(paymentId, keys.keyId, keys.keySecret);
+    if (payment.status === "authorized") {
+      await sleep(CAPTURE_RETRY_MS);
+      payment = await fetchPayment(paymentId, keys.keyId, keys.keySecret);
+    }
     if (payment.status !== "captured" || payment.order_id !== orderId || payment.amount !== order.amountPaise) {
       return reject(`payment ${paymentId} does not match order ${orderId}`);
     }

@@ -72,9 +72,29 @@ export async function POST(request: Request) {
       return ok();
     }
 
-    if (event === "refund.processed" && order.status !== "paid") {
-      console.warn(LOG, `refund for order ${orderId} in status ${order.status}: ignored`);
-      return ok();
+    if (event === "payment.captured") {
+      if (order.status === "refunded") {
+        console.warn(LOG, `capture for refunded order ${orderId}: ignored`);
+        return ok();
+      }
+      if (payment?.amount !== order.amountPaise) {
+        console.error(LOG, `capture for order ${orderId} is ${payment?.amount} paise, order is ${order.amountPaise}: not granted`);
+        return ok();
+      }
+    }
+
+    if (event === "refund.processed") {
+      // Refunded before any grant happened: close the order so a late capture grants nothing.
+      if (order.status === "created") {
+        await admin.mutation(internal.orders.setStatus, { providerOrderId: orderId, status: "refunded" });
+        return ok();
+      }
+      // paidAt marks a granted order; a "refunded" order without it was never granted.
+      const granted = order.status === "paid" || (order.status === "refunded" && order.paidAt !== undefined);
+      if (!granted) {
+        console.warn(LOG, `refund for order ${orderId} in status ${order.status}: ignored`);
+        return ok();
+      }
     }
 
     // grantPurchase and adjust need the credits row, which needs the username.
@@ -102,18 +122,22 @@ export async function POST(request: Request) {
       return ok();
     }
 
-    // refund.processed on a paid order: take the whole pack back.
-    const refundId = body.payload?.refund?.entity?.id;
-    if (!refundId) {
-      console.warn(LOG, `refund for order ${orderId} without a refund id`);
+    // refund.processed on a granted order: take back the refunded share of the pack.
+    const refund = body.payload?.refund?.entity;
+    if (!refund?.id || typeof refund.amount !== "number" || refund.amount <= 0) {
+      console.warn(LOG, `refund for order ${orderId} without an id or amount`);
       return ok();
     }
-    await admin.mutation(internal.credits.adjust, {
-      uid: order.uid,
-      amountMicros: -order.creditMicros,
-      ref: `refund:${refundId}`,
-      meta: { provider: "razorpay", orderId, paymentId: payment?.id },
-    });
+    const refundPaise = Math.min(refund.amount, order.amountPaise);
+    const amountMicros = -Math.round((order.creditMicros * refundPaise) / order.amountPaise);
+    if (amountMicros !== 0) {
+      await admin.mutation(internal.credits.adjust, {
+        uid: order.uid,
+        amountMicros,
+        ref: `refund:${refund.id}`,
+        meta: { provider: "razorpay", orderId, paymentId: payment?.id, refundPaise: refund.amount },
+      });
+    }
     await admin.mutation(internal.orders.setStatus, { providerOrderId: orderId, status: "refunded" });
     return ok();
   } catch (err) {

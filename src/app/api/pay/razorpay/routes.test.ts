@@ -36,14 +36,25 @@ const KEY_SECRET = "key_secret";
 const WEBHOOK_SECRET = "hook_secret";
 
 const ROW = { balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 };
-const ORDER = {
+type OrderRow = {
+  uid: string;
+  provider: string;
+  providerOrderId: string;
+  productId: string;
+  amountPaise: number;
+  creditMicros: number;
+  status: "created" | "paid" | "failed" | "refunded";
+  createdAt: number;
+  paidAt?: number;
+};
+const ORDER: OrderRow = {
   uid: "u1",
   provider: "razorpay",
   providerOrderId: "order_1",
   productId: "topup_219",
   amountPaise: 21_900,
   creditMicros: 2_000_000,
-  status: "created" as const,
+  status: "created",
   createdAt: 1,
 };
 
@@ -79,24 +90,33 @@ const namesOf = (fn: typeof mutation) =>
   fn.mock.calls.map(([ref]) => getFunctionName(ref as never));
 
 // Route Convex calls by function name. `order` is what getByProviderOrderId returns.
+// setStatus updates that row, so a sequence of webhook calls sees earlier ones.
 function convex(opts: {
-  order?: typeof ORDER | null;
+  order?: OrderRow | null;
   user?: { username: string } | null;
   grants?: boolean[];
 }) {
   const grants = [...(opts.grants ?? [true])];
   let balance = ROW.balanceMicros;
+  const order = opts.order === undefined ? { ...ORDER } : opts.order && { ...opts.order };
   query.mockImplementation(async (ref: unknown) => {
     const name = getFunctionName(ref as never);
-    if (name === "orders:getByProviderOrderId") return opts.order === undefined ? ORDER : opts.order;
+    if (name === "orders:getByProviderOrderId") return order;
     if (name === "users:getByFirebaseUid") return opts.user === undefined ? { username: "alice" } : opts.user;
     if (name === "credits:get") return { ...ROW, balanceMicros: balance };
     throw new Error(`unexpected query ${name}`);
   });
-  mutation.mockImplementation(async (ref: unknown, args: { amountMicros?: number }) => {
+  mutation.mockImplementation(
+    async (ref: unknown, args: { amountMicros?: number; status?: OrderRow["status"]; paidAt?: number }) => {
     const name = getFunctionName(ref as never);
     if (name === "orders:create") return "orderDocId";
-    if (name === "orders:setStatus") return null;
+    if (name === "orders:setStatus") {
+      if (order) {
+        order.status = args.status!;
+        if (args.paidAt !== undefined) order.paidAt = args.paidAt;
+      }
+      return null;
+    }
     if (name === "credits:ensure") return ROW;
     if (name === "credits:grantPurchase" || name === "credits:adjust") {
       const granted = grants.length ? grants.shift()! : false;
@@ -104,7 +124,8 @@ function convex(opts: {
       return { granted, balanceMicros: balance };
     }
     throw new Error(`unexpected mutation ${name}`);
-  });
+    },
+  );
 }
 
 beforeEach(() => {
@@ -228,6 +249,46 @@ describe("POST /api/pay/razorpay/verify", () => {
     expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(0);
   });
 
+  it("re-fetches an authorized payment once and grants when it is captured by then", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      convex({});
+      fetchMock.mockResolvedValueOnce(payment({ status: "authorized" })).mockResolvedValueOnce(payment());
+      const pending = verifyPOST(authedReq("/api/pay/razorpay/verify", good));
+      await vi.advanceTimersByTimeAsync(1_000);
+      const res = await pending;
+      expect(res.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("returns 400 with no grant when the payment is still authorized after one re-fetch", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    try {
+      convex({});
+      fetchMock.mockImplementation(async () => payment({ status: "authorized" }));
+      const pending = verifyPOST(authedReq("/api/pay/razorpay/verify", good));
+      await vi.advanceTimersByTimeAsync(1_000);
+      const res = await pending;
+      expect(res.status).toBe(400);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not re-fetch a failed payment", async () => {
+    convex({});
+    fetchMock.mockResolvedValue(payment({ status: "failed" }));
+    const res = await verifyPOST(authedReq("/api/pay/razorpay/verify", good));
+    expect(res.status).toBe(400);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("returns 400 with no grant when the payment belongs to another order", async () => {
     convex({});
     fetchMock.mockResolvedValue(payment({ order_id: "order_2" }));
@@ -295,6 +356,7 @@ describe("POST /api/pay/razorpay/webhook", () => {
     const grants = callsTo(mutation, "credits:grantPurchase");
     expect(grants).toHaveLength(2);
     expect(grants[0][1]).toMatchObject({ uid: "u1", amountMicros: 2_000_000, ref: "order_1" });
+    expect(grants[1][1]).toMatchObject({ uid: "u1", amountMicros: 2_000_000, ref: "order_1" });
     const results = await Promise.all(
       mutation.mock.results
         .filter((_, i) => getFunctionName(mutation.mock.calls[i][0] as never) === "credits:grantPurchase")
@@ -358,17 +420,18 @@ describe("POST /api/pay/razorpay/webhook", () => {
     expect(mutation).not.toHaveBeenCalled();
   });
 
-  it("takes the credit back on refund.processed and marks the order refunded", async () => {
-    convex({ order: { ...ORDER, status: "paid" as never } });
-    const res = await webhookPOST(
-      hookReq({
-        event: "refund.processed",
-        payload: {
-          refund: { entity: { id: "rfnd_1", payment_id: "pay_1", amount: 21_900 } },
-          payment: { entity: { id: "pay_1", order_id: "order_1", amount: 21_900 } },
-        },
-      }),
-    );
+  const refund = (id: string, amount: number) => ({
+    event: "refund.processed",
+    payload: {
+      refund: { entity: { id, payment_id: "pay_1", amount } },
+      payment: { entity: { id: "pay_1", order_id: "order_1", amount: 21_900 } },
+    },
+  });
+  const PAID: OrderRow = { ...ORDER, status: "paid", paidAt: 5 };
+
+  it("takes the whole pack back on a full refund and marks the order refunded", async () => {
+    convex({ order: PAID });
+    const res = await webhookPOST(hookReq(refund("rfnd_1", 21_900)));
     expect(res.status).toBe(200);
     const names = namesOf(mutation);
     expect(names.indexOf("credits:ensure")).toBeLessThan(names.indexOf("credits:adjust"));
@@ -381,6 +444,54 @@ describe("POST /api/pay/razorpay/webhook", () => {
       providerOrderId: "order_1",
       status: "refunded",
     });
+  });
+
+  it("takes back a proportional share on a partial refund, and applies a second one", async () => {
+    convex({ order: PAID, grants: [true, true] });
+    expect((await webhookPOST(hookReq(refund("rfnd_1", 10_950)))).status).toBe(200);
+    expect((await webhookPOST(hookReq(refund("rfnd_2", 10_950)))).status).toBe(200);
+    const adjusts = callsTo(mutation, "credits:adjust");
+    expect(adjusts).toHaveLength(2);
+    expect(adjusts[0][1]).toMatchObject({ amountMicros: -1_000_000, ref: "refund:rfnd_1" });
+    expect(adjusts[1][1]).toMatchObject({ amountMicros: -1_000_000, ref: "refund:rfnd_2" });
+  });
+
+  it("applies the same refund id once: the retry gets granted:false and still answers 200", async () => {
+    convex({ order: PAID, grants: [true, false] });
+    const first = await webhookPOST(hookReq(refund("rfnd_1", 21_900)));
+    const second = await webhookPOST(hookReq(refund("rfnd_1", 21_900)));
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const adjusts = callsTo(mutation, "credits:adjust");
+    expect(adjusts.map(([, a]) => a.ref)).toEqual(["refund:rfnd_1", "refund:rfnd_1"]);
+    const results = await Promise.all(
+      mutation.mock.results
+        .filter((_, i) => getFunctionName(mutation.mock.calls[i][0] as never) === "credits:adjust")
+        .map((r) => r.value),
+    );
+    expect(results.map((r) => r.granted)).toEqual([true, false]);
+  });
+
+  it("marks a never-granted order refunded without adjusting, and a later capture grants nothing", async () => {
+    convex({});
+    expect((await webhookPOST(hookReq(refund("rfnd_1", 21_900)))).status).toBe(200);
+    expect(namesOf(mutation)).toEqual(["orders:setStatus"]);
+    expect(mutation.mock.calls[0][1]).toEqual({ providerOrderId: "order_1", status: "refunded" });
+
+    expect((await webhookPOST(hookReq(captured))).status).toBe(200);
+    expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(0);
+    expect(callsTo(mutation, "credits:adjust")).toHaveLength(0);
+  });
+
+  it("does not grant when the captured amount differs from the order", async () => {
+    convex({});
+    const short = {
+      ...captured,
+      payload: { payment: { entity: { ...captured.payload.payment.entity, amount: 21_800 } } },
+    };
+    const res = await webhookPOST(hookReq(short));
+    expect(res.status).toBe(200);
+    expect(mutation).not.toHaveBeenCalled();
   });
 
   it("ignores unknown events with 200", async () => {
