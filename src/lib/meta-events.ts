@@ -68,9 +68,9 @@ async function track(eventName: MetaEvent, username: string, params: Record<stri
   await FacebookAnalytics.logEvent({ event: sdkName, params: { ...params, event_id: eventId } });
 }
 
-// Call right after a successful signup
-export function logCompleteRegistration(username: string): void {
-  track("CompleteRegistration", username, { [FacebookEventParameterName.RegistrationMethod]: "email" }).catch(() => {});
+// Call right after a successful sign-in; the server only lets a fresh registration through.
+export function logCompleteRegistration(username: string, method: string): void {
+  track("CompleteRegistration", username, { [FacebookEventParameterName.RegistrationMethod]: method }).catch(() => {});
 }
 
 // Call after the user picks an option on a decision; only their first pick counts

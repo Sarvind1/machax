@@ -1,6 +1,6 @@
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { hashPassword } from "./lib/passwords";
+import type { Doc } from "./_generated/dataModel";
 
 export const createDemoUser = mutation({
   args: { visitorId: v.string() },
@@ -98,91 +98,99 @@ export const getByUsername = query({
   },
 });
 
-// Permanently delete an account and everything tied to it.
-// Requires the password, since the client only holds the username.
-export const deleteAccount = mutation({
-  args: {
-    identifier: v.string(),
-    password: v.string(),
-  },
-  handler: async (ctx, { identifier, password }) => {
-    let user = await ctx.db
+// Delete one app user and everything keyed by their username or email.
+async function deleteUserData(ctx: MutationCtx, user: Doc<"users">) {
+  const { username, email } = user;
+
+  const conversations = await ctx.db
+    .query("conversations")
+    .withIndex("by_username", (q) => q.eq("username", username))
+    .collect();
+  for (const convo of conversations) {
+    const messages = await ctx.db
+      .query("messages")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", convo._id))
+      .collect();
+    for (const m of messages) await ctx.db.delete(m._id);
+    const decisions = await ctx.db
+      .query("decisions")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", convo._id))
+      .collect();
+    for (const d of decisions) await ctx.db.delete(d._id);
+    const traces = await ctx.db
+      .query("traces")
+      .withIndex("by_conversation", (q) => q.eq("conversationId", convo._id))
+      .collect();
+    for (const t of traces) await ctx.db.delete(t._id);
+    await ctx.db.delete(convo._id);
+  }
+
+  const settings = await ctx.db
+    .query("userSettings")
+    .withIndex("by_username", (q) => q.eq("username", username))
+    .collect();
+  for (const s of settings) await ctx.db.delete(s._id);
+
+  const reports = await ctx.db
+    .query("reports")
+    .withIndex("by_username", (q) => q.eq("username", username))
+    .collect();
+  for (const r of reports) await ctx.db.delete(r._id);
+
+  const metaEvents = await ctx.db
+    .query("metaEvents")
+    .withIndex("by_username_event", (q) => q.eq("username", username))
+    .collect();
+  for (const m of metaEvents) await ctx.db.delete(m._id);
+
+  if (email) {
+    const resets = await ctx.db
+      .query("passwordResets")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .collect();
+    for (const r of resets) await ctx.db.delete(r._id);
+    const waitlist = await ctx.db
+      .query("waitlist")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .collect();
+    for (const w of waitlist) await ctx.db.delete(w._id);
+  }
+
+  await ctx.db.delete(user._id);
+}
+
+// Permanently delete the account of a verified Firebase user (called from
+// POST /api/account/delete). Also drops their credits, orders and ledger,
+// except the free-grant ledger row: keeping free:<uid> means signing in again
+// with the same Google account starts at $0 instead of claiming $1 twice.
+export const deleteByUid = internalMutation({
+  args: { uid: v.string() },
+  handler: async (ctx, { uid }) => {
+    const user = await ctx.db
       .query("users")
-      .withIndex("by_username", (q) => q.eq("username", identifier))
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
       .first();
-    if (!user) {
-      user = await ctx.db
-        .query("users")
-        .withIndex("by_email", (q) => q.eq("email", identifier))
-        .first();
-    }
-    if (!user || !user.password) {
-      return { success: false as const, error: "invalid_credentials" as const };
-    }
-    const matches = user.salt
-      ? (await hashPassword(password, user.salt)) === user.password
-      : user.password === password;
-    if (!matches) {
-      return { success: false as const, error: "invalid_credentials" as const };
-    }
+    if (user) await deleteUserData(ctx, user);
 
-    const { username, email } = user;
-
-    const conversations = await ctx.db
-      .query("conversations")
-      .withIndex("by_username", (q) => q.eq("username", username))
+    const credits = await ctx.db
+      .query("credits")
+      .withIndex("by_uid", (q) => q.eq("uid", uid))
       .collect();
-    for (const convo of conversations) {
-      const messages = await ctx.db
-        .query("messages")
-        .withIndex("by_conversation", (q) => q.eq("conversationId", convo._id))
-        .collect();
-      for (const m of messages) await ctx.db.delete(m._id);
-      const decisions = await ctx.db
-        .query("decisions")
-        .withIndex("by_conversation", (q) => q.eq("conversationId", convo._id))
-        .collect();
-      for (const d of decisions) await ctx.db.delete(d._id);
-      const traces = await ctx.db
-        .query("traces")
-        .withIndex("by_conversation", (q) => q.eq("conversationId", convo._id))
-        .collect();
-      for (const t of traces) await ctx.db.delete(t._id);
-      await ctx.db.delete(convo._id);
-    }
+    for (const c of credits) await ctx.db.delete(c._id);
 
-    const settings = await ctx.db
-      .query("userSettings")
-      .withIndex("by_username", (q) => q.eq("username", username))
+    const orders = await ctx.db
+      .query("orders")
+      .withIndex("by_uid", (q) => q.eq("uid", uid))
       .collect();
-    for (const s of settings) await ctx.db.delete(s._id);
+    for (const o of orders) await ctx.db.delete(o._id);
 
-    const reports = await ctx.db
-      .query("reports")
-      .withIndex("by_username", (q) => q.eq("username", username))
+    const freeRef = `free:${uid}`;
+    const ledger = await ctx.db
+      .query("ledger")
+      .withIndex("by_uid", (q) => q.eq("uid", uid))
       .collect();
-    for (const r of reports) await ctx.db.delete(r._id);
+    for (const l of ledger) if (l.ref !== freeRef) await ctx.db.delete(l._id);
 
-    const metaEvents = await ctx.db
-      .query("metaEvents")
-      .withIndex("by_username_event", (q) => q.eq("username", username))
-      .collect();
-    for (const m of metaEvents) await ctx.db.delete(m._id);
-
-    if (email) {
-      const resets = await ctx.db
-        .query("passwordResets")
-        .withIndex("by_email", (q) => q.eq("email", email))
-        .collect();
-      for (const r of resets) await ctx.db.delete(r._id);
-      const waitlist = await ctx.db
-        .query("waitlist")
-        .withIndex("by_email", (q) => q.eq("email", email))
-        .collect();
-      for (const w of waitlist) await ctx.db.delete(w._id);
-    }
-
-    await ctx.db.delete(user._id);
-    return { success: true as const };
+    return { deletedUser: user !== null };
   },
 });

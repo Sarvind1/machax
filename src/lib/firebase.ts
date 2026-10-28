@@ -15,6 +15,7 @@ import {
   type Auth,
   type User,
 } from "firebase/auth";
+import { clearStoredUser } from "./stored-user";
 
 // Client-only. Firebase Auth, Google only. On both web and the Android app the Firebase JS
 // SDK holds the signed-in user, so getIdToken() works the same everywhere.
@@ -125,8 +126,6 @@ export async function signOut(): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     await FirebaseAuthentication.signOut().catch(() => {});
   }
+  clearStoredUser();
   await firebaseSignOut(getFirebaseAuth());
-  try {
-    localStorage.removeItem("machax-user");
-  } catch {}
 }

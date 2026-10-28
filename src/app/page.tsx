@@ -2,9 +2,10 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getStoredUser } from "@/lib/api";
+import { getStoredUser } from "@/lib/stored-user";
 
-// Entry point: signed-in users go to chat, everyone else signs in first.
+// Entry point: a cached user goes to chat, everyone else signs in first.
+// /login re-checks the Firebase session, so a stale cache cannot loop.
 export default function Page() {
   const router = useRouter();
 

@@ -25,7 +25,8 @@ export const claim = internalMutation({
       .query("users")
       .withIndex("by_username", (q) => q.eq("username", username))
       .first();
-    if (!user || !user.password) return null; // unknown or demo user
+    // Real users: Firebase-linked, or a legacy password account. Demo users have neither.
+    if (!user || (!user.firebaseUid && !user.password)) return null;
 
     const already = await ctx.db
       .query("metaEvents")

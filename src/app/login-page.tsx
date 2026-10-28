@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { logCompleteRegistration } from "@/lib/meta-events";
 import { logEvent, setAnalyticsUser } from "@/lib/analytics";
-import { completeRedirectSignIn, signInWithGoogle } from "@/lib/firebase";
-import { bootstrapSession, getStoredUser } from "@/lib/api";
+import { completeRedirectSignIn, getIdToken, signInWithGoogle, signOut } from "@/lib/firebase";
+import { AuthRequired, bootstrapSession } from "@/lib/api";
+import { clearStoredUser } from "@/lib/stored-user";
 import "./login.css";
 
 /* ===== HELPERS ===== */
@@ -144,17 +145,23 @@ export default function LoginPage() {
 
   /* ===== SIGN-IN ===== */
 
-  // Firebase user exists: create/link the app user, cache it, open chat.
-  const finishSignIn = useCallback(async () => {
+  // Firebase user exists: create/link the app user on the server, cache it,
+  // open chat. fresh = the user just signed in (log it); false = resumed session.
+  const finishSignIn = useCallback(async (fresh: boolean) => {
     const session = await bootstrapSession();
     setAnalyticsUser(session.username);
-    logEvent("login", { method: "google" });
-    // Server decides whether this is a fresh registration; repeat calls are no-ops.
-    logCompleteRegistration(session.username);
+    if (fresh) {
+      logEvent("login", { method: "google" });
+      // Server decides whether this is a fresh registration; repeat calls are no-ops.
+      logCompleteRegistration(session.username, "google");
+    }
     router.push("/chat");
   }, [router]);
 
   const failSignIn = useCallback((err: unknown) => {
+    // Server rejected the token: drop the Firebase session too, so the user
+    // is not left half signed in.
+    if (err instanceof AuthRequired) signOut().catch(() => {});
     const msg = signInErrorMessage(err);
     if (msg) console.error("[login] google sign-in failed:", err);
     setError(msg);
@@ -163,23 +170,35 @@ export default function LoginPage() {
 
   /* ===== BOOT ===== */
 
+  // Never trust the cached machax-user alone: chat sends a rejected session
+  // back here, so only go to /chat once the server accepts the Firebase token.
   useEffect(() => {
     if (bootedRef.current) return;
     bootedRef.current = true;
 
-    if (getStoredUser()) {
-      router.push("/chat");
-      return;
-    }
-    // Coming back from a web redirect sign-in (popup was blocked)
-    completeRedirectSignIn()
-      .then(async (user) => {
-        if (!user) return;
-        setBusy(true);
-        await finishSignIn();
-      })
-      .catch(failSignIn);
-  }, [router, finishSignIn, failSignIn]);
+    (async () => {
+      let haveFirebaseUser = false;
+      try {
+        // Coming back from a web redirect sign-in (popup was blocked)
+        if (await completeRedirectSignIn()) {
+          haveFirebaseUser = true;
+          setBusy(true);
+          await finishSignIn(true);
+          return;
+        }
+        if (await getIdToken()) {
+          haveFirebaseUser = true;
+          setBusy(true);
+          await finishSignIn(false);
+          return;
+        }
+        clearStoredUser();
+      } catch (err) {
+        if (!haveFirebaseUser) clearStoredUser();
+        failSignIn(err);
+      }
+    })();
+  }, [finishSignIn, failSignIn]);
 
   const handleGoogle = useCallback(async () => {
     if (busy) return;
@@ -187,7 +206,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await signInWithGoogle();
-      await finishSignIn();
+      await finishSignIn(true);
     } catch (err) {
       failSignIn(err);
     }

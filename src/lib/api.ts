@@ -1,6 +1,9 @@
 import { API_BASE } from "./api-base";
 import { getIdToken } from "./firebase";
+import { setStoredUser } from "./stored-user";
 import type { CreditSummary } from "./credits";
+
+export { getStoredUser, type StoredUser } from "./stored-user";
 
 // Client-side fetch for our own /api/* routes, carrying the Firebase ID token.
 
@@ -18,8 +21,6 @@ export type SessionResult = {
   credits: CreditSummary;
 };
 
-export type StoredUser = { username: string; name?: string; uid: string };
-
 export async function authedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = await getIdToken();
   if (!token) throw new AuthRequired();
@@ -30,25 +31,12 @@ export async function authedFetch(path: string, init: RequestInit = {}): Promise
 
 // Call right after sign-in: creates or links the app user on the server and
 // caches { username, name, uid } in localStorage["machax-user"] for the UI.
+// A 401 means the server rejected the token: throws AuthRequired.
 export async function bootstrapSession(): Promise<SessionResult> {
   const res = await authedFetch("/api/auth/session", { method: "POST" });
   if (res.status === 401) throw new AuthRequired();
   if (!res.ok) throw new Error(`session bootstrap failed: ${res.status}`);
   const body = (await res.json()) as SessionResult;
-  const stored: StoredUser = { username: body.username, name: body.name ?? body.username, uid: body.uid };
-  localStorage.setItem("machax-user", JSON.stringify(stored));
+  setStoredUser({ username: body.username, name: body.name ?? body.username, uid: body.uid });
   return body;
-}
-
-// The cached user, only if it came from a Firebase session (has a uid).
-// Old password-login entries without a uid count as logged out.
-export function getStoredUser(): StoredUser | null {
-  try {
-    const raw = localStorage.getItem("machax-user");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.uid && parsed?.username ? (parsed as StoredUser) : null;
-  } catch {
-    return null;
-  }
 }
