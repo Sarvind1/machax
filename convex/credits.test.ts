@@ -188,12 +188,26 @@ describe("credits.settleMessage", () => {
     });
   });
 
-  test("settle refs are never deduped: same ref twice charges twice", async () => {
+  test("settle is idempotent on ref: a retried settle charges once and clears the lock", async () => {
     const t = setup();
     await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
-    await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
-    const res = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
-    expect(res).toEqual({ balanceMicros: 800_000, lifetimeSpentMicros: 200_000, messageCount: 2 });
+    await t.mutation(internal.credits.beginMessage, { uid: "u1" });
+    const first = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
+    // a lock left set (e.g. the retry raced a fresh begin) is cleared by the duplicate too
+    await t.run(async (ctx) => {
+      const row = await ctx.db.query("credits").withIndex("by_uid", (q) => q.eq("uid", "u1")).unique();
+      await ctx.db.patch(row!._id, { inFlightSince: Date.now() });
+    });
+    const again = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
+
+    const expected = { balanceMicros: 900_000, lifetimeSpentMicros: 100_000, messageCount: 1 };
+    expect(first).toEqual(expected);
+    expect(again).toEqual(expected);
+    const row = await creditsRow(t, "u1");
+    expect(row).toMatchObject(expected);
+    expect(row?.inFlightSince).toBeUndefined();
+    const charges = (await ledgerRows(t, "u1")).filter((r) => r.kind === "charge");
+    expect(charges).toHaveLength(1);
   });
 });
 

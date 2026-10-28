@@ -142,7 +142,8 @@ export const beginMessage = internalMutation({
 });
 
 // Charge the real cost after the model call. May drive the balance negative.
-// ref is unique per call and is not deduped.
+// Idempotent on ref: the route retries a settle whose response may have been
+// lost, so a ref already in the ledger only clears the lock and charges nothing.
 export const settleMessage = internalMutation({
   args: {
     uid: v.string(),
@@ -155,6 +156,16 @@ export const settleMessage = internalMutation({
     if (costMicros < 0) throw new Error("credits: costMicros must be >= 0");
     const row = await requireRow(ctx, uid);
     const now = Date.now();
+    const dup = await ctx.db
+      .query("ledger")
+      .withIndex("by_ref", (q) => q.eq("ref", ref))
+      .first();
+    if (dup) {
+      if (row.inFlightSince !== undefined) {
+        await ctx.db.patch(row._id, { inFlightSince: undefined, updatedAt: now });
+      }
+      return summarize(row);
+    }
     const balanceMicros = row.balanceMicros - costMicros;
     const lifetimeSpentMicros = row.lifetimeSpentMicros + costMicros;
     const messageCount = row.messageCount + 1;
