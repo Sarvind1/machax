@@ -43,7 +43,6 @@ export default function PrivacyPage() {
           <li><b>Klipy</b>: short search phrases (not your messages) to find GIFs and stickers.</li>
           <li><b>Convex</b>: our database, where accounts and chats are stored.</li>
           <li><b>Vercel</b>: hosts the website and server.</li>
-          <li><b>Resend</b>: sends password-reset emails to your email address.</li>
         </ul>
         <p>All data is sent over encrypted connections (HTTPS).</p>
 

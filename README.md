@@ -67,6 +67,7 @@ Copy `.env.example` to `.env.local` for local work, and set the same values in V
 4. **revenuecat:** add the machax Android app (Play service credentials) and product `topup_219`. Add webhook `https://machax.xyz/api/pay/revenuecat/webhook`. In its Authorization header field type `Bearer <secret>`, and put the same `<secret>` in `REVENUECAT_WEBHOOK_SECRET`. Copy the public Android SDK key.
 5. **env vars:** set the vars above in Vercel and in `.env.local`.
 6. **message cost:** measure and set `DEFAULT_MESSAGE_COST_MICROS` (see below).
+7. **convex prod dashboard:** clear the legacy `passwordResets` table. Its rows hold emails and reset tokens, and account deletion no longer removes them.
 
 **deploy order:** deploy Convex first, then Vercel (`./deploy.sh` does both in that order). Ship the new APK right after. The old APK's password login stops working once Convex prod is deployed.
 
@@ -76,4 +77,4 @@ Copy `.env.example` to `.env.local` for local work, and set the same values in V
 npx tsx scripts/measure-message-cost.ts
 ```
 
-It sends 5 starter messages to a 3-friend pod with the real Anthropic provider and prints each message's cost, the mean, and a ready line `DEFAULT_MESSAGE_COST_MICROS=<mean>` to paste into the env. It needs `ANTHROPIC_API_KEY` in `.env.local`, spends real credit, and takes several minutes because replies arrive at chat pace.
+It sends 5 starter messages with the real Anthropic provider and prints each message's cost, the median, the mean, and a ready line `DEFAULT_MESSAGE_COST_MICROS=<mean>` to paste into the env. The 3-friend pod is picked once and reused for all 5 messages so runs are comparable; the first line names it. A message that takes over 2 minutes is marked incomplete and left out of the mean. It warns when a message got fewer than 3 replies or cost under a fifth of the median, since those skew the mean. It needs `ANTHROPIC_API_KEY` in `.env.local`, spends real credit, and takes several minutes.

@@ -3,12 +3,9 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredUser } from "@/lib/stored-user";
+import { parseAdminUids } from "@/lib/admin-uids";
 
-// Comma-separated Firebase uids; unset or empty means nobody is admin.
-const ADMIN_UIDS = (process.env.NEXT_PUBLIC_ADMIN_UIDS ?? "")
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
+const ADMIN_UIDS = parseAdminUids(process.env.NEXT_PUBLIC_ADMIN_UIDS);
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
