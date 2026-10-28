@@ -6,6 +6,14 @@ import type { EngineEvent } from "@/lib/engine-types";
 const bootstrapUser = vi.fn();
 const mutation = vi.fn();
 const orchestrateChat = vi.fn();
+// after() needs a Next request scope; collect the callbacks and run them by hand.
+const afterCallbacks: (() => unknown)[] = [];
+
+vi.mock("next/server", () => ({
+  after: (cb: () => unknown) => {
+    afterCallbacks.push(cb);
+  },
+}));
 
 vi.mock("@/lib/server-auth", async () => {
   class AuthError extends Error {
@@ -31,18 +39,29 @@ vi.mock("@/lib/orchestrator", () => ({
 
 import { AuthError } from "@/lib/server-auth";
 import { POST } from "./route";
+import { FRIENDS } from "@/lib/friends";
+import {
+  MAX_HISTORY_ENTRY_CHARS,
+  MAX_HISTORY_TOTAL_CHARS,
+  MAX_MESSAGE_CHARS,
+  MAX_OVERRIDE_CHARS,
+  MAX_POD_SIZE,
+  SETTLE_RETURN_TIMEOUT_MS,
+} from "@/lib/chat-limits";
+
+const FRIEND = FRIENDS[0].id;
 
 const ROW = { balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 };
 
 const body = {
   message: "hi",
-  podFriendIds: ["a"],
+  podFriendIds: [FRIEND],
   history: [],
   userName: "spoofed",
   conversationId: "c1",
 };
 
-const req = (b: unknown = body) =>
+const req = (b: unknown = body, raw?: string) =>
   new Request("http://localhost/api/chat", {
     method: "POST",
     headers: {
@@ -50,7 +69,7 @@ const req = (b: unknown = body) =>
       origin: "http://localhost",
       "content-type": "application/json",
     },
-    body: JSON.stringify(b),
+    body: raw ?? JSON.stringify(b),
   });
 
 // Route each Convex mutation by function name.
@@ -88,6 +107,8 @@ async function events(res: Response): Promise<Record<string, unknown>[]> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
+  afterCallbacks.length = 0;
   bootstrapUser.mockReset();
   mutation.mockReset();
   orchestrateChat.mockReset();
@@ -324,5 +345,113 @@ describe("POST /api/chat", () => {
     expect(res.status).toBe(500);
     expect(console.error).toHaveBeenCalled();
     expect(orchestrateChat).not.toHaveBeenCalled();
+  });
+  it("returns 400 for malformed JSON and never begins the message", async () => {
+    convex({});
+    const res = await POST(req(undefined, "{not json"));
+    expect(res.status).toBe(400);
+    expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost");
+    expect(await res.json()).toMatchObject({ error: "bad_request" });
+    expect(callsTo("credits:beginMessage")).toHaveLength(0);
+    expect(orchestrateChat).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["message", { message: "x".repeat(MAX_MESSAGE_CHARS + 1) }],
+    ["history entry", { history: [{ from: "user", text: "x".repeat(MAX_HISTORY_ENTRY_CHARS + 1) }] }],
+    [
+      "history total",
+      { history: Array.from({ length: 21 }, () => ({ from: "user", text: "x".repeat(MAX_HISTORY_TOTAL_CHARS / 20) })) },
+    ],
+    ["podFriendIds count", { podFriendIds: FRIENDS.slice(0, MAX_POD_SIZE + 1).map((f) => f.id) }],
+    ["podFriendIds unknown id", { podFriendIds: [FRIEND, "nobody"] }],
+    ["characterOverrides unknown id", { characterOverrides: JSON.stringify({ nobody: {} }) }],
+    [
+      "characterOverrides value",
+      { characterOverrides: JSON.stringify({ [FRIEND]: { tags: ["x".repeat(MAX_OVERRIDE_CHARS)] } }) },
+    ],
+  ])("returns 400 for an oversized or unknown %s and never begins the message", async (_label, patch) => {
+    convex({});
+    const res = await POST(req({ ...body, ...patch }));
+    expect(res.status).toBe(400);
+    expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost");
+    const json = (await res.json()) as { error: string; reason: string };
+    expect(json.error).toBe("bad_request");
+    expect(json.reason).toEqual(expect.any(String));
+    expect(callsTo("credits:beginMessage")).toHaveLength(0);
+    expect(orchestrateChat).not.toHaveBeenCalled();
+  });
+
+  it("passes only the last 40 history entries and the re-serialized overrides to the engine", async () => {
+    convex({});
+    orchestrateChat.mockImplementation(async function* () {});
+    const history = Array.from({ length: 45 }, (_, i) => ({ from: "user", text: `m${i}` }));
+    const overrides = JSON.stringify({ [FRIEND]: { active: true } });
+    await events(await POST(req({ ...body, history, characterOverrides: overrides })));
+    const params = orchestrateChat.mock.calls[0][0] as { history: { text: string }[]; characterOverrides?: string };
+    expect(params.history).toHaveLength(40);
+    expect(params.history[0].text).toBe("m5");
+    expect(params.characterOverrides).toBe(overrides);
+  });
+
+  it("registers the settle with after(), and running it after the stream ends does not settle twice", async () => {
+    convex({});
+    orchestrateChat.mockImplementation(async function* (p: { collector: CostCollector }) {
+      p.collector.add({ model: "m", costMicros: 300, source: "anthropic" });
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+    });
+    const res = await POST(req());
+    expect(afterCallbacks).toHaveLength(1);
+    await events(res);
+    await afterCallbacks[0]();
+    expect(callsTo("credits:settleMessage")).toHaveLength(1);
+  });
+
+  it("settles from after() when the response is dropped without a cancel", async () => {
+    convex({});
+    let finished = false;
+    orchestrateChat.mockImplementation(async function* (p: { collector: CostCollector }) {
+      try {
+        p.collector.add({ model: "m", costMicros: 400, source: "anthropic" });
+        yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+        yield { type: "message", from: "a", text: "never read" } satisfies EngineEvent;
+      } finally {
+        finished = true;
+      }
+    });
+    const res = await POST(req());
+    const reader = res.body!.getReader();
+    await reader.read(); // the engine is now paused after its first event
+    await afterCallbacks[0](); // the platform ends the invocation; cancel() never ran
+    expect(finished).toBe(true);
+    const settles = callsTo("credits:settleMessage");
+    expect(settles).toHaveLength(1);
+    expect((settles[0][1] as { costMicros: number }).costMicros).toBe(400);
+  });
+
+  it("settles with the cost so far when the generator stays stuck past the return timeout", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    convex({});
+    orchestrateChat.mockImplementation(async function* (p: { collector: CostCollector }) {
+      p.collector.add({ model: "m", costMicros: 650, source: "anthropic" });
+      yield { type: "message", from: "a", text: "one" } satisfies EngineEvent;
+      await new Promise(() => {}); // a model call that never returns
+    });
+
+    const res = await POST(req());
+    const reader = res.body!.getReader();
+    await reader.read();
+    await Promise.resolve();
+    const cancelling = reader.cancel();
+    await vi.advanceTimersByTimeAsync(SETTLE_RETURN_TIMEOUT_MS - 1);
+    expect(callsTo("credits:settleMessage")).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    await cancelling;
+
+    const settles = callsTo("credits:settleMessage");
+    expect(settles).toHaveLength(1);
+    expect((settles[0][1] as { costMicros: number }).costMicros).toBe(650);
+    await afterCallbacks[0](); // safety net reuses the same settle
+    expect(callsTo("credits:settleMessage")).toHaveLength(1);
   });
 });

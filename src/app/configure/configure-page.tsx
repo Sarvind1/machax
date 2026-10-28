@@ -8,6 +8,7 @@ import { logEvent } from "@/lib/analytics";
 import { FRIENDS, FRIENDS_BY_ID } from "@/lib/friends";
 import type { Friend } from "@/lib/friends";
 import { ATTENTION_WINDOWS } from "@/lib/engine-types";
+import { MAX_POD_SIZE } from "@/lib/chat-limits";
 import type { AgentTraits } from "@/lib/engine-types";
 import "./configure.css";
 
@@ -20,6 +21,8 @@ const coreCharacters = CORE_IDS.map((id) => FRIENDS_BY_ID[id]).filter(Boolean);
 
 const DEFAULT_POD = ["priya", "farhan", "meera", "dev", "suresh"];
 const DEFAULT_POD_SIZE = 5;
+// The chat API refuses pods above MAX_POD_SIZE (7).
+const POD_SIZES = [3, 5, MAX_POD_SIZE];
 
 // ── Profile data ──────────────────────────────────────────────────────
 const PROFILES: Record<string, { age: number; gender: string; city: string; job: string }> = {
@@ -144,7 +147,7 @@ export default function ConfigurePage({ userName }: { userName: string }) {
     const loadedPod = derivePod(ovs);
     setSelectedPod(loadedPod.length > 0 ? loadedPod : DEFAULT_POD);
 
-    const ps = savedSettings.podSize ?? DEFAULT_POD_SIZE;
+    const ps = Math.min(savedSettings.podSize ?? DEFAULT_POD_SIZE, MAX_POD_SIZE);
     setPodSize(ps);
     setGroupSettings((s) => ({ ...s, podSize: ps }));
 
@@ -326,7 +329,7 @@ export default function ConfigurePage({ userName }: { userName: string }) {
           <div className="config-pod-bar">
             <span className="config-pod-bar-label">pod size:</span>
             <div className="config-segmented">
-              {[3, 5, 7, 9].map((n) => (
+              {POD_SIZES.map((n) => (
                 <button
                   key={n}
                   className={`config-seg-btn${podSize === n ? " config-seg-btn--active" : ""}`}

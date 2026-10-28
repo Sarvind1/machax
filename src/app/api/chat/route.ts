@@ -1,5 +1,10 @@
 export const dynamic = "force-dynamic";
+// One message fans out to ~10 model calls; each call aborts after 45 s idle
+// (orchestrator.ts), so a message ends well inside this. after() also runs
+// within it, so the settle on a client disconnect gets the same budget.
+export const maxDuration = 300;
 
+import { after } from "next/server";
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server";
 import { orchestrateChat } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
@@ -11,6 +16,7 @@ import { bootstrapUser } from "@/lib/bootstrap-user";
 import { CostCollector } from "@/lib/cost-collector";
 import { summarize } from "@/lib/credits";
 import { authErrorResponse } from "@/lib/server-auth";
+import { SETTLE_RETURN_TIMEOUT_MS, validateChatInput } from "@/lib/chat-limits";
 
 // ConvexHttpClient's own types only accept public functions. The admin client
 // can call internal ones, so narrow it to a typed mutation caller.
@@ -80,8 +86,10 @@ const SETTLE_RETRY_MS = 500;
 const CONVERSATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 // Streams engine events as SSE. When the engine finishes, throws, or the client
-// disconnects, the message is settled exactly once. The cost is read only after
-// the generator has fully ended, so every model call it made is counted.
+// disconnects, the message is settled exactly once. The cost is read after the
+// generator has ended, or after SETTLE_RETURN_TIMEOUT_MS if a model call inside
+// it is still stuck; a call that finishes after that is not billed.
+// `settleOnce` is also handed to after() by the caller as a safety net.
 function iteratorToStream(
   iterator: AsyncGenerator<EngineEvent>,
   opts: {
@@ -89,20 +97,42 @@ function iteratorToStream(
     conversationId?: string;
     settle: () => Promise<CreditEvent>;
   },
-): ReadableStream<Uint8Array> {
-  let settled = false;
+): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<CreditEvent | null> } {
+  let settling: Promise<CreditEvent | null> | null = null;
+  let finished = false;
   let cancelled = false;
+
+  // Every caller (finish, cancel, after) gets the same settle promise.
+  function settleOnce(): Promise<CreditEvent | null> {
+    settling ??= settleNow();
+    return settling;
+  }
+
+  // return() on a generator waiting on a model call is queued behind that call,
+  // so wait for it only so long.
+  async function stopGenerator(): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), SETTLE_RETURN_TIMEOUT_MS);
+    });
+    const closed = iterator.return(undefined).then(
+      () => "closed" as const,
+      (err) => {
+        console.error("Stream close error:", err);
+        return "closed" as const;
+      },
+    );
+    const outcome = await Promise.race([closed, timedOut]);
+    clearTimeout(timer);
+    if (outcome === "timeout") {
+      console.error(`Generator did not stop within ${SETTLE_RETURN_TIMEOUT_MS} ms; settling with the cost so far`);
+    }
+  }
 
   // Stop the generator (runs its finally blocks; no-op if it already ended),
   // then charge. A bookkeeping failure is logged, never thrown.
-  async function settleOnce(): Promise<CreditEvent | null> {
-    if (settled) return null;
-    settled = true;
-    try {
-      await iterator.return(undefined);
-    } catch (err) {
-      console.error("Stream close error:", err);
-    }
+  async function settleNow(): Promise<CreditEvent | null> {
+    await stopGenerator();
     // One retry so a transient Convex failure doesn't leave the lock set and the message free.
     try {
       return await opts.settle();
@@ -119,7 +149,8 @@ function iteratorToStream(
   }
 
   async function finish(controller: ReadableStreamDefaultController<Uint8Array>) {
-    if (settled) return;
+    if (finished) return;
+    finished = true;
     const credit = await settleOnce();
     if (cancelled) return;
     if (credit) {
@@ -129,7 +160,7 @@ function iteratorToStream(
     controller.close();
   }
 
-  return new ReadableStream({
+  const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         const { value, done } = await iterator.next();
@@ -178,6 +209,7 @@ function iteratorToStream(
       await settleOnce();
     },
   });
+  return { stream, settleOnce };
 }
 
 export async function POST(request: Request) {
@@ -185,26 +217,24 @@ export async function POST(request: Request) {
   try {
     const { user, username, name, row } = await bootstrapUser(request);
 
-    const body = await request.json();
+    const body: unknown = await request.json().catch(() => null);
+    // Caps every field that reaches a prompt, so one message's cost stays bounded.
+    const input = validateChatInput(body);
+    if (!input.ok) {
+      return Response.json(
+        { error: "bad_request", reason: input.reason },
+        { status: 400, headers: cors }
+      );
+    }
+    const { message, podFriendIds, history, characterOverrides } = input.value;
     // userName is still accepted for old clients but ignored: identity comes from the token.
-    const { message, podFriendIds, history, sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, conversationId } = body as {
-      message: string;
-      podFriendIds: string[];
-      history: { from: string; text: string }[];
+    const { sessionMood, conversationDepth, userEngagementFrequency, conversationId } = body as {
       userName?: string;
       sessionMood?: { modes?: string[]; pacing?: string; energy?: string };
-      characterOverrides?: string | null;
       conversationDepth?: string;
       userEngagementFrequency?: number;
       conversationId?: string | null;
     };
-
-    if (!message || !podFriendIds?.length) {
-      return Response.json(
-        { error: "message and podFriendIds are required" },
-        { status: 400, headers: cors }
-      );
-    }
 
     // null counts as absent; anything else must be a short plain id.
     const convId = conversationId ?? undefined;
@@ -253,16 +283,19 @@ export async function POST(request: Request) {
     const generator = orchestrateChat({
       message,
       podFriendIds,
-      history: history || [],
+      history,
       userName: name ?? username,
       sessionMood,
-      characterOverrides: characterOverrides || undefined,
+      characterOverrides,
       conversationDepth,
       userEngagementFrequency,
       collector,
     });
 
-    const stream = iteratorToStream(generator, { convex, conversationId: convId, settle });
+    const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle });
+    // Keeps the function alive until the message is charged, even when the client
+    // aborts and the platform would otherwise end the invocation with the response.
+    after(() => settleOnce());
 
     return new Response(stream, {
       headers: {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, type KeyboardEvent, type ChangeEvent } from "react";
+import { MAX_MESSAGE_CHARS } from "@/lib/chat-limits";
 
 interface ChatComposerProps {
   value: string;
@@ -53,6 +54,7 @@ export default function ChatComposer({
         placeholder={placeholder}
         disabled={disabled}
         rows={1}
+        maxLength={MAX_MESSAGE_CHARS}
       />
       <button
         className="chat-composer-send"

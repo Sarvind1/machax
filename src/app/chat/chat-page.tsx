@@ -9,6 +9,7 @@ import { PaymentError, buyTopupWeb } from "@/lib/razorpay-checkout";
 import { NativePurchaseError, buyTopupNative, configurePurchases, waitForCredit } from "@/lib/purchases-native";
 import { signOut } from "@/lib/firebase";
 import type { CreditSummary } from "@/lib/credits";
+import { MAX_HISTORY_ENTRIES, MAX_POD_SIZE } from "@/lib/chat-limits";
 import { logEvent } from "@/lib/analytics";
 import { logActivated } from "@/lib/meta-events";
 import { api } from "../../../convex/_generated/api";
@@ -312,8 +313,9 @@ export default function ChatPage() {
           body: JSON.stringify({
             conversationId: convoId,
             message,
-            podFriendIds: podIds,
-            history,
+            // The server rejects bigger pods and keeps only the last history entries.
+            podFriendIds: podIds.slice(0, MAX_POD_SIZE),
+            history: history.slice(-MAX_HISTORY_ENTRIES),
             userName,
             sessionMood: {
               modes: sessionModes,
@@ -509,17 +511,17 @@ export default function ChatPage() {
             .map(([id]) => id);
 
           if (activeIds.length > 0) {
-            const maxPod = userSettings.podSize || 7;
+            const maxPod = Math.min(userSettings.podSize || MAX_POD_SIZE, MAX_POD_SIZE);
             podIds = activeIds.slice(0, maxPod);
           } else {
-            const maxPod = userSettings.podSize || 7;
+            const maxPod = Math.min(userSettings.podSize || MAX_POD_SIZE, MAX_POD_SIZE);
             podIds = selectPod([tag], maxPod).map(f => f.id);
           }
         } catch {
-          podIds = selectPod([tag], userSettings?.podSize || 7).map(f => f.id);
+          podIds = selectPod([tag], Math.min(userSettings?.podSize || MAX_POD_SIZE, MAX_POD_SIZE)).map(f => f.id);
         }
       } else {
-        podIds = selectPod([tag], userSettings?.podSize || 7).map(f => f.id);
+        podIds = selectPod([tag], Math.min(userSettings?.podSize || MAX_POD_SIZE, MAX_POD_SIZE)).map(f => f.id);
       }
 
       const selectedPod = podIds.map(id => FRIENDS_BY_ID[id]).filter(Boolean);
