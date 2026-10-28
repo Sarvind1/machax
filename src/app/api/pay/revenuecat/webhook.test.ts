@@ -20,6 +20,7 @@ type RcEvent = {
   transaction_id?: string;
   store?: string;
   environment?: string;
+  cancel_reason?: string;
 };
 
 const PURCHASE: RcEvent = {
@@ -44,9 +45,10 @@ const callsTo = (fn: typeof mutation, name: string) =>
 
 // Route Convex calls by function name. grantPurchase is idempotent on ref,
 // like the real ledger; orders.create/setStatus keep one row per order id.
-function convex(opts: { user?: { username: string } | null; fail?: string } = {}) {
+type Order = { uid?: string; provider?: string; status: string; paidAt?: number };
+function convex(opts: { user?: { username: string } | null; fail?: string; orders?: Record<string, Order> } = {}) {
   const refs = new Set<string>();
-  const orders = new Map<string, { status: string; paidAt?: number }>();
+  const orders = new Map<string, Order>(Object.entries(opts.orders ?? {}));
   let balance = 1_000_000;
   query.mockImplementation(async (ref: unknown, args: { providerOrderId?: string }) => {
     const name = getFunctionName(ref as never);
@@ -56,19 +58,25 @@ function convex(opts: { user?: { username: string } | null; fail?: string } = {}
     throw new Error(`unexpected query ${name}`);
   });
   mutation.mockImplementation(
-    async (ref: unknown, args: { ref?: string; amountMicros?: number; providerOrderId?: string; status?: string; paidAt?: number }) => {
+    async (
+      ref: unknown,
+      args: { ref?: string; uid?: string; provider?: string; amountMicros?: number; providerOrderId?: string; status?: string; paidAt?: number },
+    ) => {
       const name = getFunctionName(ref as never);
       if (name === opts.fail) throw new Error("convex down");
       if (name === "orders:create") {
-        if (!orders.has(args.providerOrderId!)) orders.set(args.providerOrderId!, { status: "created" });
+        if (!orders.has(args.providerOrderId!)) {
+          orders.set(args.providerOrderId!, { uid: args.uid, provider: args.provider, status: "created" });
+        }
         return "orderDocId";
       }
       if (name === "orders:setStatus") {
-        orders.set(args.providerOrderId!, { status: args.status!, paidAt: args.paidAt });
+        const prev = orders.get(args.providerOrderId!);
+        orders.set(args.providerOrderId!, { ...prev, status: args.status!, paidAt: args.paidAt ?? prev?.paidAt });
         return null;
       }
       if (name === "credits:ensure") return { balanceMicros: balance };
-      if (name === "credits:grantPurchase") {
+      if (name === "credits:grantPurchase" || name === "credits:adjust") {
         if (refs.has(args.ref!)) return { granted: false, balanceMicros: balance };
         refs.add(args.ref!);
         balance += args.amountMicros!;
@@ -244,5 +252,94 @@ describe("POST /api/pay/revenuecat/webhook", () => {
     expect(await retry.json()).toEqual({ ok: true, granted: false });
     expect(orders.get("GPA.1111-2222")).toMatchObject({ status: "paid" });
     expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(2);
+  });
+});
+
+describe("POST /api/pay/revenuecat/webhook CANCELLATION (Play refund)", () => {
+  const TXN = "GPA.1111-2222";
+  const REFUND: RcEvent = { ...PURCHASE, type: "CANCELLATION", id: "evt_refund", cancel_reason: "CUSTOMER_SUPPORT" };
+
+  it("takes back 2,000,000 micros and marks a paid order refunded", async () => {
+    const { orders } = convex({ orders: { [TXN]: { uid: "u1", provider: "play", status: "paid", paidAt: 1 } } });
+    const res = await POST(hookReq(REFUND));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, granted: true });
+
+    const adjusts = callsTo(mutation, "credits:adjust");
+    expect(adjusts).toHaveLength(1);
+    expect(adjusts[0][1]).toEqual({
+      uid: "u1",
+      amountMicros: -2_000_000,
+      ref: "rc-refund:GPA.1111-2222",
+      meta: { type: "CANCELLATION", reason: "CUSTOMER_SUPPORT" },
+    });
+    const names = mutation.mock.calls.map(([ref]) => getFunctionName(ref as never));
+    expect(names.indexOf("credits:ensure")).toBeLessThan(names.indexOf("credits:adjust"));
+    expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(0);
+    expect(orders.get(TXN)).toMatchObject({ status: "refunded" });
+  });
+
+  it("takes back once when the same CANCELLATION arrives twice", async () => {
+    convex({ orders: { [TXN]: { uid: "u1", provider: "play", status: "paid", paidAt: 1 } } });
+    const first = await POST(hookReq(REFUND));
+    const second = await POST(hookReq(REFUND));
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(await first.json()).toEqual({ ok: true, granted: true });
+    expect(await second.json()).toEqual({ ok: true, granted: false });
+    expect(callsTo(mutation, "orders:setStatus")).toHaveLength(1);
+  });
+
+  it("refunds a grant made by an earlier purchase event", async () => {
+    const { orders } = convex();
+    await POST(hookReq(PURCHASE));
+    const res = await POST(hookReq(REFUND));
+    expect(await res.json()).toEqual({ ok: true, granted: true });
+    expect(orders.get(TXN)).toMatchObject({ status: "refunded" });
+  });
+
+  it("keeps the order refunded when the purchase event is retried after the refund", async () => {
+    const { orders } = convex();
+    await POST(hookReq(PURCHASE));
+    await POST(hookReq(REFUND));
+    const retry = await POST(hookReq(PURCHASE));
+    expect(await retry.json()).toEqual({ ok: true, granted: false });
+    expect(orders.get(TXN)).toMatchObject({ status: "refunded" });
+  });
+
+  it("ignores a CANCELLATION for an unknown transaction", async () => {
+    convex();
+    const res = await POST(hookReq(REFUND));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, ignored: expect.any(String) });
+    expect(callsTo(mutation, "credits:adjust")).toHaveLength(0);
+    expect(callsTo(mutation, "orders:setStatus")).toHaveLength(0);
+  });
+
+  it("ignores a CANCELLATION for an order that was never paid", async () => {
+    convex({ orders: { [TXN]: { uid: "u1", provider: "play", status: "created" } } });
+    const res = await POST(hookReq(REFUND));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, ignored: expect.any(String) });
+    expect(callsTo(mutation, "credits:adjust")).toHaveLength(0);
+  });
+
+  it("answers 200 without adjusting when the account no longer exists", async () => {
+    convex({ user: null, orders: { [TXN]: { uid: "u1", provider: "play", status: "paid", paidAt: 1 } } });
+    const res = await POST(hookReq(REFUND));
+    expect(res.status).toBe(200);
+    expect(callsTo(mutation, "credits:adjust")).toHaveLength(0);
+  });
+
+  it("ignores a CANCELLATION for a different product", async () => {
+    convex({ orders: { [TXN]: { uid: "u1", provider: "play", status: "paid", paidAt: 1 } } });
+    const res = await POST(hookReq({ ...REFUND, product_id: "monthly_sub" }));
+    expect(await res.json()).toMatchObject({ ok: true, ignored: expect.any(String) });
+    expect(mutation).not.toHaveBeenCalled();
+  });
+
+  it("answers 500 when Convex fails, so RevenueCat retries", async () => {
+    convex({ fail: "credits:adjust", orders: { [TXN]: { uid: "u1", provider: "play", status: "paid", paidAt: 1 } } });
+    expect((await POST(hookReq(REFUND))).status).toBe(500);
   });
 });

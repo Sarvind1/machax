@@ -13,6 +13,12 @@ import { TOPUP_MICROS, TOPUP_PAISE, TOPUP_PRODUCT_ID } from "@/lib/credits";
 //
 // RevenueCat dashboard > Integrations > Webhooks: URL /api/pay/revenuecat/webhook,
 // Authorization header "Bearer <REVENUECAT_WEBHOOK_SECRET>".
+//
+// SANDBOX purchases (Play license testers) grant real credit too: the owner
+// decides who is a license tester. The environment is kept in the ledger meta.
+//
+// A Play refund of a one-time product arrives as CANCELLATION: it takes the
+// pack back under a separate rc-refund: ref and marks the order refunded.
 
 type RcEvent = {
   type?: string;
@@ -22,10 +28,12 @@ type RcEvent = {
   transaction_id?: string;
   store?: string;
   environment?: string;
+  cancel_reason?: string;
 };
 
 const LOG = "[api/pay/revenuecat/webhook]";
 const GRANT_TYPES = new Set(["INITIAL_PURCHASE", "NON_RENEWING_PURCHASE"]);
+const REFUND_TYPE = "CANCELLATION";
 const ignored = (why: string) => Response.json({ ok: true, ignored: why });
 
 // Constant-time compare. Hashing first makes both sides the same length, so
@@ -54,7 +62,7 @@ export async function POST(request: Request) {
   if (!event?.type) return Response.json({ error: "missing_event" }, { status: 400 });
 
   const type = event.type;
-  if (!GRANT_TYPES.has(type)) return ignored(type);
+  if (!GRANT_TYPES.has(type) && type !== REFUND_TYPE) return ignored(type);
 
   const uid = event.app_user_id;
   const productId = event.product_id;
@@ -72,6 +80,36 @@ export async function POST(request: Request) {
 
   try {
     const admin = getConvexAdmin() as unknown as InternalAdmin;
+
+    if (type === REFUND_TYPE) {
+      const order = await admin.query(internal.orders.getByProviderOrderId, { providerOrderId: transactionId });
+      // paidAt marks a granted order, so a repeat CANCELLATION for an already
+      // refunded one still reaches adjust, which is idempotent on its ref.
+      const granted =
+        order?.provider === "play" &&
+        (order.status === "paid" || (order.status === "refunded" && order.paidAt !== undefined));
+      if (!order || !granted) {
+        console.warn(LOG, `refund ${transactionId} for an order that is ${order?.status ?? "missing"}: ignored`);
+        return ignored("no_paid_order");
+      }
+      const user = await admin.query(internal.users.getByFirebaseUid, { uid: order.uid });
+      if (!user) {
+        console.warn(LOG, `refund ${transactionId}: account ${order.uid} no longer exists, not adjusted`);
+        return ignored("no_account");
+      }
+      await admin.mutation(internal.credits.ensure, { uid: order.uid, username: user.username });
+      const { granted: adjusted } = await admin.mutation(internal.credits.adjust, {
+        uid: order.uid,
+        amountMicros: -TOPUP_MICROS,
+        ref: `rc-refund:${transactionId}`,
+        meta: { type, reason: event.cancel_reason },
+      });
+      if (order.status !== "refunded") {
+        await admin.mutation(internal.orders.setStatus, { providerOrderId: transactionId, status: "refunded" });
+      }
+      return Response.json({ ok: true, granted: adjusted });
+    }
+
     // grantPurchase needs the credits row, which needs the username.
     const user = await admin.query(internal.users.getByFirebaseUid, { uid });
     if (!user) {
@@ -102,8 +140,9 @@ export async function POST(request: Request) {
     });
 
     // Also covers a retry where the grant landed but marking the order failed.
+    // A late purchase retry must not turn a refunded order back into paid.
     const order = await admin.query(internal.orders.getByProviderOrderId, { providerOrderId: transactionId });
-    if (order?.status !== "paid") {
+    if (order?.status !== "paid" && order?.status !== "refunded") {
       await admin.mutation(internal.orders.setStatus, {
         providerOrderId: transactionId,
         status: "paid",
