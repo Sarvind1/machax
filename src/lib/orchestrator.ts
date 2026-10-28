@@ -29,6 +29,7 @@ import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
 import { buildCharacterMemory } from "./private-memory";
 import type { CostCollector } from "./cost-collector";
 import type { Usage } from "./pricing";
+import { ANTHROPIC_IDLE_MS } from "./chat-limits";
 
 const ENGINE_LOG = join(process.cwd(), "engine-log.jsonl");
 function engineLog(entry: Record<string, unknown>): void {
@@ -288,7 +289,9 @@ async function callAiSdk(
 // by effort. Haiku 4.5 (helper calls): no thinking, no effort setting.
 const THINKING_ALLOWANCE: Record<AnthropicEffort, number> = { low: 2_000, medium: 4_000, high: 8_000, xhigh: 16_000, max: 32_000 };
 type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
-// Fail over to Gemini quickly instead of the SDK's 10-minute default
+// Fail over to Gemini quickly instead of the SDK's 10-minute default. `timeout`
+// covers only the wait for response headers; a stall mid-body is caught by the
+// idle abort in callAnthropic (ANTHROPIC_IDLE_MS without a stream event).
 const ANTHROPIC_REQUEST_OPTIONS = { timeout: 30_000, maxRetries: 1 };
 let anthropicClient: Anthropic | null = null;
 
@@ -300,13 +303,15 @@ async function callAnthropic(
   collector?: CostCollector,
 ): Promise<{ text: string; model: string; usage: Usage }> {
   anthropicClient ??= new Anthropic();
+  const abort = new AbortController();
+  const requestOptions = { ...ANTHROPIC_REQUEST_OPTIONS, signal: abort.signal };
   const stream = model.startsWith("claude-haiku")
     ? anthropicClient.beta.messages.stream({
         model,
         max_tokens: maxTokens,
         system,
         messages: [{ role: "user", content: userPrompt }],
-      }, ANTHROPIC_REQUEST_OPTIONS)
+      }, requestOptions)
     : (() => {
         const effort = (process.env.ANTHROPIC_EFFORT || "medium") as AnthropicEffort;
         return anthropicClient!.beta.messages.stream({
@@ -318,9 +323,39 @@ async function callAnthropic(
           output_config: { effort },
           betas: ["server-side-fallback-2026-07-01"],
           fallbacks: "default",
-        }, ANTHROPIC_REQUEST_OPTIONS);
+        }, requestOptions);
       })();
-  const msg = await stream.finalMessage();
+
+  // Abort when no stream event arrives for ANTHROPIC_IDLE_MS; every event resets the clock.
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let idledOut = false;
+  const armIdle = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idledOut = true;
+      abort.abort();
+    }, ANTHROPIC_IDLE_MS);
+  };
+  // The latest snapshot: input tokens are known from message_start; output_tokens
+  // is the API's running count, which it updates only at message_delta (near the end).
+  let snapshot: { model: string; usage: Usage } | undefined;
+  stream.on("streamEvent", (_event, snap) => {
+    snapshot = snap;
+    armIdle();
+  });
+  armIdle();
+
+  let msg: Awaited<ReturnType<typeof stream.finalMessage>>;
+  try {
+    msg = await stream.finalMessage();
+  } catch (err) {
+    // Stalled or failed mid-stream: bill what the API already reported.
+    if (snapshot) collector?.addAnthropic(snapshot.model, snapshot.usage);
+    if (idledOut) throw new Error(`anthropic stream idle for ${ANTHROPIC_IDLE_MS / 1000}s; aborted`);
+    throw err;
+  } finally {
+    clearTimeout(idleTimer);
+  }
   // Tokens are spent once the final message exists, so meter before any throw below
   // (a refusal or empty reply is still billed). msg.model is the model that actually
   // ran; it differs from `model` after a server-side fallback.
