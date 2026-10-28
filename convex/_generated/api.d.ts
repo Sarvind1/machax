@@ -9,12 +9,14 @@
  */
 
 import type * as conversations from "../conversations.js";
+import type * as credits from "../credits.js";
 import type * as decisions from "../decisions.js";
 import type * as evals from "../evals.js";
 import type * as http from "../http.js";
 import type * as lib_passwords from "../lib/passwords.js";
 import type * as messages from "../messages.js";
 import type * as metaCapi from "../metaCapi.js";
+import type * as orders from "../orders.js";
 import type * as passwordResets from "../passwordResets.js";
 import type * as reports from "../reports.js";
 import type * as settings from "../settings.js";
@@ -30,12 +32,14 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   conversations: typeof conversations;
+  credits: typeof credits;
   decisions: typeof decisions;
   evals: typeof evals;
   http: typeof http;
   "lib/passwords": typeof lib_passwords;
   messages: typeof messages;
   metaCapi: typeof metaCapi;
+  orders: typeof orders;
   passwordResets: typeof passwordResets;
   reports: typeof reports;
   settings: typeof settings;

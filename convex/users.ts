@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { generateSalt, hashPassword } from "./lib/passwords";
 
@@ -125,6 +125,64 @@ export const claimDemoSession = mutation({
       await ctx.db.delete(demoUser._id);
     }
     return { success: true as const, claimedConversations: conversations.length };
+  },
+});
+
+function baseUsername(uid: string, email?: string) {
+  const local = (email ?? "").split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "");
+  return local || `user-${uid.slice(0, 8)}`;
+}
+
+// Find or create the app user for a verified Firebase account.
+// Order: firebaseUid, then email (links a legacy row), then a new row.
+export const upsertFromFirebase = internalMutation({
+  args: {
+    uid: v.string(),
+    email: v.optional(v.string()),
+    name: v.optional(v.string()),
+  },
+  handler: async (ctx, { uid, email, name }) => {
+    const byUid = await ctx.db
+      .query("users")
+      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
+      .first();
+    if (byUid) {
+      return { username: byUid.username, name: byUid.name ?? name, created: false };
+    }
+
+    if (email) {
+      const candidates = Array.from(new Set([email, email.toLowerCase()]));
+      for (const candidate of candidates) {
+        const byEmail = await ctx.db
+          .query("users")
+          .withIndex("by_email", (q) => q.eq("email", candidate))
+          .first();
+        if (byEmail) {
+          await ctx.db.patch(byEmail._id, { firebaseUid: uid });
+          return { username: byEmail.username, name: byEmail.name ?? name, created: false };
+        }
+      }
+    }
+
+    const base = baseUsername(uid, email);
+    let username = base;
+    for (let n = 2; ; n++) {
+      const taken = await ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .first();
+      if (!taken) break;
+      username = `${base}-${n}`;
+    }
+    await ctx.db.insert("users", {
+      username,
+      email,
+      password: "",
+      name,
+      firebaseUid: uid,
+      createdAt: Date.now(),
+    });
+    return { username, name, created: true };
   },
 });
 

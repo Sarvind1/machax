@@ -37,8 +37,11 @@ export default defineSchema({
     name: v.optional(v.string()),
     city: v.optional(v.string()),
     age: v.optional(v.number()),
+    firebaseUid: v.optional(v.string()),
     createdAt: v.number(),
-  }).index("by_username", ["username"]).index("by_email", ["email"]),
+  }).index("by_username", ["username"])
+    .index("by_email", ["email"])
+    .index("by_firebaseUid", ["firebaseUid"]),
 
   userSettings: defineTable({
     username: v.string(),
@@ -128,6 +131,54 @@ export default defineSchema({
     eventId: v.string(),
     createdAt: v.number(),
   }).index("by_username_event", ["username", "eventName"]),
+
+  // Per-account credit balance, in integer micro-dollars (1_000_000 = $1.00).
+  // Keyed by Firebase uid. inFlightSince is the one-message-at-a-time guard.
+  credits: defineTable({
+    uid: v.string(),
+    username: v.string(),
+    balanceMicros: v.number(),
+    lifetimeSpentMicros: v.number(),
+    messageCount: v.number(),
+    inFlightSince: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_uid", ["uid"]),
+
+  // Append-only record of every balance change. amountMicros is signed.
+  ledger: defineTable({
+    uid: v.string(),
+    kind: v.union(
+      v.literal("grant"),
+      v.literal("spend"),
+      v.literal("purchase"),
+      v.literal("adjust")
+    ),
+    amountMicros: v.number(),
+    balanceAfterMicros: v.number(),
+    ref: v.string(),
+    meta: v.optional(v.any()),
+    createdAt: v.number(),
+  }).index("by_uid", ["uid", "createdAt"])
+    .index("by_ref", ["ref"]),
+
+  orders: defineTable({
+    uid: v.string(),
+    provider: v.string(),
+    providerOrderId: v.string(),
+    productId: v.string(),
+    amountPaise: v.number(),
+    creditMicros: v.number(),
+    status: v.union(
+      v.literal("created"),
+      v.literal("paid"),
+      v.literal("failed"),
+      v.literal("refunded")
+    ),
+    createdAt: v.number(),
+    paidAt: v.optional(v.number()),
+  }).index("by_providerOrderId", ["providerOrderId"])
+    .index("by_uid", ["uid", "createdAt"]),
 
   evalResults: defineTable({
     evalRunId: v.id("evalRuns"),
