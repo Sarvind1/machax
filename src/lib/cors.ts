@@ -12,7 +12,7 @@ export function corsHeaders(request: Request): HeadersInit {
   return {
     "Access-Control-Allow-Origin": allowed ? origin : "",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 }
 
