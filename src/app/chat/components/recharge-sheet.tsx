@@ -7,7 +7,8 @@ interface RechargeSheetProps {
   open: boolean;
   credits: CreditSummary | null;
   onClose: () => void;
-  // Starts the payment. Wired to Razorpay (web) / Play Billing (Android) later.
+  // Starts the payment: Razorpay checkout on the web (Play Billing on Android
+  // comes later). The page closes the sheet and toasts on success.
   onBuy: () => void;
   busy: boolean;
   error: string | null;
@@ -44,7 +45,7 @@ export default function RechargeSheet({ open, credits, onClose, onBuy, busy, err
         </p>
         {error && <p className="recharge-error" role="alert">{error}</p>}
         <button type="button" className="recharge-pay" onClick={onBuy} disabled={busy} aria-busy={busy}>
-          {`pay ${PRICE}`}
+          {busy ? "paying…" : `pay ${PRICE}`}
         </button>
         <button type="button" className="recharge-close" onClick={onClose} disabled={busy}>
           not now

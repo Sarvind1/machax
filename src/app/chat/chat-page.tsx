@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
+import { Capacitor } from "@capacitor/core";
 import { AuthRequired, authedFetch, getStoredUser } from "@/lib/api";
+import { PaymentError, buyTopupWeb } from "@/lib/razorpay-checkout";
 import { signOut } from "@/lib/firebase";
 import type { CreditSummary } from "@/lib/credits";
 import { logEvent } from "@/lib/analytics";
@@ -89,6 +91,8 @@ export default function ChatPage() {
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
   const [credits, setCredits] = useState<CreditSummary | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [buying, setBuying] = useState(false);
+  const [buyError, setBuyError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const leavingRef = useRef(false);
 
@@ -322,10 +326,12 @@ export default function ChatPage() {
         if (response.status === 402) {
           const body = (await response.json().catch(() => null)) as { credits?: CreditSummary } | null;
           if (body?.credits) setCredits(body.credits);
+          setInput((current) => current || message);
           setRechargeOpen(true);
           return;
         }
         if (response.status === 409) {
+          setInput((current) => current || message);
           setToast("still replying, give it a sec");
           return;
         }
@@ -432,7 +438,7 @@ export default function ChatPage() {
                 }
               }
 
-              if (data.credit) {
+              if (data.credit && typeof data.credit.messagesLeft === "number") {
                 const event = data.credit as CreditEvent;
                 setCredits((prev) => creditFromEvent(event, prev));
               }
@@ -630,6 +636,31 @@ export default function ChatPage() {
   );
 
   const openRecharge = () => setRechargeOpen(true);
+  const closeRecharge = () => {
+    setRechargeOpen(false);
+    setBuyError(null);
+  };
+
+  const handleBuy = async () => {
+    // Native builds pay through Play Billing (wired in a later task).
+    if (Capacitor.isNativePlatform() || buying) return;
+    setBuying(true);
+    setBuyError(null);
+    try {
+      const { credits: next } = await buyTopupWeb();
+      setCredits(next);
+      setRechargeOpen(false);
+      setToast(`credit added · ~${next.messagesLeft} messages`);
+    } catch (err) {
+      if (err instanceof AuthRequired) {
+        await goToLogin();
+        return;
+      }
+      setBuyError(err instanceof PaymentError ? err.message : "payment didn't go through");
+    } finally {
+      setBuying(false);
+    }
+  };
 
   // Shared by the landing and chat views.
   const overlays = (
@@ -638,11 +669,10 @@ export default function ChatPage() {
       <RechargeSheet
         open={rechargeOpen}
         credits={credits}
-        onClose={() => setRechargeOpen(false)}
-        // Payment is wired in the Razorpay / Play Billing tasks.
-        onBuy={() => {}}
-        busy={false}
-        error={null}
+        onClose={closeRecharge}
+        onBuy={handleBuy}
+        busy={buying}
+        error={buyError}
       />
     </>
   );
