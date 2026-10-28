@@ -12,7 +12,44 @@
           "package_name": "xyz.machax.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "962423374256-0fi690a67fm83r5b6rl49shmcrv5gvp7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "xyz.machax.app",
+            "certificate_hash": "0aa809e157fac206db341341e39c880dffaf57bb"
+          }
+        },
+        {
+          "client_id": "962423374256-db3laojr3qr636dm6042ukic1il30np1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "xyz.machax.app",
+            "certificate_hash": "cd6072a6e66aa483fc889fb1aea503f09b00d63e"
+          }
+        },
+        {
+          "client_id": "962423374256-q9dokkepeugd9kn1mt96c4oofh7t9ggo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "xyz.machax.app",
+            "certificate_hash": "9d01d677c6ed4c9c66d0a73edc2328c7a7aeda8b"
+          }
+        },
+        {
+          "client_id": "962423374256-tgdfd2jpaie358carnsmac2p8aphsldr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "xyz.machax.app",
+            "certificate_hash": "4c7e575751f3bd47f003ea83cae846a3beaa6910"
+          }
+        },
+        {
+          "client_id": "962423374256-k1phnngsjbcej43dsepr9d7mp4imsloc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCWMI3cpQCTXmtb8EvSYpIKmfeY_yNa7T4"
@@ -20,7 +57,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "962423374256-k1phnngsjbcej43dsepr9d7mp4imsloc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
