@@ -8,7 +8,8 @@ const ALLOWED_ORIGINS = [
 
 export function corsHeaders(request: Request): HeadersInit {
   const origin = request.headers.get("origin") ?? "";
-  const allowed = ALLOWED_ORIGINS.some((o) => origin.startsWith(o));
+  // Exact match: a prefix check would let http://localhost.evil.com through.
+  const allowed = ALLOWED_ORIGINS.includes(origin);
   return {
     "Access-Control-Allow-Origin": allowed ? origin : "",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
