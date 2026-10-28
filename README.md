@@ -45,6 +45,8 @@ Copy `.env.example` to `.env.local` for local work, and set the same values in V
 
 | name | side | what it is for |
 | --- | --- | --- |
+| `NEXT_PUBLIC_CONVEX_URL` | server + client | Convex deployment URL; every credit, payment and chat route needs it |
+| `CONVEX_DEPLOY_KEY` | server | Convex deploy key; lets server routes call internal Convex functions (credits, orders, users) |
 | `FIREBASE_PROJECT_ID` | server | Firebase project whose ID tokens the API trusts (`machax-b8796`) |
 | `DEFAULT_MESSAGE_COST_MICROS` | server | guessed cost of one message, in micro-dollars (1,000,000 = $1), used for "messages left" until an account has its own average. set it from the measurement script below |
 | `RAZORPAY_KEY_ID` | server | Razorpay API key id (`rzp_test_...` in test mode) |
@@ -69,7 +71,14 @@ Copy `.env.example` to `.env.local` for local work, and set the same values in V
 6. **message cost:** measure and set `DEFAULT_MESSAGE_COST_MICROS` (see below).
 7. **convex prod dashboard:** clear the legacy `passwordResets` table. Its rows hold emails and reset tokens, and account deletion no longer removes them.
 
-**deploy order:** deploy Convex first, then Vercel (`./deploy.sh` does both in that order). Ship the new APK right after. The old APK's password login stops working once Convex prod is deployed.
+### rollout
+
+The shipped APK breaks the moment Vercel deploys this branch: its chat calls send no sign-in token, so **every chat message gets a 401**, not just login, and it has no screen for that. The new APK can't go first either, because it needs the new server. So:
+
+1. Finish the owner steps above.
+2. Build the release APK against prod and submit it to Play review. Don't roll it out yet.
+3. When Play approves it, deploy Convex then Vercel (`./deploy.sh` does both, in that order), and start the APK rollout the same hour.
+4. Expect a short window where users who haven't updated see errors until they install the new version.
 
 ### measuring message cost
 
