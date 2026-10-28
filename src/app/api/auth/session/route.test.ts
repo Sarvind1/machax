@@ -46,7 +46,7 @@ describe("POST /api/auth/session", () => {
   });
 
   it("returns uid, username, name and the credit summary", async () => {
-    requireUser.mockResolvedValue({ uid: "u1", email: "a@b.com", name: "Alice", emailVerified: true });
+    requireUser.mockResolvedValue({ uid: "u1", googleId: "g1", email: "a@b.com", name: "Alice", emailVerified: true });
     mutation
       .mockResolvedValueOnce({ username: "a", name: "Alice", created: true })
       .mockResolvedValueOnce({ balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 });
@@ -78,6 +78,7 @@ describe("POST /api/auth/session", () => {
     expect(mutation).toHaveBeenNthCalledWith(2, expect.anything(), {
       uid: "u1",
       username: "a",
+      googleId: "g1",
     });
   });
 

@@ -37,7 +37,7 @@ export const fulfillOrder = internalMutation({
     const user = await getUser(ctx, order.uid);
     if (!user) return { outcome: "no_user" as const };
 
-    await ensureRow(ctx, order.uid, user.username);
+    await ensureRow(ctx, order.uid, user.username, null); // no free grant from here
     const { granted, balanceMicros } = await applyOnce(
       ctx,
       { uid: order.uid, amountMicros: order.creditMicros, ref, meta },
@@ -97,7 +97,7 @@ export const refundOrder = internalMutation({
 
     const user = await getUser(ctx, order.uid);
     if (!user) return { outcome: "no_user" as const };
-    await ensureRow(ctx, order.uid, user.username);
+    await ensureRow(ctx, order.uid, user.username, null); // no free grant from here
     const res = await applyOnce(ctx, { uid: order.uid, amountMicros, ref, meta }, "adjust");
     if (order.status !== "refunded") await ctx.db.patch(order._id, { status: "refunded" });
     return { outcome: res.granted ? ("adjusted" as const) : ("already" as const) };

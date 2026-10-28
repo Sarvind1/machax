@@ -46,7 +46,7 @@ describe("GET /api/credits", () => {
   });
 
   it("upserts the user, ensures credits, and returns the summary with CORS", async () => {
-    requireUser.mockResolvedValue({ uid: "u1", email: "a@b.com", name: "Alice", emailVerified: true });
+    requireUser.mockResolvedValue({ uid: "u1", googleId: "g1", email: "a@b.com", name: "Alice", emailVerified: true });
     mutation
       .mockResolvedValueOnce({ username: "a", name: "Alice", created: true })
       .mockResolvedValueOnce({ balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 });
@@ -73,6 +73,7 @@ describe("GET /api/credits", () => {
     expect(mutation).toHaveBeenNthCalledWith(2, expect.anything(), {
       uid: "u1",
       username: "a",
+      googleId: "g1",
     });
   });
 

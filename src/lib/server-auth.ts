@@ -6,7 +6,10 @@ import { corsHeaders } from "./cors";
 const JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
-export type AuthedUser = { uid: string; email?: string; name?: string; emailVerified: boolean };
+// googleId is the Google account's own subject id. Unlike uid it survives
+// account deletion (a deleted Firebase user signs back in with a new uid), so
+// the free credit grant is keyed on it.
+export type AuthedUser = { uid: string; googleId: string; email?: string; name?: string; emailVerified: boolean };
 
 // Only Google sign-in is enabled. Pinning it here means turning on anonymous or
 // email/password sign-in in the Firebase console later cannot mint free $1
@@ -62,12 +65,20 @@ export async function requireUser(
     if (typeof payload.sub !== "string" || payload.sub === "") {
       throw new AuthError("token has no subject");
     }
-    const firebase = payload.firebase as { sign_in_provider?: unknown } | undefined;
+    const firebase = payload.firebase as
+      | { sign_in_provider?: unknown; identities?: Record<string, unknown> }
+      | undefined;
     if (firebase?.sign_in_provider !== ALLOWED_SIGN_IN_PROVIDER) {
       throw new AuthError("sign-in provider not allowed");
     }
+    const googleIds = firebase.identities?.[ALLOWED_SIGN_IN_PROVIDER];
+    const googleId = Array.isArray(googleIds) ? googleIds[0] : undefined;
+    if (typeof googleId !== "string" || googleId === "") {
+      throw new AuthError("token has no google identity");
+    }
     return {
       uid: payload.sub,
+      googleId,
       email: typeof payload.email === "string" ? payload.email : undefined,
       name: typeof payload.name === "string" ? payload.name : undefined,
       emailVerified: payload.email_verified === true,

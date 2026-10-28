@@ -41,7 +41,7 @@ describe("users.deleteByUid", () => {
     });
 
     // Signing in again with the same uid starts at $0, no second free grant.
-    const again = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    const again = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     expect(again.balanceMicros).toBe(0);
   });
 

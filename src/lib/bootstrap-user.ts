@@ -31,6 +31,6 @@ export async function bootstrapUser(request: Request): Promise<{
     emailVerified: user.emailVerified,
     name: user.name,
   });
-  const row = await client.mutation(internal.credits.ensure, { uid: user.uid, username });
+  const row = await client.mutation(internal.credits.ensure, { uid: user.uid, username, googleId: user.googleId });
   return { user, username, name, row };
 }

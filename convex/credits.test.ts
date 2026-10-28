@@ -40,18 +40,67 @@ describe("constants", () => {
 describe("credits.ensure", () => {
   test("grants the free amount once and writes one grant ledger row", async () => {
     const t = setup();
-    const first = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
-    const second = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    const first = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
+    const second = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     expect(first).toEqual({ balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 });
     expect(second).toEqual(first);
     const rows = await ledgerRows(t, "u1");
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       kind: "grant",
-      ref: "free:u1",
+      ref: "free:google:g-u1",
       amountMicros: 1_000_000,
       balanceAfterMicros: 1_000_000,
     });
+  });
+});
+
+describe("credits.ensure free grant keyed on the Google account", () => {
+  test("deleting the account and signing in again with a new uid grants nothing; another Google account still gets $1", async () => {
+    const t = setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", { username: "alice", password: "", firebaseUid: "uidA", createdAt: 1 });
+    });
+    const first = await t.mutation(internal.credits.ensure, { uid: "uidA", username: "alice", googleId: "G" });
+    expect(first.balanceMicros).toBe(1_000_000);
+    await t.mutation(internal.credits.beginMessage, { uid: "uidA", ref: "m1" });
+    await t.mutation(internal.credits.settleMessage, { uid: "uidA", costMicros: 400_000, ref: "m1", meta: null });
+
+    await t.mutation(internal.users.deleteByUid, { uid: "uidA" });
+    expect(await creditsRow(t, "uidA")).toBeNull();
+
+    // same Google account, new Firebase uid after the Firebase user was deleted
+    const again = await t.mutation(internal.credits.ensure, { uid: "uidB", username: "alice", googleId: "G" });
+    expect(again).toEqual({ balanceMicros: 0, lifetimeSpentMicros: 0, messageCount: 0 });
+    expect(await ledgerRows(t, "uidB")).toHaveLength(0);
+    const grants = await t.run(async (ctx) =>
+      (await ctx.db.query("ledger").collect()).filter((r) => r.kind === "grant"),
+    );
+    expect(grants.map((g) => g.ref)).toEqual(["free:google:G"]);
+
+    const other = await t.mutation(internal.credits.ensure, { uid: "uidC", username: "carol", googleId: "H" });
+    expect(other.balanceMicros).toBe(1_000_000);
+  });
+
+  test("a legacy free:<uid> grant still blocks a second grant for that uid", async () => {
+    const t = setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("ledger", {
+        uid: "old",
+        kind: "grant",
+        amountMicros: 1_000_000,
+        balanceAfterMicros: 1_000_000,
+        ref: "free:old",
+        createdAt: 1,
+      });
+    });
+    const res = await t.mutation(internal.credits.ensure, { uid: "old", username: "olga", googleId: "G2" });
+    expect(res.balanceMicros).toBe(0);
+  });
+
+  test("rejects an empty googleId", async () => {
+    const t = setup();
+    await expect(t.mutation(internal.credits.ensure, { uid: "u9", username: "x", googleId: "" })).rejects.toThrow();
   });
 });
 
@@ -68,7 +117,7 @@ describe("credits.ensure ledger guard", () => {
         createdAt: 1,
       });
     });
-    const res = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    const res = await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     expect(res).toEqual({ balanceMicros: 0, lifetimeSpentMicros: 0, messageCount: 0 });
     expect((await creditsRow(t, "u1"))?.balanceMicros).toBe(0);
     const grants = (await ledgerRows(t, "u1")).filter((r) => r.kind === "grant");
@@ -80,7 +129,7 @@ describe("credits.get", () => {
   test("null when no account, triple when present", async () => {
     const t = setup();
     expect(await t.query(internal.credits.get, { uid: "nobody" })).toBeNull();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     expect(await t.query(internal.credits.get, { uid: "u1" })).toEqual({
       balanceMicros: 1_000_000,
       lifetimeSpentMicros: 0,
@@ -100,7 +149,7 @@ describe("credits.beginMessage", () => {
 
   test("ok with credit, then busy on an immediate second call", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({ ok: true });
     expect((await creditsRow(t, "u1"))?.inFlightSince).toBeTypeOf("number");
     expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({
@@ -111,7 +160,7 @@ describe("credits.beginMessage", () => {
 
   test("out_of_credit when balance is 0", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     await t.run(async (ctx) => {
       const row = (await ctx.db.query("credits").first())!;
       await ctx.db.patch(row._id, { balanceMicros: 0 });
@@ -124,7 +173,7 @@ describe("credits.beginMessage", () => {
 
   test("a stale inFlightSince (100 s old) does not block", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     await t.run(async (ctx) => {
       const row = (await ctx.db.query("credits").first())!;
       await ctx.db.patch(row._id, { inFlightSince: Date.now() - 100_000 });
@@ -134,7 +183,7 @@ describe("credits.beginMessage", () => {
 
   test("a fresh inFlightSince (10 s old) blocks", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     await t.run(async (ctx) => {
       const row = (await ctx.db.query("credits").first())!;
       await ctx.db.patch(row._id, { inFlightSince: Date.now() - 10_000 });
@@ -149,7 +198,7 @@ describe("credits.beginMessage", () => {
 describe("credits.settleMessage", () => {
   test("charges the cost, bumps counters, clears inFlightSince, writes a charge row", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:1" });
     const res = await t.mutation(internal.credits.settleMessage, {
       uid: "u1",
@@ -173,7 +222,7 @@ describe("credits.settleMessage", () => {
 
   test("can push the balance negative", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:big" });
     const res = await t.mutation(internal.credits.settleMessage, {
       uid: "u1",
@@ -190,7 +239,7 @@ describe("credits.settleMessage", () => {
 
   test("settle is idempotent on ref: a retried settle charges once and clears the lock", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "dup" });
     const first = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100_000, ref: "dup", meta: null });
     // a lock with no ref (set before refs existed) is cleared by the duplicate too
@@ -212,7 +261,7 @@ describe("credits.settleMessage", () => {
 
   test("a settle for another message leaves the lock alone", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     // msg:old outlived the stale window, so msg:new took the lock
     await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:new" });
     const res = await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 50_000, ref: "msg:old", meta: null });
@@ -234,7 +283,7 @@ describe("credits.settleMessage", () => {
 
   test("returns null without throwing when the credits row is gone", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "msg:1" });
     await t.run(async (ctx) => {
       const row = (await ctx.db.query("credits").first())!;
@@ -250,7 +299,7 @@ describe("credits.settleMessage", () => {
 describe("amount validation", () => {
   async function withAccount() {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     return t;
   }
 
@@ -306,7 +355,7 @@ describe("amount validation", () => {
 describe("credits.grantPurchase", () => {
   test("is idempotent on ref", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     const args = { uid: "u1", amountMicros: 2_000_000, ref: "pay:abc", meta: { orderId: "o1" } };
     const a = await t.mutation(internal.credits.grantPurchase, args);
     const b = await t.mutation(internal.credits.grantPurchase, args);
@@ -321,7 +370,7 @@ describe("credits.grantPurchase", () => {
 describe("credits.adjust", () => {
   test("negative adjustment (refund) reduces balance, idempotent on ref", async () => {
     const t = setup();
-    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice" });
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
     const args = { uid: "u1", amountMicros: -250_000, ref: "refund:1", meta: null };
     const a = await t.mutation(internal.credits.adjust, args);
     const b = await t.mutation(internal.credits.adjust, args);

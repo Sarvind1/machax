@@ -54,14 +54,15 @@ describe("pay.fulfillOrder", () => {
   test("grants the order's credit once, creating the credits row first", async () => {
     const t = await setup();
     const first = await t.mutation(internal.pay.fulfillOrder, { providerOrderId: "order_1", ref: "order_1" });
-    // $1 free grant + 2,000,000 purchase
-    expect(first).toEqual({ outcome: "granted", balanceMicros: 3_000_000 });
+    // 2,000,000 purchase only: a row created here gets no free grant (no googleId to check)
+    expect(first).toEqual({ outcome: "granted", balanceMicros: 2_000_000 });
+    expect((await ledger(t)).filter((r) => r.kind === "grant")).toHaveLength(0);
     const o = await order(t);
     expect(o).toMatchObject({ status: "paid", paidAt: expect.any(Number) });
     const paidAt = o!.paidAt;
 
     const second = await t.mutation(internal.pay.fulfillOrder, { providerOrderId: "order_1", ref: "order_1" });
-    expect(second).toEqual({ outcome: "already", balanceMicros: 3_000_000 });
+    expect(second).toEqual({ outcome: "already", balanceMicros: 2_000_000 });
     expect((await order(t))?.paidAt).toBe(paidAt);
     expect((await ledger(t)).filter((r) => r.kind === "purchase")).toHaveLength(1);
   });
@@ -121,7 +122,7 @@ describe("pay.refundOrder", () => {
     await t.mutation(internal.pay.fulfillOrder, { providerOrderId: "order_1", ref: "order_1" });
     const res = await t.mutation(internal.pay.refundOrder, { ...full, meta: { why: "x" } });
     expect(res).toEqual({ outcome: "adjusted" });
-    expect(await balance(t)).toBe(1_000_000);
+    expect(await balance(t)).toBe(0);
     const o = await order(t);
     expect(o).toMatchObject({ status: "refunded", paidAt: expect.any(Number) });
     expect((await ledger(t)).find((r) => r.kind === "adjust")).toMatchObject({
@@ -136,7 +137,7 @@ describe("pay.refundOrder", () => {
     await t.mutation(internal.pay.fulfillOrder, { providerOrderId: "order_1", ref: "order_1" });
     await t.mutation(internal.pay.refundOrder, full);
     expect(await t.mutation(internal.pay.refundOrder, full)).toEqual({ outcome: "already" });
-    expect(await balance(t)).toBe(1_000_000);
+    expect(await balance(t)).toBe(0);
   });
 
   test("a second partial refund with a new ref applies on the refunded order", async () => {
@@ -145,7 +146,7 @@ describe("pay.refundOrder", () => {
     const half = { providerOrderId: "order_1", amountMicros: -1_000_000 };
     expect(await t.mutation(internal.pay.refundOrder, { ...half, ref: "refund:r1" })).toEqual({ outcome: "adjusted" });
     expect(await t.mutation(internal.pay.refundOrder, { ...half, ref: "refund:r2" })).toEqual({ outcome: "adjusted" });
-    expect(await balance(t)).toBe(1_000_000);
+    expect(await balance(t)).toBe(0);
     expect((await order(t))?.status).toBe("refunded");
   });
 
@@ -226,7 +227,7 @@ describe("pay.refundOrder reads paidAt, not status", () => {
       await ctx.db.patch(o!._id, { status: "failed" });
     });
     expect(await t.mutation(internal.pay.refundOrder, full)).toEqual({ outcome: "adjusted" });
-    expect(await balance(t)).toBe(1_000_000);
+    expect(await balance(t)).toBe(0);
   });
 
   test("closes a failed order that was never granted", async () => {

@@ -30,7 +30,10 @@ async function sign(
     email_verified?: boolean;
   } = {},
 ): Promise<string> {
-  const firebase = overrides.firebase === undefined ? { sign_in_provider: "google.com" } : overrides.firebase;
+  const firebase =
+    overrides.firebase === undefined
+      ? { sign_in_provider: "google.com", identities: { "google.com": ["g-123"], email: ["a@b.com"] } }
+      : overrides.firebase;
   return new SignJWT({
     email: "a@b.com",
     name: "Alice",
@@ -50,7 +53,7 @@ describe("requireUser", () => {
   it("returns uid, email, name for a valid token", async () => {
     const token = await sign();
     const user = await requireUser(req(`Bearer ${token}`), { jwks });
-    expect(user).toEqual({ uid: "uid1", email: "a@b.com", name: "Alice", emailVerified: true });
+    expect(user).toEqual({ uid: "uid1", googleId: "g-123", email: "a@b.com", name: "Alice", emailVerified: true });
   });
 
   it("reports an unverified email as emailVerified false", async () => {
@@ -64,6 +67,10 @@ describe("requireUser", () => {
     ["custom", { sign_in_provider: "custom" }],
     ["no provider", {}],
     ["no firebase claim", null],
+    ["google sign-in with no identities", { sign_in_provider: "google.com" }],
+    ["google sign-in with no google identity", { sign_in_provider: "google.com", identities: { email: ["a@b.com"] } }],
+    ["google sign-in with an empty google id", { sign_in_provider: "google.com", identities: { "google.com": [""] } }],
+    ["google sign-in with a non-string google id", { sign_in_provider: "google.com", identities: { "google.com": [123] } }],
   ])("rejects a %s sign-in", async (_label, firebase) => {
     const token = await sign({ firebase });
     await expect(requireUser(req(`Bearer ${token}`), { jwks })).rejects.toBeInstanceOf(AuthError);

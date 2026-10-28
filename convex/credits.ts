@@ -73,21 +73,40 @@ export async function applyOnce(
   return { granted: true, balanceMicros };
 }
 
+async function hasLedgerRef(ctx: Pick<MutationCtx, "db">, ref: string): Promise<boolean> {
+  const row = await ctx.db
+    .query("ledger")
+    .withIndex("by_ref", (q) => q.eq("ref", ref))
+    .first();
+  return row !== null;
+}
+
 // Create the account's credits row with the one-time free grant. Safe to call
 // repeatedly. Shared by ensure and pay.ts.
-export async function ensureRow(ctx: MutationCtx, uid: string, username: string): Promise<Summary> {
+//
+// The free grant is keyed by the Google account (googleId, the stable Google
+// subject), not the Firebase uid: deleting the account deletes the Firebase
+// user, and the same Google account then signs in with a new uid. Ledger rows
+// survive deletion, so `free:google:<googleId>` is the durable guard. The
+// legacy `free:<uid>` ref is checked too. When either exists, or googleId is
+// null (a caller that can't vouch for the Google account), the row is created
+// empty.
+export async function ensureRow(
+  ctx: MutationCtx,
+  uid: string,
+  username: string,
+  googleId: string | null,
+): Promise<Summary> {
   const existing = await getRow(ctx, uid);
   if (existing) return summarize(existing);
 
   const now = Date.now();
-  // The free grant is unique by ref. If its ledger row already exists but the
-  // credits row is gone, recreate the row empty instead of granting $1 again.
-  const freeRef = `free:${uid}`;
-  const alreadyGranted = await ctx.db
-    .query("ledger")
-    .withIndex("by_ref", (q) => q.eq("ref", freeRef))
-    .first();
-  if (alreadyGranted) {
+  const freeRef = googleId === null ? null : `free:google:${googleId}`;
+  if (
+    freeRef === null ||
+    (await hasLedgerRef(ctx, freeRef)) ||
+    (await hasLedgerRef(ctx, `free:${uid}`))
+  ) {
     await ctx.db.insert("credits", {
       uid,
       username,
@@ -121,8 +140,11 @@ export async function ensureRow(ctx: MutationCtx, uid: string, username: string)
 }
 
 export const ensure = internalMutation({
-  args: { uid: v.string(), username: v.string() },
-  handler: async (ctx, { uid, username }) => ensureRow(ctx, uid, username),
+  args: { uid: v.string(), username: v.string(), googleId: v.string() },
+  handler: async (ctx, { uid, username, googleId }) => {
+    if (googleId === "") throw new Error("credits: googleId must be non-empty");
+    return ensureRow(ctx, uid, username, googleId);
+  },
 });
 
 // Race guard. Read-then-write in one mutation; Convex serializes mutations,
