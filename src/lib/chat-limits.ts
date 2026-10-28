@@ -1,7 +1,9 @@
 // chat-limits.ts — caps on what a client may send to /api/chat.
 // Every prompt carries the user's message and history, so these caps bound
 // what one message can cost. The route rejects (400) instead of trimming,
-// except that history keeps only its last MAX_HISTORY_ENTRIES entries.
+// except for history, which is context, not the new message: it keeps only its
+// last MAX_HISTORY_ENTRIES entries and cuts each to MAX_HISTORY_ENTRY_CHARS, so
+// an old conversation with one long past message is not locked out.
 
 import { FRIENDS_BY_ID } from "./friends";
 
@@ -64,11 +66,9 @@ export function validateChatInput(body: unknown): ChatInputResult {
         return fail("history entries need a string from and text");
       }
       if (entry.from.length > MAX_HISTORY_FROM_CHARS) return fail("history entry has an invalid from");
-      if (entry.text.length > MAX_HISTORY_ENTRY_CHARS) {
-        return fail(`history entry is over ${MAX_HISTORY_ENTRY_CHARS} characters`);
-      }
-      total += entry.text.length;
-      kept.push({ from: entry.from, text: entry.text });
+      const text = entry.text.slice(0, MAX_HISTORY_ENTRY_CHARS);
+      total += text.length;
+      kept.push({ from: entry.from, text });
     }
     if (total > MAX_HISTORY_TOTAL_CHARS) return fail(`history is over ${MAX_HISTORY_TOTAL_CHARS} characters`);
   }

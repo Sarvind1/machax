@@ -58,6 +58,23 @@ describe("validateChatInput", () => {
     }
   });
 
+  it("cuts a long history entry to the cap instead of rejecting it", () => {
+    const long = "y".repeat(MAX_HISTORY_ENTRY_CHARS + 500);
+    const r = validateChatInput({ ...good, history: [{ from: "user", text: long }, { from: ids[0], text: "ok" }] });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.history[0].text).toBe("y".repeat(MAX_HISTORY_ENTRY_CHARS));
+      expect(r.value.history[1].text).toBe("ok");
+    }
+  });
+
+  it("counts the cut length toward the history total", () => {
+    // 20 entries of 2,500 chars cut to 2,000 each = 40,000: exactly at the total cap
+    const history = Array.from({ length: 20 }, () => ({ from: "user", text: "z".repeat(2_500) }));
+    expect(reasonFor({ ...good, history })).toBeNull();
+    expect(reasonFor({ ...good, history: [...history, { from: "user", text: "z" }] })).toEqual(expect.any(String));
+  });
+
   it("strips extra keys from history entries", () => {
     const r = validateChatInput({ ...good, history: [{ from: "user", text: "yo", junk: "x".repeat(10_000) }] });
     expect(r.ok && r.value.history).toEqual([{ from: "user", text: "yo" }]);
@@ -85,7 +102,6 @@ describe("validateChatInput", () => {
     ["history entry not an object", { ...good, history: ["x"] }],
     ["history text not a string", { ...good, history: [{ from: "user", text: 5 }] }],
     ["history from too long", { ...good, history: [{ from: "u".repeat(65), text: "hi" }] }],
-    ["history entry over the cap", { ...good, history: [{ from: "user", text: "x".repeat(MAX_HISTORY_ENTRY_CHARS + 1) }] }],
     [
       "history total over the cap",
       { ...good, history: Array.from({ length: 21 }, () => ({ from: "user", text: "x".repeat(MAX_HISTORY_TOTAL_CHARS / 20) })) },

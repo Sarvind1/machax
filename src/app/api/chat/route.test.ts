@@ -368,7 +368,6 @@ describe("POST /api/chat", () => {
 
   it.each([
     ["message", { message: "x".repeat(MAX_MESSAGE_CHARS + 1) }],
-    ["history entry", { history: [{ from: "user", text: "x".repeat(MAX_HISTORY_ENTRY_CHARS + 1) }] }],
     [
       "history total",
       { history: Array.from({ length: 21 }, () => ({ from: "user", text: "x".repeat(MAX_HISTORY_TOTAL_CHARS / 20) })) },
@@ -390,6 +389,16 @@ describe("POST /api/chat", () => {
     expect(json.reason).toEqual(expect.any(String));
     expect(callsTo("credits:beginMessage")).toHaveLength(0);
     expect(orchestrateChat).not.toHaveBeenCalled();
+  });
+
+  it("cuts an over-long past message to the cap and still runs the chat", async () => {
+    convex({});
+    orchestrateChat.mockImplementation(async function* () {});
+    const res = await POST(req({ ...body, history: [{ from: "user", text: "x".repeat(MAX_HISTORY_ENTRY_CHARS + 1) }] }));
+    expect(res.status).toBe(200);
+    await events(res);
+    const params = orchestrateChat.mock.calls[0][0] as { history: { text: string }[] };
+    expect(params.history[0].text).toHaveLength(MAX_HISTORY_ENTRY_CHARS);
   });
 
   it("passes only the last 40 history entries and the re-serialized overrides to the engine", async () => {
