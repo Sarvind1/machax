@@ -297,6 +297,7 @@ async function callAnthropic(
   userPrompt: string,
   model: string,
   maxTokens: number,
+  collector?: CostCollector,
 ): Promise<{ text: string; model: string; usage: Usage }> {
   anthropicClient ??= new Anthropic();
   const stream = model.startsWith("claude-haiku")
@@ -320,15 +321,19 @@ async function callAnthropic(
         }, ANTHROPIC_REQUEST_OPTIONS);
       })();
   const msg = await stream.finalMessage();
+  // Tokens are spent once the final message exists, so meter before any throw below
+  // (a refusal or empty reply is still billed). msg.model is the model that actually
+  // ran; it differs from `model` after a server-side fallback.
+  collector?.addAnthropic(msg.model, msg.usage);
   if (msg.stop_reason === "refusal") throw new Error(`anthropic refusal: ${msg.stop_details?.category ?? "unknown"}`);
   const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
   if (!text) throw new Error(`anthropic returned no text (stop_reason=${msg.stop_reason})`);
-  // msg.model is the model that actually ran (differs from `model` after a server-side fallback)
   return { text, model: msg.model, usage: msg.usage };
 }
 
 // ── Unified call function ──
-async function callModel(
+// Exported for src/lib/orchestrator-metering.test.ts
+export async function callModel(
   system: string,
   userPrompt: string,
   provider: ProviderConfig,
@@ -343,8 +348,7 @@ async function callModel(
   }
   if (provider.name === "anthropic") {
     try {
-      const result = await callAnthropic(system, userPrompt, provider.model, maxTokens);
-      collector?.addAnthropic(result.model, result.usage);
+      const result = await callAnthropic(system, userPrompt, provider.model, maxTokens, collector);
       return { text: result.text, model: provider.model, paid: true };
     } catch (err) {
       if (!GEMINI_ENABLED) throw err;
