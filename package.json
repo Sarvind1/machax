@@ -20,6 +20,7 @@
     "@capacitor/core": "^8.3.4",
     "@capacitor/share": "^8.0.3",
     "@capgo/capacitor-facebook-analytics": "^8.1.19",
+    "@revenuecat/purchases-capacitor": "^13.8.0",
     "ai": "^6.0.168",
     "convex": "^1.43.0",
     "firebase": "^12.19.0",

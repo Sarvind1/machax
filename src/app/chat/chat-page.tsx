@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Capacitor } from "@capacitor/core";
 import { AuthRequired, authedFetch, getStoredUser } from "@/lib/api";
 import { PaymentError, buyTopupWeb } from "@/lib/razorpay-checkout";
+import { NativePurchaseError, buyTopupNative, configurePurchases, waitForCredit } from "@/lib/purchases-native";
 import { signOut } from "@/lib/firebase";
 import type { CreditSummary } from "@/lib/credits";
 import { logEvent } from "@/lib/analytics";
@@ -111,11 +112,14 @@ export default function ChatPage() {
   }, [router]);
 
   useEffect(() => {
-    if (!getStoredUser()) {
+    const user = getStoredUser();
+    if (!user) {
       router.push("/login");
       return;
     }
     setIsAuthed(true);
+    // Android only: ties Play purchases to this account. No-op on the web.
+    void configurePurchases(user.uid);
     // Also proves the Firebase session is live: no token or a 401 sends us to /login.
     (async () => {
       try {
@@ -641,12 +645,33 @@ export default function ChatPage() {
     setBuyError(null);
   };
 
+  const fetchCredits = async (): Promise<CreditSummary> => {
+    const res = await authedFetch("/api/credits");
+    if (!res.ok) throw new Error(`credits request failed: ${res.status}`);
+    return (await res.json()) as CreditSummary;
+  };
+
   const handleBuy = async () => {
-    // Native builds pay through Play Billing (wired in a later task).
-    if (Capacitor.isNativePlatform() || buying) return;
+    if (buying) return;
     setBuying(true);
     setBuyError(null);
     try {
+      if (Capacitor.isNativePlatform()) {
+        // Play Billing via RevenueCat. Our server grants on RevenueCat's webhook,
+        // so wait for the balance to rise. Without a known balance there is
+        // nothing to compare against: skip straight to the "shortly" toast.
+        const before = credits ?? (await fetchCredits().catch(() => null));
+        await buyTopupNative();
+        const next = before ? await waitForCredit(before.balanceMicros, fetchCredits) : null;
+        setRechargeOpen(false);
+        if (next) {
+          setCredits(next);
+          setToast(`credit added · ~${next.messagesLeft} messages`);
+        } else {
+          setToast("payment done, credit will show up shortly");
+        }
+        return;
+      }
       const { credits: next } = await buyTopupWeb();
       setCredits(next);
       setRechargeOpen(false);
@@ -656,7 +681,13 @@ export default function ChatPage() {
         await goToLogin();
         return;
       }
-      setBuyError(err instanceof PaymentError ? err.message : "payment didn't go through");
+      if (err instanceof NativePurchaseError && err.code === "cancelled") {
+        closeRecharge();
+        return;
+      }
+      setBuyError(
+        err instanceof PaymentError || err instanceof NativePurchaseError ? err.message : "payment didn't go through",
+      );
     } finally {
       setBuying(false);
     }

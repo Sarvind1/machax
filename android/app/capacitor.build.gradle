@@ -13,6 +13,7 @@ dependencies {
     implementation project(':capacitor-firebase-authentication')
     implementation project(':capacitor-share')
     implementation project(':capgo-capacitor-facebook-analytics')
+    implementation project(':revenuecat-purchases-capacitor')
 
 }
 

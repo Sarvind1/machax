@@ -7,8 +7,8 @@ interface RechargeSheetProps {
   open: boolean;
   credits: CreditSummary | null;
   onClose: () => void;
-  // Starts the payment: Razorpay checkout on the web (Play Billing on Android
-  // comes later). The page closes the sheet and toasts on success.
+  // Starts the payment: Razorpay checkout on the web, Play Billing through
+  // RevenueCat on Android. The page closes the sheet and toasts on success.
   onBuy: () => void;
   busy: boolean;
   error: string | null;
