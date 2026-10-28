@@ -3,7 +3,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
-import { API_BASE } from "@/lib/api-base";
+import { AuthRequired, authedFetch, getStoredUser } from "@/lib/api";
+import { signOut } from "@/lib/firebase";
+import type { CreditSummary } from "@/lib/credits";
 import { logEvent } from "@/lib/analytics";
 import { logActivated } from "@/lib/meta-events";
 import { api } from "../../../convex/_generated/api";
@@ -33,6 +35,8 @@ import ChatComposer from "./components/chat-composer";
 import DecisionPanel from "./components/decision-panel";
 import FriendPill from "./components/friend-pill";
 import TypingIndicator from "./components/typing-indicator";
+import CreditPill from "./components/credit-pill";
+import RechargeSheet from "./components/recharge-sheet";
 import "./chat.css";
 
 type ConversationId = Id<"conversations">;
@@ -51,91 +55,94 @@ const MODES = [
 const PACING_OPTIONS = ["snappy", "natural", "slow"];
 const ENERGY_OPTIONS = ["low", "settled", "up"];
 
-// Curated demo pod — 5 diverse personalities for best first impression
-const DEMO_POD_IDS = ["reeva", "aarushi", "noor", "simran", "dev"];
-const DEMO_MESSAGE_LIMIT = 2;
+// Tail of a /api/chat stream: the balance after this message was charged.
+type CreditEvent = {
+  balanceMicros: number;
+  messagesLeft: number;
+  costMicros: number;
+  topupMessages: number;
+};
 
-function getOrCreateDemoVisitorId(): string {
-  try {
-    const stored = localStorage.getItem("machax-demo");
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (parsed?.visitorId) return parsed.visitorId;
-    }
-  } catch {}
-  const visitorId = `demo-${crypto.randomUUID().slice(0, 8)}`;
-  localStorage.setItem("machax-demo", JSON.stringify({ visitorId, messageCount: 0 }));
-  return visitorId;
+// The event has no avgCostMicros. Carry over the last known one; before any
+// summary has loaded, fall back to balance / messagesLeft (0 when unknowable).
+// Nothing on the client reads it today, it only keeps the CreditSummary shape.
+function creditFromEvent(e: CreditEvent, prev: CreditSummary | null): CreditSummary {
+  return {
+    balanceMicros: e.balanceMicros,
+    messagesLeft: e.messagesLeft,
+    topupMessages: e.topupMessages,
+    avgCostMicros:
+      prev?.avgCostMicros ?? (e.messagesLeft > 0 ? Math.round(e.balanceMicros / e.messagesLeft) : 0),
+  };
 }
 
-function getDemoMessageCount(): number {
-  try {
-    const stored = localStorage.getItem("machax-demo");
-    if (stored) return JSON.parse(stored)?.messageCount ?? 0;
-  } catch {}
-  return 0;
+// No usable Firebase session: either nobody is signed in, or this build has
+// no Firebase web config (same check the login page uses).
+function isSignedOut(err: unknown): boolean {
+  return err instanceof AuthRequired || (err instanceof Error && err.message.includes("missing web config"));
 }
 
-function incrementDemoMessageCount(): number {
-  try {
-    const stored = localStorage.getItem("machax-demo");
-    const parsed = stored ? JSON.parse(stored) : {};
-    const newCount = (parsed.messageCount ?? 0) + 1;
-    localStorage.setItem("machax-demo", JSON.stringify({ ...parsed, messageCount: newCount }));
-    return newCount;
-  } catch {}
-  return 0;
-}
+const TOAST_MS = 3000;
 
-export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = {}) {
+export default function ChatPage() {
   const router = useRouter();
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
-  const createDemoUser = useMutation(api.users.createDemoUser);
+  const [credits, setCredits] = useState<CreditSummary | null>(null);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const leavingRef = useRef(false);
+
+  // Session is gone or rejected. Sign out first (clears machax-user), so /login
+  // and / don't bounce straight back here.
+  const goToLogin = useCallback(async () => {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    setIsAuthed(false);
+    try {
+      await signOut();
+    } catch (err) {
+      console.error("Sign-out before login redirect failed:", err);
+    }
+    router.push("/login");
+  }, [router]);
 
   useEffect(() => {
-    if (demoMode) {
-      // Create demo user in Convex on first visit
-      const visitorId = getOrCreateDemoVisitorId();
-      createDemoUser({ visitorId }).catch(() => {});
-      setIsAuthed(true);
+    if (!getStoredUser()) {
+      router.push("/login");
       return;
     }
-    const user = localStorage.getItem("machax-user");
-    if (!user) {
-      router.push("/");
-    } else {
-      setIsAuthed(true);
-    }
-  }, [router, demoMode, createDemoUser]);
+    setIsAuthed(true);
+    // Also proves the Firebase session is live: no token or a 401 sends us to /login.
+    (async () => {
+      try {
+        const res = await authedFetch("/api/credits");
+        if (res.status === 401) return goToLogin();
+        if (!res.ok) throw new Error(`credits request failed: ${res.status}`);
+        setCredits((await res.json()) as CreditSummary);
+      } catch (err) {
+        if (isSignedOut(err)) return goToLogin();
+        console.error("Failed to load credits:", err);
+      }
+    })();
+  }, [router, goToLogin]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // userName for display (can be display name)
   const userName = useMemo(() => {
-    if (demoMode) return "friend";
-    try {
-      const stored = localStorage.getItem("machax-user");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return parsed?.name || parsed?.username || "friend";
-      }
-    } catch {}
-    return "friend";
-  }, [demoMode]);
+    const user = getStoredUser();
+    return user?.name || user?.username || "friend";
+  }, []);
 
   // settingsUsername for Convex queries (must match what /configure saves under)
-  const settingsUsername = useMemo(() => {
-    if (demoMode) return getOrCreateDemoVisitorId();
-    try {
-      const stored = localStorage.getItem("machax-user");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        return parsed?.username || null;
-      }
-    } catch {}
-    return null;
-  }, [demoMode]);
+  const settingsUsername = useMemo(() => getStoredUser()?.username ?? null, []);
 
   // Load user's saved settings from Convex (pod size, character overrides, etc.)
-  const userSettings = useQuery(api.settings.get, !demoMode && settingsUsername ? { username: settingsUsername } : "skip");
+  const userSettings = useQuery(api.settings.get, settingsUsername ? { username: settingsUsername } : "skip");
 
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
   const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
@@ -288,7 +295,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
       setIsLoading(true);
       isStreamingRef.current = true;
       try {
-        const response = await fetch(`${API_BASE}/api/chat`, {
+        const response = await authedFetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -308,6 +315,20 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
           }),
         });
 
+        if (response.status === 401) {
+          await goToLogin();
+          return;
+        }
+        if (response.status === 402) {
+          const body = (await response.json().catch(() => null)) as { credits?: CreditSummary } | null;
+          if (body?.credits) setCredits(body.credits);
+          setRechargeOpen(true);
+          return;
+        }
+        if (response.status === 409) {
+          setToast("still replying, give it a sec");
+          return;
+        }
         if (!response.ok || !response.body) {
           throw new Error("Chat API request failed");
         }
@@ -411,6 +432,11 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
                 }
               }
 
+              if (data.credit) {
+                const event = data.credit as CreditEvent;
+                setCredits((prev) => creditFromEvent(event, prev));
+              }
+
               if (data.done) {
                 setTypingAgents([]);
                 setIsLoading(false);
@@ -424,6 +450,10 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
           }
         }
       } catch (err) {
+        if (isSignedOut(err)) {
+          await goToLogin();
+          return;
+        }
         console.error("Chat stream error:", err);
       } finally {
         isStreamingRef.current = false;
@@ -431,21 +461,17 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
         setTypingAgents([]);
       }
     },
-    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings]
+    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, goToLogin]
   );
 
   const handleSubmit = useCallback(async () => {
     const text = input.trim();
     if (!text || isLoading) return;
 
-    // Demo mode: check message cap before sending
-    if (demoMode) {
-      const count = getDemoMessageCount();
-      if (count >= DEMO_MESSAGE_LIMIT) {
-        router.push("/login");
-        return;
-      }
-      incrementDemoMessageCount();
+    // Known to be out of credit: offer a top-up instead of sending. The text stays in the box.
+    if (credits?.messagesLeft === 0) {
+      setRechargeOpen(true);
+      return;
     }
 
     setInput("");
@@ -461,11 +487,8 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
       // First message — create conversation
       const tag = STARTERS.find((s) => s.text === text)?.tag ?? "life";
 
-      // Demo mode: force curated pod; otherwise use user config
       let podIds: string[];
-      if (demoMode) {
-        podIds = DEMO_POD_IDS;
-      } else if (userSettings?.characterOverrides) {
+      if (userSettings?.characterOverrides) {
         try {
           const overrides = JSON.parse(userSettings.characterOverrides);
           const activeIds = Object.entries(overrides)
@@ -499,7 +522,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
         });
 
         setActiveConversation(convoId);
-        logEvent("dilemma_posted", { pod_size: podIds.length, topic: tag, demo: demoMode ? 1 : 0 });
+        logEvent("dilemma_posted", { pod_size: podIds.length, topic: tag });
 
         const userMsg: ChatMessageType = {
           id: `user-${Date.now()}`,
@@ -560,7 +583,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
         setTypingAgents([]);
       }
     }
-  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, demoMode, router]);
+  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, credits]);
 
   const handleStarterClick = (starterText: string) => {
     setInput(starterText);
@@ -606,6 +629,24 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
     FRIENDS.map((f) => [f.id, { name: f.name, color: f.color }])
   );
 
+  const openRecharge = () => setRechargeOpen(true);
+
+  // Shared by the landing and chat views.
+  const overlays = (
+    <>
+      {toast && <div className="chat-toast" role="status">{toast}</div>}
+      <RechargeSheet
+        open={rechargeOpen}
+        credits={credits}
+        onClose={() => setRechargeOpen(false)}
+        // Payment is wired in the Razorpay / Play Billing tasks.
+        onBuy={() => {}}
+        busy={false}
+        error={null}
+      />
+    </>
+  );
+
   if (!isAuthed) {
     return (
       <div style={{
@@ -632,7 +673,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
             macha<em>X</em>
           </a>
 
-          {!demoMode && conversations.length > 0 && (
+          {conversations.length > 0 && (
             <>
               <div className="chat-sidebar-section">recent</div>
               <div className="chat-history-list">
@@ -649,45 +690,34 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
             </>
           )}
 
-          {!demoMode && (
-            <button className="chat-new-btn" onClick={handleNewChat}>
-              + new chat
-            </button>
-          )}
+          <button className="chat-new-btn" onClick={handleNewChat}>
+            + new chat
+          </button>
 
-          {demoMode ? (
-            <a href="/login" style={{
-              display: "block", padding: "10px 16px", fontSize: 12,
-              color: "var(--accent)", fontFamily: "var(--font-mono)",
-              textDecoration: "none", letterSpacing: "0.06em", fontWeight: 600,
-            }}>
-              sign up / log in
-            </a>
-          ) : (
-            <a href="/configure" style={{
-              display: "block", padding: "10px 16px", fontSize: 12,
-              color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
-              textDecoration: "none", letterSpacing: "0.06em",
-            }}>
-              ⚙ configure pod
-            </a>
-          )}
+          <a href="/configure" style={{
+            display: "block", padding: "10px 16px", fontSize: 12,
+            color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
+            textDecoration: "none", letterSpacing: "0.06em",
+          }}>
+            ⚙ configure pod
+          </a>
           <div className="chat-sidebar-legal">
             <a href="/privacy">privacy</a>
-            {!demoMode && <a href="/delete-account">delete account</a>}
+            <a href="/delete-account">delete account</a>
           </div>
         </aside>
 
         {/* Landing center */}
         <div className="chat-landing">
+          <div className="chat-landing-credit">
+            <CreditPill credits={credits} onClick={openRecharge} />
+          </div>
           <h1 className="chat-landing-title">what&apos;s on your mind?</h1>
           <p className="chat-landing-sub">
-            {demoMode
-              ? "try it out — send a message and watch your AI friends debate it. 2 free messages, no signup needed."
-              : "dump your messiest thought. your council of AI friends will hash it out."}
+            dump your messiest thought. your council of AI friends will hash it out.
           </p>
 
-          {!demoMode && <div className="chat-mood-landing">
+          <div className="chat-mood-landing">
             <button
               ref={moodTriggerRef}
               className="chat-mood-trigger"
@@ -757,7 +787,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
                 </button>
               </div>
             )}
-          </div>}
+          </div>
 
           <div className="chat-landing-composer">
             <ChatComposer
@@ -783,6 +813,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
           </div>
 
         </div>
+        {overlays}
       </div>
     );
   }
@@ -829,7 +860,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
           </>
         )}
 
-        {!demoMode && conversations.length > 0 && (
+        {conversations.length > 0 && (
           <>
             <div className="chat-sidebar-section">recent</div>
             <div className="chat-history-list">
@@ -846,32 +877,20 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
           </>
         )}
 
-        {!demoMode && (
-          <button className="chat-new-btn" onClick={handleNewChat}>
-            + new chat
-          </button>
-        )}
+        <button className="chat-new-btn" onClick={handleNewChat}>
+          + new chat
+        </button>
 
-        {demoMode ? (
-          <a href="/login" style={{
-            display: "block", padding: "10px 16px", fontSize: 12,
-            color: "var(--accent)", fontFamily: "var(--font-mono)",
-            textDecoration: "none", letterSpacing: "0.06em", fontWeight: 600,
-          }}>
-            sign up / log in
-          </a>
-        ) : (
-          <a href="/configure" style={{
-            display: "block", padding: "10px 16px", fontSize: 12,
-            color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
-            textDecoration: "none", letterSpacing: "0.06em",
-          }}>
-            ⚙ configure pod
-          </a>
-        )}
+        <a href="/configure" style={{
+          display: "block", padding: "10px 16px", fontSize: 12,
+          color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
+          textDecoration: "none", letterSpacing: "0.06em",
+        }}>
+          ⚙ configure pod
+        </a>
         <div className="chat-sidebar-legal">
           <a href="/privacy">privacy</a>
-          {!demoMode && <a href="/delete-account">delete account</a>}
+          <a href="/delete-account">delete account</a>
         </div>
       </aside>
 
@@ -884,6 +903,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
               {pod.length} friends in the room
             </span>
           )}
+          <CreditPill credits={credits} onClick={openRecharge} />
           <button
             ref={moodTriggerRef}
             className="chat-mood-trigger"
@@ -1019,6 +1039,7 @@ export default function ChatPage({ demoMode = false }: { demoMode?: boolean } = 
           ?
         </button>
       )}
+      {overlays}
     </div>
   );
 }

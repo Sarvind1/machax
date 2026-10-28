@@ -7,6 +7,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "convex/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "convex/**/*.test.ts"],
   },
 });

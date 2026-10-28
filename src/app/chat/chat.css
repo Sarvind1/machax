@@ -1102,3 +1102,178 @@
 }
 .chat-sidebar-legal a { color: var(--ink-faint); text-decoration: none; }
 .chat-sidebar-legal a:hover { text-decoration: underline; }
+
+/* ===== CREDIT PILL ===== */
+.credit-pill {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--matcha-deep);
+  background: rgba(107, 174, 126, 0.08);
+  border: 1px solid rgba(107, 174, 126, 0.35);
+  border-radius: 999px;
+  padding: 3px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.credit-pill:hover {
+  background: rgba(107, 174, 126, 0.16);
+  border-color: var(--matcha);
+}
+
+.credit-pill--low {
+  color: #9A6A1E;
+  background: rgba(214, 160, 70, 0.1);
+  border-color: rgba(214, 160, 70, 0.45);
+}
+
+.credit-pill--empty {
+  color: #A0412D;
+  background: rgba(196, 84, 60, 0.08);
+  border-color: rgba(196, 84, 60, 0.4);
+}
+
+/* Landing view has no header, so the pill sits top-right. */
+.chat-landing {
+  position: relative;
+}
+
+.chat-landing-credit {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+}
+
+/* ===== INLINE TOAST ===== */
+.chat-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(30, 28, 22, 0.18);
+  z-index: 60;
+  pointer-events: none;
+  max-width: calc(100vw - 32px);
+}
+
+/* ===== RECHARGE SHEET ===== */
+.recharge-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 28, 22, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 200;
+}
+
+.recharge-sheet {
+  width: 100%;
+  max-width: 360px;
+  background: var(--paper, #F4F1E8);
+  color: var(--ink, #1E1C16);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  box-shadow: 0 16px 48px -12px rgba(30, 28, 22, 0.3);
+  padding: 24px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+
+.recharge-title {
+  font-family: var(--font-serif), serif;
+  font-style: italic;
+  font-size: 24px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.recharge-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.recharge-line {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.recharge-error {
+  margin: 0;
+  font-size: 13px;
+  color: #A0412D;
+}
+
+.recharge-pay {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  background: var(--ink);
+  color: var(--paper);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.recharge-pay:hover:not(:disabled) {
+  background: var(--matcha-deep);
+}
+
+.recharge-pay:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.recharge-close {
+  background: transparent;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-faint);
+  padding: 6px;
+  cursor: pointer;
+}
+
+.recharge-close:hover:not(:disabled) {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .recharge-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .recharge-sheet {
+    max-width: none;
+    border-radius: 16px 16px 0 0;
+    border-bottom: none;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    animation: recharge-up 0.2s ease-out;
+  }
+
+  .chat-header {
+    flex-wrap: wrap;
+  }
+}
+
+@keyframes recharge-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

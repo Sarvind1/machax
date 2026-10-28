@@ -1,26 +1,6 @@
-import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
+import { internalMutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-
-export const createDemoUser = mutation({
-  args: { visitorId: v.string() },
-  handler: async (ctx, { visitorId }) => {
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_username", (q) => q.eq("username", visitorId))
-      .first();
-    if (existing) {
-      return { success: true as const };
-    }
-    await ctx.db.insert("users", {
-      username: visitorId,
-      email: "",
-      password: "",
-      createdAt: Date.now(),
-    });
-    return { success: true as const };
-  },
-});
 
 function baseUsername(uid: string, email?: string) {
   const local = (email ?? "").split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "");
