@@ -21,7 +21,13 @@ type ModelTotals = {
 export class CostCollector {
   private readonly records: ModelCallRecord[] = [];
 
+  /** A negative or non-finite cost counts as 0, so one bad figure cannot cancel real charges. */
   add(record: ModelCallRecord): void {
+    if (!Number.isFinite(record.costMicros) || record.costMicros < 0) {
+      console.warn(`[cost-collector] ${record.source} call reported cost ${record.costMicros}; counting 0`);
+      this.records.push({ ...record, costMicros: 0 });
+      return;
+    }
     this.records.push(record);
   }
 

@@ -33,6 +33,25 @@ describe("CostCollector", () => {
     expect(c.calls[0].source).toBe("bridge");
   });
 
+  it("clamps a negative bridge cost to 0 so it cannot cancel other charges", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const c = new CostCollector();
+    c.add({ model: "m", costMicros: 5_000, source: "anthropic" });
+    c.addBridge(-0.01);
+    expect(c.totalMicros).toBe(5_000);
+    expect(c.calls[1].costMicros).toBe(0);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("clamps a negative or NaN raw record to 0", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const c = new CostCollector();
+    c.add({ model: "m", costMicros: -1, source: "gemini" });
+    c.add({ model: "m", costMicros: Number.NaN, source: "gemini" });
+    expect(c.totalMicros).toBe(0);
+    expect(c.calls).toHaveLength(2);
+  });
+
   it("add() records a raw record as given", () => {
     const c = new CostCollector();
     c.add({ model: "gemini-x", costMicros: 42, source: "gemini" });
