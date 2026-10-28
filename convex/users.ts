@@ -160,9 +160,10 @@ async function deleteUserData(ctx: MutationCtx, user: Doc<"users">) {
 }
 
 // Permanently delete the account of a verified Firebase user (called from
-// POST /api/account/delete). Also drops their credits, orders and ledger,
-// except the free-grant ledger row: keeping free:<uid> means signing in again
-// with the same Google account starts at $0 instead of claiming $1 twice.
+// POST /api/account/delete): their content, the users row and the credits row.
+// orders and ledger are kept: they are financial records keyed by an opaque
+// uid (no PII), and the kept free:<uid> grant means signing in again with the
+// same Google account starts at $0 instead of claiming $1 twice.
 export const deleteByUid = internalMutation({
   args: { uid: v.string() },
   handler: async (ctx, { uid }) => {
@@ -177,19 +178,6 @@ export const deleteByUid = internalMutation({
       .withIndex("by_uid", (q) => q.eq("uid", uid))
       .collect();
     for (const c of credits) await ctx.db.delete(c._id);
-
-    const orders = await ctx.db
-      .query("orders")
-      .withIndex("by_uid", (q) => q.eq("uid", uid))
-      .collect();
-    for (const o of orders) await ctx.db.delete(o._id);
-
-    const freeRef = `free:${uid}`;
-    const ledger = await ctx.db
-      .query("ledger")
-      .withIndex("by_uid", (q) => q.eq("uid", uid))
-      .collect();
-    for (const l of ledger) if (l.ref !== freeRef) await ctx.db.delete(l._id);
 
     return { deletedUser: user !== null };
   },

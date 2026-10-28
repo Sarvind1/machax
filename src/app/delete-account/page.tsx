@@ -90,7 +90,7 @@ export default function DeleteAccountPage() {
       <div style={styles.page}>
         <div style={styles.card}>
           <h1 style={styles.heading}>account deleted</h1>
-          <p style={styles.muted}>Your account, chats, settings, credits and reports are gone for good.</p>
+          <p style={styles.muted}>Your account, chats, settings, credit balance and reports are gone for good.</p>
           <Link href="/login" style={styles.link}>back to machax</Link>
         </div>
       </div>
@@ -103,7 +103,8 @@ export default function DeleteAccountPage() {
         <h1 style={styles.heading}>delete your account</h1>
         <p style={styles.muted}>
           This permanently deletes your MachaX account, all conversations and messages, your pod settings,
-          your credits and purchase history, and any reports you filed. It can&apos;t be undone.
+          your credit balance, and any reports you filed. It can&apos;t be undone. Payment records are kept
+          for accounting, without your name or email.
         </p>
         {user === undefined ? (
           <p style={styles.muted}>checking your sign-in&hellip;</p>

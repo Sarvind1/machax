@@ -8,7 +8,7 @@ import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 
 describe("users.deleteByUid", () => {
-  test("removes the user, their data and credits but keeps the free-grant row", async () => {
+  test("removes the user, their content and credits row; keeps orders and ledger", async () => {
     const t = convexTest(schema, modules);
     const now = Date.now();
     await t.run(async (ctx) => {
@@ -32,11 +32,12 @@ describe("users.deleteByUid", () => {
       expect(users.map((u) => u.username)).toEqual(["bob"]);
       expect(await ctx.db.query("conversations").collect()).toHaveLength(0);
       expect(await ctx.db.query("messages").collect()).toHaveLength(0);
-      expect(await ctx.db.query("orders").collect()).toHaveLength(0);
       const credits = await ctx.db.query("credits").collect();
       expect(credits.map((c) => c.uid)).toEqual(["u2"]);
+      const orders = await ctx.db.query("orders").collect();
+      expect(orders.map((o) => o.providerOrderId)).toEqual(["o1"]);
       const ledger = await ctx.db.query("ledger").collect();
-      expect(ledger.map((l) => l.ref)).toEqual(["free:u1"]);
+      expect(ledger.map((l) => l.ref).sort()).toEqual(["free:u1", "msg:1"]);
     });
 
     // Signing in again with the same uid starts at $0, no second free grant.
