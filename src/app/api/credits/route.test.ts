@@ -46,7 +46,7 @@ describe("GET /api/credits", () => {
   });
 
   it("upserts the user, ensures credits, and returns the summary with CORS", async () => {
-    requireUser.mockResolvedValue({ uid: "u1", email: "a@b.com", name: "Alice" });
+    requireUser.mockResolvedValue({ uid: "u1", email: "a@b.com", name: "Alice", emailVerified: true });
     mutation
       .mockResolvedValueOnce({ username: "a", name: "Alice", created: true })
       .mockResolvedValueOnce({ balanceMicros: 1_000_000, lifetimeSpentMicros: 0, messageCount: 0 });
@@ -66,6 +66,7 @@ describe("GET /api/credits", () => {
     expect(mutation).toHaveBeenNthCalledWith(1, expect.anything(), {
       uid: "u1",
       email: "a@b.com",
+      emailVerified: true,
       name: "Alice",
     });
     expect(getFunctionName(mutation.mock.calls[1][0])).toBe("credits:ensure");

@@ -6,7 +6,12 @@ import { corsHeaders } from "./cors";
 const JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
-export type AuthedUser = { uid: string; email?: string; name?: string };
+export type AuthedUser = { uid: string; email?: string; name?: string; emailVerified: boolean };
+
+// Only Google sign-in is enabled. Pinning it here means turning on anonymous or
+// email/password sign-in in the Firebase console later cannot mint free $1
+// accounts or unverified emails without a code change.
+const ALLOWED_SIGN_IN_PROVIDER = "google.com";
 
 export class AuthError extends Error {
   readonly status = 401 as const;
@@ -57,10 +62,15 @@ export async function requireUser(
     if (typeof payload.sub !== "string" || payload.sub === "") {
       throw new AuthError("token has no subject");
     }
+    const firebase = payload.firebase as { sign_in_provider?: unknown } | undefined;
+    if (firebase?.sign_in_provider !== ALLOWED_SIGN_IN_PROVIDER) {
+      throw new AuthError("sign-in provider not allowed");
+    }
     return {
       uid: payload.sub,
       email: typeof payload.email === "string" ? payload.email : undefined,
       name: typeof payload.name === "string" ? payload.name : undefined,
+      emailVerified: payload.email_verified === true,
     };
   } catch (err) {
     if (err instanceof AuthError) throw err;

@@ -22,9 +22,21 @@ function req(authorization?: string, origin?: string): Request {
 }
 
 async function sign(
-  overrides: { iss?: string; aud?: string; exp?: number | string } = {},
+  overrides: {
+    iss?: string;
+    aud?: string;
+    exp?: number | string;
+    firebase?: Record<string, unknown> | null;
+    email_verified?: boolean;
+  } = {},
 ): Promise<string> {
-  return new SignJWT({ email: "a@b.com", name: "Alice" })
+  const firebase = overrides.firebase === undefined ? { sign_in_provider: "google.com" } : overrides.firebase;
+  return new SignJWT({
+    email: "a@b.com",
+    name: "Alice",
+    email_verified: overrides.email_verified ?? true,
+    ...(firebase === null ? {} : { firebase }),
+  })
     .setProtectedHeader({ alg: "RS256" })
     .setSubject("uid1")
     .setIssuer(overrides.iss ?? ISSUER)
@@ -38,7 +50,23 @@ describe("requireUser", () => {
   it("returns uid, email, name for a valid token", async () => {
     const token = await sign();
     const user = await requireUser(req(`Bearer ${token}`), { jwks });
-    expect(user).toEqual({ uid: "uid1", email: "a@b.com", name: "Alice" });
+    expect(user).toEqual({ uid: "uid1", email: "a@b.com", name: "Alice", emailVerified: true });
+  });
+
+  it("reports an unverified email as emailVerified false", async () => {
+    const token = await sign({ email_verified: false });
+    expect((await requireUser(req(`Bearer ${token}`), { jwks })).emailVerified).toBe(false);
+  });
+
+  it.each([
+    ["anonymous", { sign_in_provider: "anonymous" }],
+    ["password", { sign_in_provider: "password" }],
+    ["custom", { sign_in_provider: "custom" }],
+    ["no provider", {}],
+    ["no firebase claim", null],
+  ])("rejects a %s sign-in", async (_label, firebase) => {
+    const token = await sign({ firebase });
+    await expect(requireUser(req(`Bearer ${token}`), { jwks })).rejects.toBeInstanceOf(AuthError);
   });
 
   it("rejects a wrong audience", async () => {

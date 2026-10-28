@@ -28,6 +28,7 @@ export async function bootstrapUser(request: Request): Promise<{
   const { username, name } = await client.mutation(internal.users.upsertFromFirebase, {
     uid: user.uid,
     email: user.email,
+    emailVerified: user.emailVerified,
     name: user.name,
   });
   const row = await client.mutation(internal.credits.ensure, { uid: user.uid, username });

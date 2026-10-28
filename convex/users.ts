@@ -8,14 +8,16 @@ function baseUsername(uid: string, email?: string) {
 }
 
 // Find or create the app user for a verified Firebase account.
-// Order: firebaseUid, then email (links a legacy row), then a new row.
+// Order: firebaseUid, then email (links a legacy row, only when the token says
+// the email is verified), then a new row.
 export const upsertFromFirebase = internalMutation({
   args: {
     uid: v.string(),
     email: v.optional(v.string()),
+    emailVerified: v.optional(v.boolean()),
     name: v.optional(v.string()),
   },
-  handler: async (ctx, { uid, email, name }) => {
+  handler: async (ctx, { uid, email, emailVerified, name }) => {
     const byUid = await ctx.db
       .query("users")
       .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
@@ -24,7 +26,7 @@ export const upsertFromFirebase = internalMutation({
       return { username: byUid.username, name: byUid.name ?? name, created: false };
     }
 
-    if (email) {
+    if (email && emailVerified === true) {
       const candidates = Array.from(new Set([email, email.toLowerCase()]));
       for (const candidate of candidates) {
         const byEmail = await ctx.db

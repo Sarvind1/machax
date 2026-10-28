@@ -372,12 +372,31 @@ describe("users.upsertFromFirebase", () => {
     const res = await t.mutation(internal.users.upsertFromFirebase, {
       uid: "fb-bob",
       email: "bob@example.com",
+      emailVerified: true,
       name: "Bobby",
     });
     expect(res).toEqual({ username: "bob", name: "Bob", created: false });
     const rows = await t.run(async (ctx) => ctx.db.query("users").collect());
     expect(rows).toHaveLength(1);
     expect(rows[0].firebaseUid).toBe("fb-bob");
+  });
+
+  test.each([
+    ["false", false],
+    ["missing", undefined],
+  ])("never links a legacy row when email_verified is %s", async (_label, emailVerified) => {
+    const t = setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", { username: "bob", email: "bob@example.com", password: "hash", createdAt: 1 });
+    });
+    const res = await t.mutation(internal.users.upsertFromFirebase, {
+      uid: "fb-intruder",
+      email: "bob@example.com",
+      ...(emailVerified === undefined ? {} : { emailVerified }),
+    });
+    expect(res).toMatchObject({ username: "bob-2", created: true });
+    const rows = await t.run(async (ctx) => ctx.db.query("users").collect());
+    expect(rows.find((r) => r.username === "bob")?.firebaseUid).toBeUndefined();
   });
 
   test("does not re-link an email-matched row that already has a different firebaseUid", async () => {
@@ -394,6 +413,7 @@ describe("users.upsertFromFirebase", () => {
     const res = await t.mutation(internal.users.upsertFromFirebase, {
       uid: "fb-other",
       email: "erin@example.com",
+      emailVerified: true,
     });
     expect(res).toMatchObject({ username: "erin-2", created: true });
     const rows = await t.run(async (ctx) => ctx.db.query("users").collect());
