@@ -33,7 +33,7 @@ export default function PrivacyPage() {
           <li><b>Technical logs</b> of each chat turn (the prompt, timings, which AI service answered) so we can fix bugs and improve replies.</li>
           <li><b>Credits and purchases</b>: your credit balance, a record of every change to it (free credit, the cost of each message, each top-up or refund), and an order record for each purchase (product, amount, status, date).</li>
           <li><b>Reports</b> you file on AI messages, with the reported text.</li>
-          <li><b>App usage (Android app only)</b>: Firebase Analytics and Meta App Events record events such as install, app open, screens viewed, sign-up and first chat, to count usage and measure our ads. These tools may use your device&apos;s advertising ID.</li>
+          <li><b>App usage (Android app only)</b>: Firebase Analytics and Meta App Events record events such as install, app open, screens viewed and sign-up, to count usage and measure our ads. These tools may use your device&apos;s advertising ID. When you sign up, and the first time you pick an option on a decision, our server also sends Meta&apos;s Conversions API a hashed copy of your email and username, your IP address and device info (phone model, Android version, language, time zone, screen size, CPU core count and browser user agent), for the same ad measurement.</li>
         </ul>
         <p>We do not collect your location, contacts or photos. We don&apos;t show ads in MachaX, and we don&apos;t sell your data.</p>
 
