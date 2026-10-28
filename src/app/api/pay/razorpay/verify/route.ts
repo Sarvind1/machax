@@ -47,6 +47,7 @@ export async function POST(request: Request) {
     const order = await admin.query(internal.orders.getByProviderOrderId, { providerOrderId: orderId });
     if (!order || order.provider !== "razorpay") return reject(`unknown order ${orderId}`);
     if (order.uid !== user.uid) return reject(`order ${orderId} belongs to another user`);
+    if (order.status === "refunded") return reject(`order ${orderId} is refunded`);
     if (!verifyCheckoutSignature(orderId, paymentId, signature, keys.keySecret)) {
       return reject(`bad signature for ${orderId}`);
     }
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
       ref: orderId,
       meta: { provider: "razorpay", paymentId, source: "verify" },
     });
-    if (order.status !== "paid" && order.status !== "refunded") {
+    if (order.status !== "paid") {
       await admin.mutation(internal.orders.setStatus, {
         providerOrderId: orderId,
         status: "paid",

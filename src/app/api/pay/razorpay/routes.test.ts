@@ -315,6 +315,15 @@ describe("POST /api/pay/razorpay/verify", () => {
     expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(0);
   });
 
+  it("returns 400 with no grant for a refunded order, without asking Razorpay", async () => {
+    convex({ order: { ...ORDER, status: "refunded" } });
+    fetchMock.mockResolvedValue(payment());
+    const res = await verifyPOST(authedReq("/api/pay/razorpay/verify", good));
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(callsTo(mutation, "credits:grantPurchase")).toHaveLength(0);
+  });
+
   it("returns 400 for an unknown order or missing fields", async () => {
     convex({ order: null });
     expect((await verifyPOST(authedReq("/api/pay/razorpay/verify", good))).status).toBe(400);
