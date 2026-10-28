@@ -18,6 +18,7 @@ import type * as messages from "../messages.js";
 import type * as metaCapi from "../metaCapi.js";
 import type * as orders from "../orders.js";
 import type * as passwordResets from "../passwordResets.js";
+import type * as pay from "../pay.js";
 import type * as reports from "../reports.js";
 import type * as settings from "../settings.js";
 import type * as traces from "../traces.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   metaCapi: typeof metaCapi;
   orders: typeof orders;
   passwordResets: typeof passwordResets;
+  pay: typeof pay;
   reports: typeof reports;
   settings: typeof settings;
   traces: typeof traces;

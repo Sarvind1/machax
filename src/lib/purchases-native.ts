@@ -98,20 +98,36 @@ export async function buyTopupNative(): Promise<{ started: true }> {
   }
 }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// Resolves after ms, or as soon as the signal aborts.
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener("abort", done, { once: true });
+  });
+}
 
 // Polls every 2 s until the balance is above prev. Fetch errors are skipped.
-// Returns null when timeoutMs passes without a rise.
+// Returns null when timeoutMs passes without a rise, or once signal aborts
+// (no fetches after that).
 export async function waitForCredit(
   prev: number,
   fetchCredits: () => Promise<CreditSummary>,
   timeoutMs = 20_000,
+  signal?: AbortSignal,
 ): Promise<CreditSummary | null> {
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await sleep(POLL_MS);
+  while (Date.now() < deadline && !signal?.aborted) {
+    await sleep(POLL_MS, signal);
+    if (signal?.aborted) break;
     try {
       const credits = await fetchCredits();
+      if (signal?.aborted) break;
       if (credits.balanceMicros > prev) return credits;
     } catch {
       // offline or a blip: try again next tick

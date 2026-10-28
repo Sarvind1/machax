@@ -1,4 +1,4 @@
-import { internalMutation, internalQuery, query, type MutationCtx } from "./_generated/server";
+import { internalMutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 
@@ -58,19 +58,6 @@ export const upsertFromFirebase = internalMutation({
       createdAt: Date.now(),
     });
     return { username, name, created: true };
-  },
-});
-
-// Username of the app user linked to a Firebase uid, or null (never signed in, or deleted).
-// Used by payment webhooks, which carry a uid but no user token.
-export const getByFirebaseUid = internalQuery({
-  args: { uid: v.string() },
-  handler: async (ctx, { uid }) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
-      .first();
-    return user ? { username: user.username } : null;
   },
 });
 

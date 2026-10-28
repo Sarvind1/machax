@@ -39,8 +39,9 @@ function assertInteger(name: string, n: number) {
   if (!Number.isInteger(n)) throw new Error(`credits: ${name} must be an integer, got ${n}`);
 }
 
-// Shared by grantPurchase and adjust: apply a signed amount once per ledger ref.
-async function applyOnce(
+// Shared by grantPurchase, adjust and pay.ts: apply a signed amount once per
+// ledger ref. Needs the credits row (see ensureRow).
+export async function applyOnce(
   ctx: MutationCtx,
   args: { uid: string; amountMicros: number; ref: string; meta?: unknown },
   kind: "purchase" | "adjust"
@@ -72,53 +73,56 @@ async function applyOnce(
   return { granted: true, balanceMicros };
 }
 
-// Create the account's credits row with the one-time free grant. Safe to call repeatedly.
-export const ensure = internalMutation({
-  args: { uid: v.string(), username: v.string() },
-  handler: async (ctx, { uid, username }) => {
-    const existing = await getRow(ctx, uid);
-    if (existing) return summarize(existing);
+// Create the account's credits row with the one-time free grant. Safe to call
+// repeatedly. Shared by ensure and pay.ts.
+export async function ensureRow(ctx: MutationCtx, uid: string, username: string): Promise<Summary> {
+  const existing = await getRow(ctx, uid);
+  if (existing) return summarize(existing);
 
-    const now = Date.now();
-    // The free grant is unique by ref. If its ledger row already exists but the
-    // credits row is gone, recreate the row empty instead of granting $1 again.
-    const freeRef = `free:${uid}`;
-    const alreadyGranted = await ctx.db
-      .query("ledger")
-      .withIndex("by_ref", (q) => q.eq("ref", freeRef))
-      .first();
-    if (alreadyGranted) {
-      await ctx.db.insert("credits", {
-        uid,
-        username,
-        balanceMicros: 0,
-        lifetimeSpentMicros: 0,
-        messageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      });
-      return { balanceMicros: 0, lifetimeSpentMicros: 0, messageCount: 0 };
-    }
-
+  const now = Date.now();
+  // The free grant is unique by ref. If its ledger row already exists but the
+  // credits row is gone, recreate the row empty instead of granting $1 again.
+  const freeRef = `free:${uid}`;
+  const alreadyGranted = await ctx.db
+    .query("ledger")
+    .withIndex("by_ref", (q) => q.eq("ref", freeRef))
+    .first();
+  if (alreadyGranted) {
     await ctx.db.insert("credits", {
       uid,
       username,
-      balanceMicros: FREE_GRANT_MICROS,
+      balanceMicros: 0,
       lifetimeSpentMicros: 0,
       messageCount: 0,
       createdAt: now,
       updatedAt: now,
     });
-    await ctx.db.insert("ledger", {
-      uid,
-      kind: "grant",
-      amountMicros: FREE_GRANT_MICROS,
-      balanceAfterMicros: FREE_GRANT_MICROS,
-      ref: freeRef,
-      createdAt: now,
-    });
-    return { balanceMicros: FREE_GRANT_MICROS, lifetimeSpentMicros: 0, messageCount: 0 };
-  },
+    return { balanceMicros: 0, lifetimeSpentMicros: 0, messageCount: 0 };
+  }
+
+  await ctx.db.insert("credits", {
+    uid,
+    username,
+    balanceMicros: FREE_GRANT_MICROS,
+    lifetimeSpentMicros: 0,
+    messageCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await ctx.db.insert("ledger", {
+    uid,
+    kind: "grant",
+    amountMicros: FREE_GRANT_MICROS,
+    balanceAfterMicros: FREE_GRANT_MICROS,
+    ref: freeRef,
+    createdAt: now,
+  });
+  return { balanceMicros: FREE_GRANT_MICROS, lifetimeSpentMicros: 0, messageCount: 0 };
+}
+
+export const ensure = internalMutation({
+  args: { uid: v.string(), username: v.string() },
+  handler: async (ctx, { uid, username }) => ensureRow(ctx, uid, username),
 });
 
 // Race guard. Read-then-write in one mutation; Convex serializes mutations,

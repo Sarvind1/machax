@@ -96,6 +96,9 @@ export default function ChatPage() {
   const [buyError, setBuyError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const leavingRef = useRef(false);
+  // Background wait for a Play top-up to land; aborted on unmount.
+  const creditPollRef = useRef<AbortController | null>(null);
+  useEffect(() => () => creditPollRef.current?.abort(), []);
 
   // Session is gone or rejected. Sign out first (clears machax-user), so /login
   // and / don't bounce straight back here.
@@ -651,25 +654,43 @@ export default function ChatPage() {
     return (await res.json()) as CreditSummary;
   };
 
+  // After Play has the money: our server grants on RevenueCat's webhook, so
+  // wait in the background for the balance to rise, then toast. Without a
+  // known starting balance there is nothing to compare: go straight to "shortly".
+  const awaitPlayCredit = async (before: CreditSummary | null) => {
+    creditPollRef.current?.abort();
+    const poll = new AbortController();
+    creditPollRef.current = poll;
+    const next = before ? await waitForCredit(before.balanceMicros, fetchCredits, undefined, poll.signal) : null;
+    if (poll.signal.aborted) return;
+    if (next) {
+      setCredits(next);
+      setToast(`credit added · ~${next.messagesLeft} messages`);
+      return;
+    }
+    setToast("payment done, credit will show up shortly");
+    // One more look so the pill is not stale.
+    try {
+      const latest = await fetchCredits();
+      if (!poll.signal.aborted) setCredits(latest);
+    } catch {
+      // the next chat reply refreshes it anyway
+    }
+  };
+
   const handleBuy = async () => {
     if (buying) return;
     setBuying(true);
     setBuyError(null);
     try {
       if (Capacitor.isNativePlatform()) {
-        // Play Billing via RevenueCat. Our server grants on RevenueCat's webhook,
-        // so wait for the balance to rise. Without a known balance there is
-        // nothing to compare against: skip straight to the "shortly" toast.
-        const before = credits ?? (await fetchCredits().catch(() => null));
+        // Play Billing via RevenueCat. Fresh balance first, state if that fails.
+        const before = await fetchCredits().catch(() => credits);
         await buyTopupNative();
-        const next = before ? await waitForCredit(before.balanceMicros, fetchCredits) : null;
-        setRechargeOpen(false);
-        if (next) {
-          setCredits(next);
-          setToast(`credit added · ~${next.messagesLeft} messages`);
-        } else {
-          setToast("payment done, credit will show up shortly");
-        }
+        // The purchase is done: free the sheet and wait for the credit in the background.
+        closeRecharge();
+        setBuying(false);
+        void awaitPlayCredit(before);
         return;
       }
       const { credits: next } = await buyTopupWeb();

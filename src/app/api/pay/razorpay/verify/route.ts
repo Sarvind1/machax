@@ -62,19 +62,14 @@ export async function POST(request: Request) {
       return reject(`payment ${paymentId} does not match order ${orderId}`);
     }
 
-    const { granted } = await admin.mutation(internal.credits.grantPurchase, {
-      uid: user.uid,
-      amountMicros: order.creditMicros,
+    const { outcome } = await admin.mutation(internal.pay.fulfillOrder, {
+      providerOrderId: orderId,
       ref: orderId,
       meta: { provider: "razorpay", paymentId, source: "verify" },
     });
-    if (order.status !== "paid") {
-      await admin.mutation(internal.orders.setStatus, {
-        providerOrderId: orderId,
-        status: "paid",
-        paidAt: Date.now(),
-      });
-    }
+    // refunded: a refund closed the order while we checked; no_user: deleted meanwhile.
+    if (outcome !== "granted" && outcome !== "already") return reject(`order ${orderId}: ${outcome}`);
+    const granted = outcome === "granted";
 
     const latest = await admin.query(internal.credits.get, { uid: user.uid });
     return Response.json({ granted, credits: summarize(latest ?? row) }, { headers });

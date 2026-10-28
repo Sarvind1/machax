@@ -197,4 +197,41 @@ describe("waitForCredit", () => {
     await expect(p).resolves.toBeNull();
     expect(fetchCredits).toHaveBeenCalledTimes(10);
   });
+
+  it("returns null without fetching when the signal is already aborted", async () => {
+    vi.useFakeTimers();
+    const { waitForCredit } = await load();
+    const fetchCredits = vi.fn().mockResolvedValue(summary(9_000_000));
+    const ctrl = new AbortController();
+    ctrl.abort();
+    await expect(waitForCredit(0, fetchCredits, 20_000, ctrl.signal)).resolves.toBeNull();
+    expect(fetchCredits).not.toHaveBeenCalled();
+  });
+
+  it("stops at once when aborted mid-wait, with no further fetches", async () => {
+    vi.useFakeTimers();
+    const { waitForCredit } = await load();
+    const fetchCredits = vi.fn().mockResolvedValue(summary(0));
+    const ctrl = new AbortController();
+    const p = waitForCredit(0, fetchCredits, 20_000, ctrl.signal);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetchCredits).toHaveBeenCalledTimes(1);
+    ctrl.abort();
+    await expect(p).resolves.toBeNull();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fetchCredits).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null when aborted while a fetch is in flight, even if it shows the credit", async () => {
+    vi.useFakeTimers();
+    const { waitForCredit } = await load();
+    const ctrl = new AbortController();
+    const fetchCredits = vi.fn(async () => {
+      ctrl.abort();
+      return summary(9_000_000);
+    });
+    const p = waitForCredit(0, fetchCredits, 20_000, ctrl.signal);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(p).resolves.toBeNull();
+  });
 });
