@@ -18,6 +18,7 @@ import { summarize } from "@/lib/credits";
 import { authErrorResponse } from "@/lib/server-auth";
 import { SETTLE_RETURN_TIMEOUT_MS, validateChatInput } from "@/lib/chat-limits";
 import { GUEST_ID_RE, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
+import { parseAdminUids } from "@/lib/admin-uids";
 
 // ConvexHttpClient's own types only accept public functions. The admin client
 // can call internal ones, so narrow it to a typed mutation caller.
@@ -93,6 +94,7 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
 }
 
 const DONE_LINE = encoder.encode(`data: {"done":true}\n\n`);
+const KEEPALIVE_LINE = encoder.encode(`: ok\n\n`);
 const SETTLE_RETRY_MS = 500;
 
 // conversationId ends up in the ledger ref, so keep it short and plain.
@@ -111,6 +113,8 @@ function iteratorToStream(
     // delivered = at least one friend reply was produced. intent = how the engine
     // sorted the message (undefined until it says), so guests aren't charged for small talk.
     settle: (delivered: boolean, intent?: MessageIntent) => Promise<TailEvent | null>;
+    // The trace (prompt, model, timings) goes to the client only in dev or for an admin.
+    sendTrace: boolean;
   },
 ): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<TailEvent | null> } {
   let settling: Promise<TailEvent | null> | null = null;
@@ -212,6 +216,11 @@ function iteratorToStream(
           }
         }
         if (cancelled) return;
+        if (value.type === "trace" && !opts.sendTrace) {
+          // Enqueue something (an SSE comment, which clients skip) so the stream keeps pulling.
+          controller.enqueue(KEEPALIVE_LINE);
+          return;
+        }
         const flat = translateEvent(value);
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(flat)}\n\n`)
@@ -317,13 +326,17 @@ export async function POST(request: Request) {
     const collector = new CostCollector();
     let settle: (delivered: boolean, intent?: MessageIntent) => Promise<TailEvent | null>;
 
+    // The client cut its running round off to send this one: take the lock over
+    // instead of answering "busy" while the old round winds down.
+    const supersede = (body as { interrupting?: unknown }).interrupting === true;
+
     // Tapping an option on the vote card: friends react to the pick.
     const pickedOption = parsePickedOption((body as { pickedOption?: unknown }).pickedOption, podFriendIds);
     let promptName: string;
 
     if (account) {
       const { user, username, name, row } = account;
-      const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid, ref });
+      const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid, ref, supersede });
       if (!begin.ok) {
         if (begin.reason === "out_of_credit") {
           return Response.json(
@@ -366,12 +379,12 @@ export async function POST(request: Request) {
       // and picks don't either; distress is answered even at the hard cap.
       const example = isExamplePrompt(message);
       let kind: GuestKind = pickedOption ? "pick" : await sortGuestMessage(message, false);
-      let begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind });
+      let begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind, supersede });
       if (!begin.ok && (begin.reason === "typed_limit" || begin.reason === "cap") && kind === undefined) {
         // Out of messages: ask the classifier before showing the sign-in wall, so a
         // softly worded "i feel empty" still gets the gentle reply.
         kind = await sortGuestMessage(message, true).catch(() => undefined);
-        if (kind) begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind });
+        if (kind) begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind, supersede });
       }
       if (!begin.ok) {
         if (begin.reason === "busy") {
@@ -415,9 +428,15 @@ export async function POST(request: Request) {
       userEngagementFrequency,
       collector,
       pickedOption,
+      // Guests get no reaction stickers.
+      allowMedia: !!account,
     });
 
-    const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle });
+    // Debug data (the user's prompt, model, timings) never goes to normal users or guests.
+    const sendTrace =
+      process.env.NODE_ENV !== "production" ||
+      (!!account && parseAdminUids(process.env.NEXT_PUBLIC_ADMIN_UIDS).includes(account.user.uid));
+    const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle, sendTrace });
     // Keeps the function alive until the message is settled, even when the client
     // aborts and the platform would otherwise end the invocation with the response.
     after(() => settleOnce());

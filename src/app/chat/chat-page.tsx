@@ -457,6 +457,8 @@ export default function ChatPage() {
           body: JSON.stringify({
             ...(guestId ? { guestId } : {}),
             ...(opts.pickedOption ? { pickedOption: opts.pickedOption } : {}),
+            // Cut the running round off: the server hands this message the lock right away.
+            ...(opts.interrupting ? { interrupting: true } : {}),
             conversationId: convoId,
             message,
             // The server rejects bigger pods and keeps only the last history entries.

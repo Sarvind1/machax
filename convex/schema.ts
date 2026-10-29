@@ -169,6 +169,8 @@ export default defineSchema({
     costMicros: v.number(),
     inFlightSince: v.optional(v.number()),
     inFlightRef: v.optional(v.string()),
+    // A message cut off by a newer one (it took over the lock); its settle still counts it.
+    supersededRef: v.optional(v.string()),
     // Username of the account that signed in from this guest id, if any.
     claimedBy: v.optional(v.string()),
     createdAt: v.number(),

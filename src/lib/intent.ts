@@ -64,11 +64,17 @@ function scriptLanguage(text: string): string {
   if (/[ఀ-౿]/.test(text)) return "Telugu (Telugu script)";
   if (/[ಀ-೿]/.test(text)) return "Kannada (Kannada script)";
   if (/[ঀ-৿]/.test(text)) return "Bengali (Bengali script)";
-  if (/\b(hai|nahi|kya|yaar|bhai|mujhe|kar|kaise|kyun|matlab|accha|thik|bata)\b/i.test(text)) {
+  if (STRONG_HINDI_RE.test(text) || (text.match(WEAK_HINDI_RE) ?? []).length >= 2) {
     return "Hinglish (Hindi in Latin script)";
   }
   return "English";
 }
+
+// Romanized Hindi. One strong word marks a message as Hinglish; weak words
+// (short ones that also turn up in English) need two.
+const STRONG_HINDI_RE =
+  /\b(hai|hain|nahi|nahin|nhi|kya|yaar|bhai|mujhe|kar|karu|karun|karna|karoon|kaise|kyun|kyu|matlab|accha|acha|thik|theek|bata|batao|chahiye|kuch|mein|mera|meri|mere|tera|teri|hoon|lekin|bahut|bohot|abhi|jaun|jaaun|lu|loon|gaya|gayi|raha|rahi|wala|wali|sahi|haan)\b/i;
+const WEAK_HINDI_RE = /\b(ya|toh|bhi|ko|se|par|ho|tha|thi|aur|koi|sab)\b/gi;
 
 /** Keyword-only answer, used when the model is slow or fails. */
 export function classifyByRules(text: string): IntentResult {
@@ -108,10 +114,15 @@ export function parseClassifierReply(raw: string, message: string): IntentResult
     const parsed = JSON.parse(raw.slice(start, end + 1)) as { intent?: string; language?: string };
     const intent = parsed.intent;
     if (intent !== "dilemma" && intent !== "smalltalk" && intent !== "distress") return null;
-    const language =
+    let language =
       typeof parsed.language === "string" && parsed.language.trim()
         ? parsed.language.trim().slice(0, 60)
         : scriptLanguage(message);
+    // A plain English message ("should i buy a 1.5 lakh bike on EMI?") is English,
+    // even when an Indian word or two makes the model call it Hinglish.
+    if (/hinglish|hindi in latin/i.test(language) && scriptLanguage(message) === "English") {
+      language = "English";
+    }
     return { intent: matchesDistress(message) ? "distress" : intent, language, source: "model" };
   } catch {
     return null;

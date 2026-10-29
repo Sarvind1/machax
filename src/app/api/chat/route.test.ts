@@ -109,7 +109,8 @@ async function events(res: Response): Promise<Record<string, unknown>[]> {
   const text = await res.text();
   return text
     .split("\n\n")
-    .filter((chunk) => chunk.trim() !== "")
+    // Lines starting with ":" are SSE comments, which clients skip.
+    .filter((chunk) => chunk.trim() !== "" && !chunk.startsWith(":"))
     .map((chunk) => JSON.parse(chunk.replace(/^data: /, "")));
 }
 
@@ -206,7 +207,7 @@ describe("POST /api/chat", () => {
 
     const begins = callsTo("credits:beginMessage");
     expect(begins).toHaveLength(1);
-    expect(begins[0][1]).toEqual({ uid: "u1", ref: expect.stringMatching(/^c1:[0-9a-f-]{36}$/) });
+    expect(begins[0][1]).toEqual({ uid: "u1", ref: expect.stringMatching(/^c1:[0-9a-f-]{36}$/), supersede: false });
 
     const settles = callsTo("credits:settleMessage");
     expect(settles).toHaveLength(1);
@@ -522,6 +523,9 @@ describe("POST /api/chat as a guest (no token)", () => {
     expect(callsTo("credits:beginMessage")).toHaveLength(0);
     // the body's userName is only a display name for guests
     expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ userName: "spoofed" });
+    // guests never get reaction stickers
+    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ allowMedia: false });
+    expect(begin[1]).toMatchObject({ supersede: false });
   });
 
   it("marks a starter prompt sent as is as an example", async () => {
@@ -625,5 +629,57 @@ describe("POST /api/chat as a guest (no token)", () => {
     const res = await POST(guestReq({ ...body, guestId: GID }, { authorization: "Bearer bad" }));
     expect(res.status).toBe(401);
     expect(mutation).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/chat debug trace and round takeover", () => {
+  const TRACE = {
+    type: "trace",
+    data: {
+      prompt: "secret prompt",
+      userName: "Alice",
+      podFriendIds: [FRIEND],
+      provider: "p",
+      totalTimeMs: 1,
+      totalIterations: 1,
+      totalMessages: 1,
+      finalEnergy: 0.1,
+      iterations: [],
+    },
+  } as unknown as EngineEvent;
+
+  it("never sends the trace to a normal user in production, but still saves it", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_ADMIN_UIDS", "someone-else");
+    convex({});
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+      yield TRACE;
+    });
+    const ev = await events(await POST(req()));
+    vi.unstubAllEnvs();
+    expect(ev.some((e) => "trace" in e)).toBe(false);
+    expect(ev.at(-1)).toEqual({ done: true });
+    expect(callsTo("traces:save")).toHaveLength(1);
+  });
+
+  it("sends the trace to an admin in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_ADMIN_UIDS", "x, u1");
+    convex({});
+    orchestrateChat.mockImplementation(async function* () {
+      yield TRACE;
+    });
+    const ev = await events(await POST(req()));
+    vi.unstubAllEnvs();
+    expect(ev.some((e) => "trace" in e)).toBe(true);
+  });
+
+  it("an interrupting message takes the lock over, and signed-in users may get stickers", async () => {
+    convex({});
+    orchestrateChat.mockImplementation(async function* () {});
+    await events(await POST(req({ ...body, interrupting: true })));
+    expect(callsTo("credits:beginMessage")[0][1]).toMatchObject({ supersede: true });
+    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ allowMedia: true });
   });
 });

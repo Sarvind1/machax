@@ -42,16 +42,27 @@ function windowStart(now: number): number {
 // message either; "distress" uses nothing and is answered even at the hard cap.
 const guestKind = v.optional(v.union(v.literal("smalltalk"), v.literal("distress"), v.literal("pick")));
 
+// supersede: the client cut its running round off to send this message, so this
+// one takes the lock over instead of answering "busy". The cut-off message is
+// remembered in supersededRef so its own settle still counts it.
 export const beginGuestMessage = internalMutation({
-  args: { key: v.string(), ipHash: v.string(), example: v.boolean(), ref: v.string(), kind: guestKind },
-  handler: async (ctx, { key, ipHash, example, ref, kind }) => {
+  args: {
+    key: v.string(),
+    ipHash: v.string(),
+    example: v.boolean(),
+    ref: v.string(),
+    kind: guestKind,
+    supersede: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { key, ipHash, example, ref, kind, supersede }) => {
     const now = Date.now();
     const row = await getRow(ctx, key);
 
     if (row?.claimedBy !== undefined) {
       return { ok: false as const, reason: "signed_up" as const, usage: usage(row) };
     }
-    if (row?.inFlightSince !== undefined && now - row.inFlightSince < GUEST_IN_FLIGHT_STALE_MS) {
+    const locked = row?.inFlightSince !== undefined && now - row.inFlightSince < GUEST_IN_FLIGHT_STALE_MS;
+    if (locked && !supersede) {
       return { ok: false as const, reason: "busy" as const, usage: usage(row) };
     }
     if (kind !== "distress" && (row?.totalCount ?? 0) >= GUEST_HARD_CAP) {
@@ -73,7 +84,8 @@ export const beginGuestMessage = internalMutation({
     else await ctx.db.insert("guestIpRate", { ipHash, windowStart: start, count: 1 });
 
     if (row) {
-      await ctx.db.patch(row._id, { inFlightSince: now, inFlightRef: ref, updatedAt: now });
+      const superseded = locked && row.inFlightRef ? { supersededRef: row.inFlightRef } : {};
+      await ctx.db.patch(row._id, { inFlightSince: now, inFlightRef: ref, ...superseded, updatedAt: now });
     } else {
       await ctx.db.insert("guestUsage", {
         key,
@@ -106,7 +118,11 @@ export const settleGuestMessage = internalMutation({
   },
   handler: async (ctx, { key, ipHash, windowStart: start, ref, example, delivered, costMicros, kind }) => {
     const row = await getRow(ctx, key);
-    if (!row || row.inFlightRef !== ref) return usage(row);
+    if (!row) return usage(row);
+    const ownsLock = row.inFlightRef === ref;
+    // A message cut off by a newer one counts once, without touching the newer one's lock.
+    const wasSuperseded = !ownsLock && row.supersededRef === ref;
+    if (!ownsLock && !wasSuperseded) return usage(row);
     const now = Date.now();
     const cost = Number.isFinite(costMicros) && costMicros > 0 ? Math.round(costMicros) : 0;
     const typed = example || kind !== undefined ? 0 : 1;
@@ -116,8 +132,7 @@ export const settleGuestMessage = internalMutation({
     await ctx.db.patch(row._id, {
       ...counts,
       costMicros: row.costMicros + cost,
-      inFlightSince: undefined,
-      inFlightRef: undefined,
+      ...(ownsLock ? { inFlightSince: undefined, inFlightRef: undefined } : { supersededRef: undefined }),
       updatedAt: now,
     });
     if (!delivered) {

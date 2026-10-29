@@ -68,17 +68,19 @@ export async function POST(request: Request) {
     const provider = getActiveProvider();
     if (!friend || !provider) return Response.json({ followUp: null }, { headers: cors });
 
-    const userText = due.recent.filter((m) => m.from === "user").map((m) => m.text).join("\n");
+    // Cards (vote, chips, helpline) are stored as "card:<kind>" messages holding JSON: not chat.
+    const chat = due.recent.filter((m) => !m.from.startsWith("card:"));
+    const userText = chat.filter((m) => m.from === "user").map((m) => m.text).join("\n");
     const language = classifyByRules(userText || due.question).language;
     const userName = name ?? "your friend";
-    const transcript = due.recent
+    const transcript = chat
       .map((m) => `[${m.from === "user" ? userName : FRIENDS_BY_ID[m.from]?.name ?? m.from}] ${m.text}`)
       .join("\n");
     const prompt = `You are ${friend.name} (${friend.role}) in a friends group chat on WhatsApp. Some time ago the group talked about this:
 
 ${transcript}
 
-${userName} decided: "${due.option.label}".
+They were deciding: "${due.question}". ${userName} picked: "${due.option.label}". Ask about THAT pick, not any other option.
 ${languageBlock(language, userName)}
 Open the chat again with ONE short line asking how it went: did they actually do it, what happened? Make it specific to their situation and in your own voice, playful (like "so... did you ask for the 15k or nah?"). Under 18 words. Don't use their name. No quotes, no name prefix.`;
 

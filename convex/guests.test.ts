@@ -153,3 +153,22 @@ describe("claimGuest", () => {
     });
   });
 });
+
+describe("guest round takeover", () => {
+  test("an interrupting message takes the lock; the cut-off one still counts once", async () => {
+    const t = setup();
+    const a = await t.mutation(internal.guests.beginGuestMessage, { key: KEY, ipHash: "ip1", example: false, ref: "r1" });
+    expect(a.ok).toBe(true);
+    expect((await t.mutation(internal.guests.beginGuestMessage, { key: KEY, ipHash: "ip1", example: false, ref: "r2" })).ok).toBe(false);
+    const b = await t.mutation(internal.guests.beginGuestMessage, { key: KEY, ipHash: "ip1", example: false, ref: "r3", supersede: true });
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    const settle = (ref: string, windowStart: number) =>
+      t.mutation(internal.guests.settleGuestMessage, { key: KEY, ipHash: "ip1", windowStart, ref, example: false, delivered: true, costMicros: 10 });
+    expect(await settle("r1", a.windowStart)).toMatchObject({ typedUsed: 1 });
+    expect(await settle("r1", a.windowStart)).toMatchObject({ typedUsed: 1 }); // a retried settle is a no-op
+    const row = await t.run(async (ctx) => ctx.db.query("guestUsage").first());
+    expect(row?.inFlightRef).toBe("r3"); // the newer message still holds the lock
+    expect(await settle("r3", b.windowStart)).toMatchObject({ typedUsed: 2 });
+  });
+});

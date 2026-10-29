@@ -150,14 +150,17 @@ export const ensure = internalMutation({
 // Race guard. Read-then-write in one mutation; Convex serializes mutations,
 // so two concurrent calls cannot both pass. The lock records the message's
 // ledger ref, so only that message's settle releases it.
+// supersede: the client cut its running round off to send this message, so this
+// one takes the lock over instead of waiting. The cut-off round is still charged
+// by its own settle (charges don't depend on holding the lock).
 export const beginMessage = internalMutation({
-  args: { uid: v.string(), ref: v.string() },
-  handler: async (ctx, { uid, ref }) => {
+  args: { uid: v.string(), ref: v.string(), supersede: v.optional(v.boolean()) },
+  handler: async (ctx, { uid, ref, supersede }) => {
     const row = await getRow(ctx, uid);
     if (!row) return { ok: false as const, reason: "no_account" as const };
 
     const now = Date.now();
-    if (row.inFlightSince !== undefined && now - row.inFlightSince < IN_FLIGHT_STALE_MS) {
+    if (!supersede && row.inFlightSince !== undefined && now - row.inFlightSince < IN_FLIGHT_STALE_MS) {
       return { ok: false as const, reason: "busy" as const };
     }
     if (row.balanceMicros <= 0) {

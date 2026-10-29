@@ -298,6 +298,27 @@ export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
 const ANTHROPIC_REQUEST_OPTIONS = { timeout: 30_000, maxRetries: 1 };
 let anthropicClient: Anthropic | null = null;
 
+/**
+ * The reply text of a message. After a server-side fallback (a model declined
+ * mid-stream and another took over), the stream keeps the declined model's
+ * partial text before a `fallback` block; that partial is often the model
+ * thinking out loud ("need one sentence, 10-15 words..."), so only text after
+ * the last `fallback` block is the reply. Text blocks are joined with a space.
+ */
+export function finalTextOf(content: { type: string; text?: string }[]): string {
+  let start = 0;
+  content.forEach((b, i) => {
+    if (b.type === "fallback") start = i + 1;
+  });
+  return content
+    .slice(start)
+    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text!.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
 async function callAnthropic(
   system: string,
   userPrompt: string,
@@ -365,7 +386,7 @@ async function callAnthropic(
   // ran; it differs from `model` after a server-side fallback.
   collector?.addAnthropic(msg.model, msg.usage);
   if (msg.stop_reason === "refusal") throw new Error(`anthropic refusal: ${msg.stop_details?.category ?? "unknown"}`);
-  const text = msg.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
+  const text = finalTextOf(msg.content as { type: string; text?: string }[]);
   if (!text) throw new Error(`anthropic returned no text (stop_reason=${msg.stop_reason})`);
   return { text, model: msg.model, usage: msg.usage };
 }
@@ -437,6 +458,55 @@ function cleanResponse(text: string, friendName: string): string {
   const namePrefix = new RegExp(`^${friendName}:\\s*`, "i");
   text = text.replace(namePrefix, "");
   return text.trim();
+}
+
+// ── Output guards ───────────────────────────────────────────────────
+
+const META_PATTERNS: RegExp[] = [
+  /\b\d+\s*[-–to]+\s*\d+\s*words?\b/i, // "10-15 words"
+  /\b(under|max|maximum|less than|at most|around|keep it)\s+\d+\s+words?\b/i,
+  /\bno (caps|capitals|periods|full stops|quotes|emojis?)\b/i,
+  /\b(new|different|fresh|my) angle\b/i,
+  /\bneed (a|one|some|to add|to say)\b[^.]{0,30}\b(sentence|line|angle|reply|response|take)\b/i,
+  /\b(the user|user'?s (message|question)|the prompt|system prompt|my instructions|my character|in character|persona|transcript)\b/i,
+  /\b(let me|i should|i'?ll|i will|i need to) (reply|respond|write|draft|keep it|stay in)\b/i,
+  /^(draft|reply|response|output|answer|final( answer)?|message)\s*:/i,
+  /\b(hinglish|devanagari|latin script|lowercase)\b/i,
+];
+
+/**
+ * True when a "reply" is really the model talking about its task: planning,
+ * restating rules ("10-15 words, no caps"), or describing its own character
+ * ("I'm Lalitha, organizer", "Lalitha: structured, practical").
+ */
+export function looksLikeMetaText(text: string, friendName: string): boolean {
+  if (META_PATTERNS.some((re) => re.test(text))) return true;
+  const name = friendName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b(i'?m|i am|as) ${name}\\b|\\b${name}\\s*[:(]`, "i").test(text);
+}
+
+// Hindi words that give away a Hinglish reply to an English message.
+const HINGLISH_WORDS =
+  /\b(hai|hain|nahi|nahin|kya|yaar|bhai|arre|arey|accha|acha|matlab|kar|karo|karna|kuch|bhi|toh|tho|mat|wala|wali|raha|rahi|hoga|lena|dena|baat|sahi|bol|abhi|pehle|phir|kaise|kyun|kyu|mera|meri|tera|teri|apna|apni|chahiye|sapna|lekin|aur)\b/gi;
+
+/** True when an English-language reply is really Hinglish (2+ Hindi words). */
+export function looksHinglish(text: string): boolean {
+  return (text.match(HINGLISH_WORDS) ?? []).length >= 2;
+}
+
+/**
+ * Friends are Indian, so money is in rupees. Swaps €/$/£ (and euro/dollar/pound
+ * words) for ₹/rupees unless the user wrote that currency themselves.
+ */
+export function fixCurrency(text: string, userText: string): string {
+  const userUsed = (re: RegExp) => re.test(userText);
+  let out = text;
+  if (!userUsed(/€|\beuros?\b/i)) out = out.replace(/€\s?/g, "₹").replace(/\beuros?\b/gi, "rupees");
+  if (!userUsed(/£|\bpounds?\b/i)) out = out.replace(/£\s?/g, "₹");
+  if (!userUsed(/\$|\bdollars?\b|\busd\b/i)) {
+    out = out.replace(/\$\s?(?=\d)/g, "₹").replace(/\b(\d[\d,.]*\s*(k|lakh|lakhs|crore|cr)?)\s*dollars?\b/gi, "$1 rupees");
+  }
+  return out;
 }
 
 // ── Media marker extraction ─────────────────────────────────────────
@@ -843,10 +913,18 @@ export function languageBlock(language: string, userName: string): string {
     extra = " Mix Hindi and English the way Indian friends text, in Latin script (e.g. \"bhai seriously, paise maang le\").";
   } else if (lang.includes("manglish")) {
     extra = " Mix Malayalam and English in Latin script, the way Kerala friends text.";
-  } else if (!lang.startsWith("english")) {
+  } else if (lang.startsWith("english")) {
+    extra = " Plain English only: no Hindi or Hinglish words (no \"yaar\", \"bhai\", \"hai\", \"kya\"), even if your usual style mixes them in.";
+  } else {
     extra = " Use that script. Casual, everyday words, not formal or textbook language. English slang mixed in is fine.";
   }
   return `\nLANGUAGE: ${userName} wrote in ${language}. Reply in ${language}.${extra}\n`;
+}
+
+// Shared by every friend prompt: output format and money.
+export function outputRules(userName: string): string {
+  return `Write ONLY the message you'd send in the group, nothing else: no planning, no notes about length, language, rules or your character, no name label.
+Money is in Indian rupees: write ₹, rupees, lakh or crore, never €, $ or £ (unless ${userName} used them).`;
 }
 
 // ── Prompt builder ──────────────────────────────────────────────────
@@ -1004,7 +1082,8 @@ ${sessionMoodBlock}
 DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${traitHints ? `\n${traitHints}` : stanceHint}
 NEVER reference specific past events, conversations, or memories that aren't in the transcript above. You have personality and opinions but you don't invent shared history.
 Your reply must be a COMPLETE thought. Never a fragment. Do NOT use quotes around your response. Do NOT prefix with your name.
-CRITICAL: Do NOT repeat or rephrase what someone else already said. Add a NEW perspective, joke, reaction, or opinion.`;
+CRITICAL: Do NOT repeat or rephrase what someone else already said. Add a NEW perspective, joke, reaction, or opinion.
+${outputRules(userName)}`;
 }
 
 // ── Call a friend with v3 engine context ────────────────────────────
@@ -1028,7 +1107,8 @@ async function callFriend(
   collector?: CostCollector,
   // language: the user's language (from classifyMessage). allowMode: false on the
   // first replies of a turn, so they stay in the friend's own voice. effort: Sonnet thinking effort.
-  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort } = {},
+  // allowMedia: false = never send a sticker (guests).
+  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean } = {},
 ): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string; model?: string; paid?: boolean } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -1228,7 +1308,8 @@ async function callFriend(
   }
 
   // ── GIF prompt injection (conditional) ──
-  const shouldOfferGif = Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
+  const allowMedia = extra.allowMedia !== false;
+  const shouldOfferGif = allowMedia && Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
   if (shouldOfferGif) {
     prompt += `\n\nReact with a visual this time! Write [REACT: 2-4 words describing your reaction to THIS specific moment] — describe what you're actually feeling right now, don't use generic reactions. You can write text before or after the tag, or just send it alone.`;
   }
@@ -1280,7 +1361,9 @@ async function callFriend(
     let mediaAltText: string | undefined;
 
     const marker = extractMediaMarker(text);
-    if (marker) {
+    if (marker && !allowMedia) {
+      text = marker.remainingText;
+    } else if (marker) {
       // ALWAYS strip the marker from text first — regardless of media resolution outcome
       text = marker.remainingText || text.replace(/\[(?:REACT|GIF):\s*.+?\]/i, '').trim();
 
@@ -1315,23 +1398,37 @@ async function callFriend(
       if (/['\u2019]$/.test(t)) return true; // ends with apostrophe (truncated contraction)
       return false;
     };
-    const isGarbage = looksIncomplete(text)
-      || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase());
+    const englishOnly = (extra.language ?? "").toLowerCase().startsWith("english");
+    const problemWith = (t: string): string | null => {
+      if (t.length < 3) return "too-short";
+      if (allMessages.some(m => m.text.toLowerCase() === t.toLowerCase())) return "exact-dupe";
+      if (looksIncomplete(t)) return "incomplete";
+      if (looksLikeMetaText(t, friend.name)) return "meta";
+      if (englishOnly && looksHinglish(t)) return "wrong-language";
+      return null;
+    };
 
-    if (isGarbage) {
-      const reason = text.length < 3 ? "too-short" : allMessages.some(m => m.text.toLowerCase() === text.toLowerCase()) ? "exact-dupe" : "incomplete";
+    const reason = problemWith(text);
+    if (reason) {
       engineLog({ ts: new Date().toISOString(), event: "garbage-first", agent: friendId, text: text.slice(0, 120), reason, length: text.length });
-      const retryPrompt = prompt + "\n\nIMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
-      ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, retryPrompt, provider, Math.max(maxTokens, 150), undefined, collector));
-      text = cleanResponse(text, friend.name);
+      const fix =
+        reason === "meta"
+          ? "IMPORTANT: Output ONLY the chat message you'd send, exactly as it would appear in the group. No planning, no notes about length, language, rules or your character."
+          : reason === "wrong-language"
+            ? "IMPORTANT: Write it in plain English only. No Hindi or Hinglish words."
+            : "IMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
+      ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, `${prompt}\n\n${fix}`, provider, Math.max(maxTokens, 150), undefined, collector));
+      text = cleanResponse(text, friend.name).replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, "").trim();
 
-      // If still garbage after retry, return null to skip this agent
-      if (looksIncomplete(text) || allMessages.some(m => m.text.toLowerCase() === text.toLowerCase())) {
-        const reason2 = text.length < 3 ? "too-short" : allMessages.some(m => m.text.toLowerCase() === text.toLowerCase()) ? "exact-dupe" : "incomplete";
+      // Still bad after the retry: skip this friend rather than show it.
+      // A reply that is still a bit Hinglish is kept; an empty round is worse.
+      const reason2 = problemWith(text);
+      if (reason2 && reason2 !== "wrong-language") {
         engineLog({ ts: new Date().toISOString(), event: "garbage-retry-failed", agent: friendId, text: text.slice(0, 120), reason: reason2, length: text.length });
         return null;
       }
     }
+    text = fixCurrency(text, latestUserMsg ?? "");
 
     return { entry: { from: friendId, text }, replyTo: replyToId, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, model: usedModel, paid };
   } catch (err) {
@@ -1532,6 +1629,8 @@ async function* simpleTurn(
     language: string;
     collector?: CostCollector;
     effort?: AnthropicEffort;
+    /** The user's newest message, for the currency guard. */
+    userText?: string;
   },
 ): AsyncGenerator<EngineEvent> {
   const said: ChatEntry[] = [];
@@ -1550,11 +1649,21 @@ ${soFar}
 ${languageBlock(ctx.language, ctx.userName)}
 ${instruction}
 
-Type like you text your close friends. Don't use ${ctx.userName}'s name. Don't prefix with your name. No quotes around your reply. No business jargon.`;
+Type like you text your close friends. Don't use ${ctx.userName}'s name. Don't prefix with your name. No quotes around your reply. No business jargon.
+${outputRules(ctx.userName)}`;
     let text = "";
     try {
-      const result = await callModel(friend.systemPrompt, prompt, ctx.provider, 200, undefined, ctx.collector, ctx.effort);
-      text = cleanResponse(result.text, friend.name).replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, "").trim();
+      const ask = async (p: string) =>
+        cleanResponse((await callModel(friend.systemPrompt, p, ctx.provider, 200, undefined, ctx.collector, ctx.effort)).text, friend.name)
+          .replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, "")
+          .trim();
+      text = await ask(prompt);
+      if (looksLikeMetaText(text, friend.name)) {
+        engineLog({ ts: new Date().toISOString(), event: "garbage-first", agent: friendId, text: text.slice(0, 120), reason: "meta" });
+        text = await ask(`${prompt}\n\nIMPORTANT: Output ONLY the chat message itself. No planning or notes.`);
+        if (looksLikeMetaText(text, friend.name)) text = "";
+      }
+      text = fixCurrency(text, ctx.userText ?? "");
     } catch (err) {
       engineLog({ ts: new Date().toISOString(), event: "simple-turn-failed", agent: friendId, error: String(err).slice(0, 200) });
     }
@@ -1580,8 +1689,10 @@ export async function* orchestrateChat(params: {
   collector?: CostCollector; // optional: accumulates cost of every model call
   // Set when the user tapped an option on the vote card; friends react to the pick instead of debating.
   pickedOption?: { label: string; voices: string[] };
+  // false = no stickers in replies (guests).
+  allowMedia?: boolean;
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption } = params;
+  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true } = params;
 
   // Parse character overrides once
   let parsedOverrides: Record<string, any> = {};
@@ -1617,15 +1728,22 @@ export async function* orchestrateChat(params: {
   // distress and to name the language.
   const earlierUserMessages = history.filter((m) => m.from === "user").map((m) => m.text);
   const rules = classifyByRules(message);
-  const sorted: IntentResult =
+  const classified: IntentResult =
     pickedOption || rules.intent !== "dilemma"
       ? rules
       : await classifyMessage(message, earlierUserMessages.slice(-2), async (system, prompt) =>
           (await callModel(system, prompt, { ...provider, model: provider.synthesisModel }, 80, undefined, collector)).text,
         );
-  const language = sorted.language;
   // A dilemma earlier in this chat means "ok" / "lol" is a reply, not a fresh hello.
   const hadDilemmaBefore = earlierUserMessages.some((t) => !looksLikeSmallTalk(t));
+  // Mid-dilemma, an added detail ("also he never pays for groceries") is part of
+  // the dilemma even if the classifier calls it chit-chat; only a plain "ok" /
+  // "lol" counts as small talk there (and gets no new vote card).
+  const sorted: IntentResult =
+    classified.intent === "smalltalk" && hadDilemmaBefore && !looksLikeSmallTalk(message)
+      ? { ...classified, intent: "dilemma" }
+      : classified;
+  const language = sorted.language;
   yield { type: "intent", intent: pickedOption ? "pick" : sorted.intent, language };
   engineLog({ ts: new Date().toISOString(), event: "intent", intent: pickedOption ? "pick" : sorted.intent, language, source: sorted.source });
 
@@ -1635,7 +1753,7 @@ export async function* orchestrateChat(params: {
     const gentleId = pickGentlestFriend(podFriendIds) ?? podFriendIds[0];
     if (gentleId) {
       yield* simpleTurn([{ friendId: gentleId, instruction: distressInstruction(userName) }], {
-        transcript: transcriptForSimple, provider, userName, language, collector,
+        transcript: transcriptForSimple, provider, userName, language, collector, userText: message,
       });
     }
     yield { type: "helpline", helpline: { name: HELPLINE.name, numbers: [...HELPLINE.numbers], note: HELPLINE.note } };
@@ -1648,7 +1766,7 @@ export async function* orchestrateChat(params: {
       .slice(0, Math.min(2, podFriendIds.length));
     yield* simpleTurn(
       talkers.map((friendId, i) => ({ friendId, instruction: smallTalkInstruction(userName, i) })),
-      { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low" },
+      { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message },
     );
     yield { type: "chips", chips: pickStarterChips(message) };
     return;
@@ -1665,7 +1783,7 @@ export async function* orchestrateChat(params: {
     if (reactors.length === 0 && podFriendIds[0]) {
       reactors.push({ friendId: podFriendIds[0], instruction: pickInstruction(userName, pickedOption.label, false, true) });
     }
-    yield* simpleTurn(reactors, { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low" });
+    yield* simpleTurn(reactors, { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message });
     return;
   }
 
@@ -1916,6 +2034,7 @@ export async function* orchestrateChat(params: {
             // The first replies of a turn stay in each friend's own voice and arrive faster.
             allowMode: roundResponses.length > 0,
             effort: roundResponses.length === 0 ? "low" : undefined,
+            allowMedia,
           },
         );
       }),
@@ -2068,7 +2187,7 @@ export async function* orchestrateChat(params: {
   try {
     const { text: synthesisText } = await callModel(
       `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`,
-      `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}. Labels are short and punchy (max 6 words). Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`,
+      `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}, worded the way these friends would text it: casual, everyday words, like "just ask him for the money back" or "skip the wedding, keep the job". No office or finance-speak (never "maximize", "optimize", "prioritize", "leverage", "financial", "stability", "long-term growth", "explore options"). Labels are short and punchy (max 6 words); the blurb is one short casual line. Money is in rupees (₹, lakh, crore), never €, $ or £. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`,
       { ...provider, model: provider.synthesisModel },
       600,
       undefined,
@@ -2086,6 +2205,11 @@ export async function* orchestrateChat(params: {
     }
 
     const parsed = normalizeDecision(JSON.parse(cleaned) as Decision, podFriendIds);
+    parsed.question = fixCurrency(parsed.question, message);
+    for (const o of parsed.options) {
+      o.label = fixCurrency(o.label, message);
+      o.blurb = fixCurrency(o.blurb, message);
+    }
     // A vote needs at least two real choices; otherwise no card.
     if (parsed.options.length >= 2) yield { type: "decision", decision: parsed };
   } catch (err) {

@@ -28,7 +28,17 @@ export const upsert = mutation({
       .first();
 
     if (existing) {
-      await ctx.db.patch(existing._id, { question, options });
+      // A new vote card replaces the old one: its pick (and the "did you do it?"
+      // follow-up about that pick) belonged to the old options, so start fresh.
+      // Otherwise the new card shows up already picked and can't be voted on.
+      await ctx.db.patch(existing._id, {
+        question,
+        options,
+        selectedOptionId: undefined,
+        selectedAt: undefined,
+        followUpSentAt: undefined,
+        createdAt: Date.now(),
+      });
       return existing._id;
     }
 

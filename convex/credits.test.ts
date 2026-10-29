@@ -195,6 +195,22 @@ describe("credits.beginMessage", () => {
   });
 });
 
+describe("credits.beginMessage supersede", () => {
+  test("an interrupting message takes the lock; the cut-off one is still charged and leaves the lock alone", async () => {
+    const t = setup();
+    await t.mutation(internal.credits.ensure, { uid: "u1", username: "alice", googleId: "g-u1" });
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m1" })).toEqual({ ok: true });
+    expect(await t.mutation(internal.credits.beginMessage, { uid: "u1", ref: "m2", supersede: true })).toEqual({ ok: true });
+    expect((await creditsRow(t, "u1"))?.inFlightRef).toBe("m2");
+    await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100, ref: "m1" });
+    const row = await creditsRow(t, "u1");
+    expect(row?.inFlightRef).toBe("m2"); // still m2's lock
+    expect(row?.messageCount).toBe(1); // m1 was charged
+    await t.mutation(internal.credits.settleMessage, { uid: "u1", costMicros: 100, ref: "m2" });
+    expect((await creditsRow(t, "u1"))?.inFlightRef).toBeUndefined();
+  });
+});
+
 describe("credits.settleMessage", () => {
   test("charges the cost, bumps counters, clears inFlightSince, writes a charge row", async () => {
     const t = setup();
