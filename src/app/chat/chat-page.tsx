@@ -55,6 +55,8 @@ import TypingIndicator from "./components/typing-indicator";
 import CreditPill from "./components/credit-pill";
 import RechargeSheet from "./components/recharge-sheet";
 import BackArrow from "../back-button";
+import FriendAvatar from "@/components/friend-avatar";
+import FaceStack from "@/components/face-stack";
 import { onBack } from "@/lib/back-nav";
 import "./chat.css";
 
@@ -284,6 +286,7 @@ export default function ChatPage() {
     api.conversations.list,
     settingsUsername ? { username: settingsUsername } : "skip"
   ) ?? [];
+  const activeTitle: string | undefined = conversations.find((c) => c._id === activeConversation)?.title;
   const createConversation = useMutation(api.conversations.create);
   const sendMessage = useMutation(api.messages.send);
   const upsertDecision = useMutation(api.decisions.upsert);
@@ -1093,9 +1096,10 @@ export default function ChatPage() {
           <div className="chat-landing-credit">
             {guest ? guestPill : <CreditPill credits={credits} onClick={openRecharge} />}
           </div>
-          <h1 className="chat-landing-title">what&apos;s on your mind?</h1>
+          {pod.length > 0 && <FaceStack ids={pod.map((f) => f.id)} size={48} max={5} className="chat-landing-faces" />}
+          <h1 className="chat-landing-title">what&apos;s the drama?</h1>
           <p className="chat-landing-sub">
-            dump your messiest thought. your council of AI friends will hash it out.
+            spill it. your AI friends will roast it, fight about it, and you make the call.
           </p>
 
           <div className="chat-mood-landing">
@@ -1176,7 +1180,7 @@ export default function ChatPage() {
               onChange={setInput}
               onSubmit={handleSubmit}
               disabled={false}
-              placeholder="type it out..."
+              placeholder="spill it..."
             />
           </div>
 
@@ -1218,7 +1222,7 @@ export default function ChatPage() {
                 return (
                   <div key={f.id} className={`friend-pill-presence ${isActive ? 'active' : isLurking ? 'lurking' : 'joined'}`}>
                     <span className="presence-dot-small" />
-                    <span className="friend-pill-avatar" style={{ background: f.color }}>{f.name[0]}</span>
+                    <FriendAvatar id={f.id} size={24} />
                     <span>{f.name.toLowerCase()}</span>
                   </div>
                 );
@@ -1231,7 +1235,7 @@ export default function ChatPage() {
                   return (
                     <div key={id} className="friend-pill-presence lurking">
                       <span className="presence-dot-small" />
-                      <span className="friend-pill-avatar" style={{ background: f.color, opacity: 0.4 }}>{f.name[0]}</span>
+                      <FriendAvatar id={f.id} size={24} style={{ opacity: 0.5 }} />
                       <span>{f.name.toLowerCase()}</span>
                       <span className="lurker-label">reading</span>
                     </div>
@@ -1279,20 +1283,23 @@ export default function ChatPage() {
       <div className="chat-center">
         <div className="chat-header">
           <BackArrow onClick={() => handleNewChat()} />
-          <span className="chat-header-title">the lounge</span>
-          {pod.length > 0 && (
-            <span className="chat-header-tag">
-              {pod.length} friends in the room
-            </span>
-          )}
+          {pod.length > 0 && <FaceStack ids={pod.map((f) => f.id)} size={32} max={3} />}
+          <div className="chat-header-meta">
+            <span className="chat-header-title">{activeTitle ?? "the group chat"}</span>
+            {pod.length > 0 && (
+              <span className="chat-header-names">
+                {pod.map((f) => f.name.toLowerCase()).join(", ")}
+              </span>
+            )}
+          </div>
           {guest ? guestPill : <CreditPill credits={credits} onClick={openRecharge} />}
           <button
             ref={moodTriggerRef}
             className="chat-mood-trigger"
             onClick={() => setMoodOpen(!moodOpen)}
-            title="Session mood"
+            title="set the mood"
           >
-            <span className="chat-mood-dot" /> set the mood
+            mood
           </button>
 
           {moodOpen && (

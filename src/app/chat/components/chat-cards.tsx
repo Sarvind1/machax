@@ -2,11 +2,11 @@
 
 // Cards that sit inside the chat stream: the helpline card under a gentle
 // reply, example-prompt chips under a small-talk reply, and the vote card at
-// the end of a debate. They reuse existing chat classes; the restyle comes later.
+// the end of a debate. Styles live in chat.css (chat-helpline / chat-vote).
 
 import { useRef, useState } from "react";
 import type { Decision } from "@/lib/types";
-import { FRIENDS_BY_ID } from "@/lib/friends";
+import FaceStack from "@/components/face-stack";
 import { shareRoastCard, type ShareLine } from "./share-card";
 
 /** Messages with this `from` prefix are cards, not chat lines. */
@@ -23,21 +23,17 @@ export interface HelplineInfo {
 
 export function HelplineCard({ helpline }: { helpline: HelplineInfo }) {
   return (
-    <div className="chat-system-msg" role="note" aria-label="helpline">
-      <div className="chat-decision-card" style={{ textAlign: "left", maxWidth: 360, margin: "0 auto" }}>
-        <div className="chat-decision-card-label">talk to someone now · {helpline.name}</div>
-        <div className="chat-decision-card-blurb">
-          {helpline.numbers.map((n, i) => (
-            <span key={n}>
-              {i > 0 ? " or " : ""}
-              <a href={`tel:${n.replace(/[^0-9+]/g, "")}`}>
-                <strong>{n}</strong>
-              </a>
-            </span>
-          ))}
-        </div>
-        <div className="chat-decision-card-blurb">{helpline.note}</div>
+    <div className="chat-helpline" role="note" aria-label="helpline">
+      <div className="chat-helpline-title">talk to someone now</div>
+      <div className="chat-helpline-name">{helpline.name}</div>
+      <div className="chat-helpline-numbers">
+        {helpline.numbers.map((n) => (
+          <a key={n} className="chat-helpline-call" href={`tel:${n.replace(/[^0-9+]/g, "")}`}>
+            call {n}
+          </a>
+        ))}
       </div>
+      <p className="chat-helpline-note">{helpline.note}</p>
     </div>
   );
 }
@@ -53,8 +49,6 @@ export function StarterChips({ chips, onPick }: { chips: string[]; onPick: (text
     </div>
   );
 }
-
-const ACCENTS = ["#6BAE7E", "#7A8BD4", "#D28AA8", "#E2A34A", "#5FA6B8"];
 
 export function VoteCard({
   decision,
@@ -79,71 +73,58 @@ export function VoteCard({
   const canPick = active && !pickedId;
 
   return (
-    <div className="chat-system-msg" aria-label="the group votes">
-      <div style={{ maxWidth: 420, margin: "0 auto", textAlign: "left", display: "flex", flexDirection: "column", gap: 8 }}>
-        <div className="chat-decision-header">the group votes</div>
-        <h3 className="chat-decision-question">{decision.question}</h3>
-        <div className="chat-decision-options">
-          {decision.options.map((o, i) => {
-            const isPicked = pickedId === o.id;
-            const leading = top > 0 && o.voices.length === top;
-            return (
-              <button
-                key={o.id}
-                type="button"
-                className="chat-decision-card"
-                disabled={!canPick}
-                onClick={() => {
-                  if (!canPick || pickedRef.current) return;
-                  pickedRef.current = true;
-                  onPick(o.id);
-                }}
-                style={{
-                  borderLeftColor: ACCENTS[i % ACCENTS.length],
-                  outline: isPicked ? `2px solid ${ACCENTS[i % ACCENTS.length]}` : "none",
-                  textAlign: "left",
-                  width: "100%",
-                  cursor: canPick ? "pointer" : "default",
-                  opacity: pickedId && !isPicked ? 0.6 : 1,
-                }}
-              >
-                <div className="chat-decision-card-label">
-                  {isPicked ? "✓ " : ""}
-                  {o.label}
-                </div>
-                <div className="chat-decision-card-blurb">{o.blurb}</div>
-                <div className="chat-decision-card-voices">
-                  <div className="chat-decision-card-voices-avatars">
-                    {o.voices.map((id) => (
-                      <span key={id} style={{ background: FRIENDS_BY_ID[id]?.color ?? "#888" }} title={FRIENDS_BY_ID[id]?.name ?? id}>
-                        {FRIENDS_BY_ID[id]?.name[0] ?? "?"}
-                      </span>
-                    ))}
-                  </div>
-                  {o.voices.length} {o.voices.length === 1 ? "vote" : "votes"}
-                  {leading && total > 1 ? " · leading" : ""}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-        <div className="chat-decision-note">{pickedId ? "you made the call" : canPick ? "tap one. your call." : ""}</div>
-        <button
-          type="button"
-          className="chat-decision-pick"
-          disabled={sharing}
-          onClick={async () => {
-            setSharing(true);
-            try {
-              await shareRoastCard({ decision, pickedId: pickedId ?? null, lines: shareLines });
-            } finally {
-              setSharing(false);
-            }
-          }}
-        >
-          {sharing ? "making it..." : "share the roast"}
-        </button>
+    <div className="chat-vote" aria-label="the group votes">
+      <div className="chat-vote-header">the group votes</div>
+      <h3 className="chat-vote-question">{decision.question}</h3>
+      <div className="chat-vote-options">
+        {decision.options.map((o) => {
+          const isPicked = pickedId === o.id;
+          const leading = top > 0 && o.voices.length === top && total > 1;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              className={`chat-vote-option${isPicked ? " picked" : ""}${pickedId && !isPicked ? " faded" : ""}`}
+              disabled={!canPick}
+              aria-pressed={isPicked}
+              onClick={() => {
+                if (!canPick || pickedRef.current) return;
+                pickedRef.current = true;
+                onPick(o.id);
+              }}
+            >
+              <span className="chat-vote-label">
+                {isPicked ? "\u2713 " : ""}
+                {o.label}
+                {leading && <span className="chat-vote-leading">leading</span>}
+              </span>
+              <span className="chat-vote-blurb">{o.blurb}</span>
+              <span className="chat-vote-voices">
+                {o.voices.length > 0 && <FaceStack ids={o.voices} size={24} max={5} />}
+                {o.voices.length} {o.voices.length === 1 ? "vote" : "votes"}
+              </span>
+            </button>
+          );
+        })}
       </div>
+      {(pickedId || canPick) && (
+        <div className="chat-vote-note">{pickedId ? "you made the call" : "tap one. your call."}</div>
+      )}
+      <button
+        type="button"
+        className="chat-vote-share"
+        disabled={sharing}
+        onClick={async () => {
+          setSharing(true);
+          try {
+            await shareRoastCard({ decision, pickedId: pickedId ?? null, lines: shareLines });
+          } finally {
+            setSharing(false);
+          }
+        }}
+      >
+        {sharing ? "making it..." : "share the roast"}
+      </button>
     </div>
   );
 }

@@ -16,7 +16,7 @@ export default function ChatComposer({
   onChange,
   onSubmit,
   disabled,
-  placeholder = "say something back...",
+  placeholder = "clap back...",
 }: ChatComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -62,14 +62,8 @@ export default function ChatComposer({
         disabled={disabled || !value.trim()}
         aria-label="Send message"
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path
-            d="M14 2L7 9M14 2L9.5 14L7 9M14 2L2 6.5L7 9"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
     </div>
