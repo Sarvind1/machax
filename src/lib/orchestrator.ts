@@ -1859,10 +1859,15 @@ export async function* orchestrateChat(params: {
   // Each iteration: advance time, update presence, pick next responder, call model
 
   const ENERGY_FLOOR = 0.15;
-  const MAX_ITERATIONS = 10; // safety cap — aim for 5-8 messages
+  // Only iterations that call friends count toward the cap: early iterations
+  // often have nobody online yet, and counting them used to end a round after
+  // one reply. MAX_LOOPS bounds the idle ones (they make no model calls).
+  const MAX_ITERATIONS = 10; // safety cap on call batches — aim for 5-8 messages
+  const MAX_LOOPS = 40;
   let iterations = 0;
+  let callBatches = 0;
 
-  while (energy > ENERGY_FLOOR && iterations < MAX_ITERATIONS) {
+  while (energy > ENERGY_FLOOR && callBatches < MAX_ITERATIONS && iterations < MAX_LOOPS) {
     iterations++;
 
     const iterTrace: import("./engine-types").IterationTrace = {
@@ -1978,13 +1983,15 @@ export async function* orchestrateChat(params: {
     scoredCandidates.sort((a, b) => a.delay - b.delay);
 
     const isCli = provider.name === "claude-cli";
+    // The first batch of the round goes out together (up to 3), whenever it happens.
     const batchSize = isCli ? 1
-      : iterations === 1 ? Math.min(scoredCandidates.length, 3)
+      : callBatches === 0 ? Math.min(scoredCandidates.length, 3)
       : scoredCandidates.length >= 2 &&
         Math.abs(scoredCandidates[0].delay - scoredCandidates[1].delay) < 3000
         ? 2
         : 1;
     const batch = scoredCandidates.slice(0, batchSize);
+    callBatches++;
 
     for (const { agent, target, delay } of batch) {
       iterTrace.selectedAgents.push({
@@ -2173,7 +2180,7 @@ export async function* orchestrateChat(params: {
   }
 
   console.log("[engine] Loop ended. energy:", energy.toFixed(2), "iterations:", iterations, "messages:", roundResponses.length);
-  engineLog({ ts: new Date().toISOString(), event: "conversation-end", finalEnergy: parseFloat(energy.toFixed(3)), iterations, messagesSent: roundResponses.length, reason: energy <= ENERGY_FLOOR ? "energy-depleted" : "max-iterations" });
+  engineLog({ ts: new Date().toISOString(), event: "conversation-end", finalEnergy: parseFloat(energy.toFixed(3)), iterations, messagesSent: roundResponses.length, reason: energy <= ENERGY_FLOOR ? "energy-depleted" : callBatches >= MAX_ITERATIONS ? "max-iterations" : "max-loops" });
 
   // ── Synthesis pass — extract decision options ──────────────────────
   // Small talk inside an ongoing chat gets replies but no new vote card.
@@ -2184,37 +2191,48 @@ export async function* orchestrateChat(params: {
     .map((id) => FRIENDS_BY_ID[id]?.name)
     .filter(Boolean);
 
-  try {
-    const { text: synthesisText } = await callModel(
-      `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`,
-      `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}, worded the way these friends would text it: casual, everyday words, like "just ask him for the money back" or "skip the wedding, keep the job". No office or finance-speak (never "maximize", "optimize", "prioritize", "leverage", "financial", "stability", "long-term growth", "explore options"). Labels are short and punchy (max 6 words); the blurb is one short casual line. Money is in rupees (₹, lakh, crore), never €, $ or £. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`,
-      { ...provider, model: provider.synthesisModel },
-      600,
-      undefined,
-      collector,
-    );
+  // The vote card. Haiku sometimes returns broken JSON or a single option, so
+  // a failed try gets one more before the round ends without a card.
+  const synthesisSystem = `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`;
+  const synthesisPrompt = `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}, worded the way these friends would text it: casual, everyday words, like "just ask him for the money back" or "skip the wedding, keep the job". No office or finance-speak (never "maximize", "optimize", "prioritize", "leverage", "financial", "stability", "long-term growth", "explore options"). Labels are short and punchy (max 6 words); the blurb is one short casual line. Money is in rupees (₹, lakh, crore), never €, $ or £. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { text: synthesisText } = await callModel(
+        synthesisSystem,
+        synthesisPrompt,
+        { ...provider, model: provider.synthesisModel },
+        900,
+        undefined,
+        collector,
+      );
 
-    let cleaned = synthesisText.trim();
-    cleaned = cleaned
-      .replace(/^```(?:json)?\s*\n?/, "")
-      .replace(/\n?```\s*$/, "");
-    const startIdx = cleaned.indexOf("{");
-    const endIdx = cleaned.lastIndexOf("}");
-    if (startIdx >= 0 && endIdx > startIdx) {
-      cleaned = cleaned.slice(startIdx, endIdx + 1);
-    }
+      let cleaned = synthesisText.trim();
+      cleaned = cleaned
+        .replace(/^```(?:json)?\s*\n?/, "")
+        .replace(/\n?```\s*$/, "");
+      const startIdx = cleaned.indexOf("{");
+      const endIdx = cleaned.lastIndexOf("}");
+      if (startIdx >= 0 && endIdx > startIdx) {
+        cleaned = cleaned.slice(startIdx, endIdx + 1);
+      }
 
-    const parsed = normalizeDecision(JSON.parse(cleaned) as Decision, podFriendIds);
-    parsed.question = fixCurrency(parsed.question, message);
-    for (const o of parsed.options) {
-      o.label = fixCurrency(o.label, message);
-      o.blurb = fixCurrency(o.blurb, message);
+      const parsed = normalizeDecision(JSON.parse(cleaned) as Decision, podFriendIds);
+      parsed.question = fixCurrency(parsed.question, message);
+      for (const o of parsed.options) {
+        o.label = fixCurrency(o.label, message);
+        o.blurb = fixCurrency(o.blurb, message);
+      }
+      // A vote needs at least two real choices.
+      if (parsed.options.length >= 2) {
+        yield { type: "decision", decision: parsed };
+        break;
+      }
+      engineLog({ ts: new Date().toISOString(), event: "synthesis-thin", attempt, options: parsed.options.length });
+    } catch (err) {
+      // No vote card from this try; the chat itself still stands.
+      console.error(`Error in synthesis pass (try ${attempt}):`, err);
+      engineLog({ ts: new Date().toISOString(), event: "synthesis-failed", attempt, error: String(err).slice(0, 200) });
     }
-    // A vote needs at least two real choices; otherwise no card.
-    if (parsed.options.length >= 2) yield { type: "decision", decision: parsed };
-  } catch (err) {
-    // No vote card this round; the chat itself still stands.
-    console.error("Error in synthesis pass:", err);
   }
 
   // ── Yield trace data ──
