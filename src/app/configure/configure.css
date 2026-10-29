@@ -855,8 +855,12 @@
   border: var(--mx-line-thin);
   overflow: visible;
 }
-.config-char-avatar .friend-avatar,
-.config-tune-tab-avatar .friend-avatar { border: 0; }
+.config-char-avatar .friend-avatar {
+  border: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+.config-tune-tab-avatar.friend-avatar { border: var(--mx-line-thin); }
 .config-char-check {
   background: var(--mx-bottle);
   border-color: var(--mx-ink);

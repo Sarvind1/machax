@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import BackArrow from "../back-button";
+import FriendAvatar from "@/components/friend-avatar";
+import { stickerColor } from "@/lib/friend-faces";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -317,8 +319,8 @@ export default function ConfigurePage({ userName }: { userName: string }) {
                   data-selected={isSelected}
                   data-disabled={isDisabled}
                 >
-                  <div className="config-char-avatar" style={{ background: f.color }}>
-                    {f.name[0]}
+                  <div className="config-char-avatar" style={{ background: stickerColor(f.id).bg }}>
+                    <FriendAvatar id={f.id} size={44} />
                     {isSelected && <div className="config-char-check">&#10003;</div>}
                   </div>
                   <div className="config-char-name">{f.name.split(" ")[0].toLowerCase()}</div>
@@ -369,9 +371,7 @@ export default function ConfigurePage({ userName }: { userName: string }) {
                     className={`config-tune-tab${effectiveTab === id ? " config-tune-tab--active" : ""}`}
                     onClick={() => setTuningTab(id)}
                   >
-                    <span className="config-tune-tab-avatar" style={{ background: f.color }}>
-                      {f.name[0]}
-                    </span>
+                    <FriendAvatar id={f.id} size={26} className="config-tune-tab-avatar" />
                     <span className="config-tune-tab-name">{f.name.split(" ")[0]}</span>
                   </button>
                 );

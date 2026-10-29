@@ -726,3 +726,24 @@ footer .logo {
 .face-stack .friend-avatar:not(:first-child) {
   margin-left: -9px;
 }
+
+/* On-screen back arrow (back-button.tsx). Inherits colour from its bar. */
+.back-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: -8px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.back-arrow:focus-visible {
+  outline: 3px solid var(--mx-haldi);
+  outline-offset: 1px;
+}

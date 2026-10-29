@@ -8,6 +8,9 @@ import { logEvent, setAnalyticsUser } from "@/lib/analytics";
 import { completeRedirectSignIn, getIdToken, signInWithGoogle, signOut } from "@/lib/firebase";
 import { AuthRequired, bootstrapSession } from "@/lib/api";
 import { clearStoredUser } from "@/lib/stored-user";
+import { FRIENDS, FRIENDS_BY_ID } from "@/lib/friends";
+import { stickerColor } from "@/lib/friend-faces";
+import FriendAvatar from "@/components/friend-avatar";
 import { GUEST_HARD_CAP, GUEST_TYPED_LIMIT } from "@/lib/guest-limits";
 import { peekGuestId, saveGuestUsage } from "@/lib/guest";
 import BackArrow from "./back-button";
@@ -41,57 +44,41 @@ function signInErrorMessage(err: unknown): string | null {
 
 /* ===== PREVIEW CONVERSATION POOLS ===== */
 
-type PreviewLine = [agent: string, name: string, role: string, text: string, color: string];
+// [friend id, line]. Names, faces and colours come from the friend roster.
+type PreviewLine = [agent: string, text: string];
 
 const PREVIEW_POOLS: PreviewLine[][] = [
-  // Pool 1: career anxiety
   [
-    ["reeva", "reeva", "the empath", "omg should i quit my job or is that just monday brain", "#6BAE7E"],
-    ["aarushi", "aarushi", "the hype", "QUIT. do it. life's too short bestie", "#D28AA8"],
-    ["noor", "noor", "the analyst", "ok wait. savings? runway? let's not be impulsive", "#7BA5C4"],
-    ["ananya", "ananya", "the vibe", "hmm", "#B8A88A"],
-    ["boss", "boss", "the judge", "ruling: sleep on it. revisit thursday.", "oklch(0.78 0.11 175)"],
-    ["reeva", "reeva", "the empath", "but what if thursday me is also miserable", "#6BAE7E"],
-    ["didi", "didi", "the anchor", "then we talk again thursday. that's the point.", "oklch(0.88 0.08 130)"],
+    ["kritika", "new person? finally someone worse at decisions than tanmay \u{1F480}"],
+    ["tanmay", "why am i getting roasted, they haven't even typed yet \u{1F62D}"],
+    ["simran", "be nice. what if it's a love problem \u{1F97A}"],
+    ["noor", "statistically it's a job problem. 64% of the time."],
+    ["arjun", "whatever it is, sign in. then we fight properly."],
   ],
-  // Pool 2: relationship drama
   [
-    ["fomo", "fomo", "the worrier", "they left me on read for 6 hours. should i double text?", "oklch(0.82 0.11 25)"],
-    ["hype", "hype", "the hype", "absolutely not. maintain your dignity", "oklch(0.80 0.11 305)"],
-    ["didi", "didi", "the anchor", "what did you send them?", "oklch(0.88 0.08 130)"],
-    ["fomo", "fomo", "the worrier", "a meme about cats", "oklch(0.82 0.11 25)"],
-    ["boss", "boss", "the judge", "...that's not a conversation starter", "oklch(0.78 0.11 175)"],
-    ["reeva", "reeva", "the empath", "send a voice note. voice notes hit different", "#6BAE7E"],
-    ["didi", "didi", "the anchor", "or just... wait. 6 hours is nothing.", "oklch(0.88 0.08 130)"],
+    ["simran", "they typed 'hey' to their ex at 2:47am. i'm screaming"],
+    ["kritika", "nothing good has ever been typed at 2:47am \u{1F480}"],
+    ["tanmay", "but what if the ex also typed hey. what if it's fate"],
+    ["noor", "it's not fate. it's a sleep schedule problem."],
   ],
-  // Pool 3: life decisions
   [
-    ["simran", "simran", "the feeler", "i want to move to goa but my parents will lose it", "#C4A07B"],
-    ["boss", "boss", "the judge", "what's the job situation there?", "oklch(0.78 0.11 175)"],
-    ["simran", "simran", "the feeler", "remote. same salary.", "#C4A07B"],
-    ["hype", "hype", "the hype", "then WHAT are we discussing. GO", "oklch(0.80 0.11 305)"],
-    ["noor", "noor", "the analyst", "cost of living comparison first. rent in goa vs your city?", "#7BA5C4"],
-    ["didi", "didi", "the anchor", "have the conversation with your parents. you might be surprised.", "oklch(0.88 0.08 130)"],
-    ["fomo", "fomo", "the worrier", "what if goa gets boring after 3 months though", "oklch(0.82 0.11 25)"],
-  ],
-  // Pool 4: everyday overthinking
-  [
-    ["priya", "priya", "the helper", "should i get the macbook or the thinkpad", "#9BB07E"],
-    ["aarushi", "aarushi", "the hype", "macbook. always macbook. this isn't even a question", "#D28AA8"],
-    ["noor", "noor", "the analyst", "specs? budget? use case?", "#7BA5C4"],
-    ["priya", "priya", "the helper", "coding + youtube + looking cool at cafes", "#9BB07E"],
-    ["ananya", "ananya", "the vibe", "thinkpad", "#B8A88A"],
-    ["boss", "boss", "the judge", "thinkpad for work. macbook for ego.", "oklch(0.78 0.11 175)"],
-    ["didi", "didi", "the anchor", "buy whichever one you won't return in 3 days", "oklch(0.88 0.08 130)"],
+    ["arjun", "mom said \"just see once beta\""],
+    ["kritika", "he's a pdf. not the one."],
+    ["simran", "but what if the pdf has a nice smile \u{1F97A}"],
+    ["noor", "cousin's neighbour got engaged in 3 weeks. that's the real threat."],
   ],
 ];
 
+const SQUAD = ["kritika", "tanmay", "simran", "arjun", "noor"];
+
 interface PreviewMessage {
   id: string;
-  name: string;
-  role: string;
+  agent: string;
   text: string;
-  color: string;
+}
+
+function friendName(id: string): string {
+  return (FRIENDS_BY_ID[id]?.name ?? id).toLowerCase();
 }
 
 /* ===== COMPONENT ===== */
@@ -110,7 +97,7 @@ export default function LoginPage() {
 
   // Preview chat state
   const [previewMessages, setPreviewMessages] = useState<PreviewMessage[]>([]);
-  const [previewTyping, setPreviewTyping] = useState<{ name: string; color: string } | null>(null);
+  const [previewTyping, setPreviewTyping] = useState<string | null>(null);
   const previewAbortRef = useRef(0);
   const previewStreamRef = useRef<HTMLDivElement>(null);
 
@@ -132,16 +119,16 @@ export default function LoginPage() {
 
         for (const line of pool) {
           if (previewAbortRef.current !== token) return;
-          const [, name, role, text, color] = line;
+          const [agent, text] = line;
 
           // Show typing indicator
-          setPreviewTyping({ name, color });
+          setPreviewTyping(agent);
           await wait(800 + Math.random() * 400);
           if (previewAbortRef.current !== token) return;
 
           // Add message
           setPreviewTyping(null);
-          setPreviewMessages((prev) => [...prev, { id: uid(), name, role, text, color }]);
+          setPreviewMessages((prev) => [...prev, { id: uid(), agent, text }]);
           await wait(1500 + Math.random() * 1500);
         }
 
@@ -241,7 +228,7 @@ export default function LoginPage() {
         <span className="login-wordmark"><BackArrow />macha<em>X</em></span>
         <span className="login-status">
           <span className="login-status-dot" />
-          council is online &middot; bengaluru
+          {SQUAD.length} friends online
         </span>
       </div>
 
@@ -257,9 +244,16 @@ export default function LoginPage() {
           ) : (
             <>
               <h1>first, <em>who dis?</em></h1>
-              <p>the council needs to know before they let you in.</p>
+              <p>sign in to keep the chat going. the group remembers you.</p>
             </>
           )}
+        </div>
+
+        <div className="login-squad" aria-label="your friends">
+          {SQUAD.map((id) => (
+            <FriendAvatar key={id} id={id} size={52} />
+          ))}
+          <span className="login-squad-more">+{FRIENDS.length - SQUAD.length} more<br />waiting to judge</span>
         </div>
 
         {/* Split layout: sign-in left, preview right */}
@@ -290,22 +284,22 @@ export default function LoginPage() {
           {/* Right column: chat preview */}
           <div className="login-content-right">
             <div className="login-preview">
-              <div className="login-preview-header">live from the lounge</div>
+              <div className="login-preview-header">meanwhile, in the group chat</div>
               <div className="login-preview-stream" ref={previewStreamRef}>
                 {previewMessages.map((pm) => (
                   <div key={pm.id} className="login-preview-msg">
-                    <div className="login-preview-who">
-                      <span className="login-pip" style={{ background: pm.color }} />
-                      <span className="login-preview-who-name">{pm.name}</span>
-                      <span className="login-preview-who-role">{pm.role}</span>
+                    <div className="login-preview-bubble">
+                      <span className="login-preview-bubble-name" style={{ color: stickerColor(pm.agent).ink }}>
+                        {friendName(pm.agent)}
+                      </span>
+                      {pm.text}
                     </div>
-                    <div className="login-preview-bubble">{pm.text}</div>
                   </div>
                 ))}
                 {previewTyping && (
                   <div className="login-preview-typing">
-                    <span className="login-pip" style={{ background: previewTyping.color }} />
-                    {previewTyping.name}
+                    <FriendAvatar id={previewTyping} size={26} />
+                    {friendName(previewTyping)} is typing
                     <span className="login-preview-typing-dots">
                       <span /><span /><span />
                     </span>

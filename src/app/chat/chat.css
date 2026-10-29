@@ -1182,3 +1182,12 @@
   .typing-dot, .chat-typing-dots span { animation: none; }
   .recharge-sheet { animation: none; }
 }
+
+/* On the cream empty-chat screen the mood trigger needs dark ink. */
+.chat-landing .chat-mood-trigger {
+  margin-left: 0;
+  color: var(--mx-ink);
+  border-color: var(--mx-ink);
+  background: #fff;
+}
+.chat-landing .chat-mood-trigger:hover { background: #FFF1B8; }
