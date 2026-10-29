@@ -718,3 +718,11 @@ footer .logo {
 @media (prefers-reduced-motion: reduce) {
   .mx-btn:active:not(:disabled) { transform: none; }
 }
+
+.face-stack {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.face-stack .friend-avatar:not(:first-child) {
+  margin-left: -9px;
+}
