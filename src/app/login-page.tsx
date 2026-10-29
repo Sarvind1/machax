@@ -1,16 +1,22 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { logCompleteRegistration } from "@/lib/meta-events";
+import { logActivated, logCompleteRegistration } from "@/lib/meta-events";
 import { logEvent, setAnalyticsUser } from "@/lib/analytics";
 import { completeRedirectSignIn, getIdToken, signInWithGoogle, signOut } from "@/lib/firebase";
 import { AuthRequired, bootstrapSession } from "@/lib/api";
 import { clearStoredUser } from "@/lib/stored-user";
+import { GUEST_HARD_CAP, GUEST_TYPED_LIMIT } from "@/lib/guest-limits";
+import { peekGuestId, saveGuestUsage } from "@/lib/guest";
+import BackArrow from "./back-button";
 import "./login.css";
 
 /* ===== HELPERS ===== */
+
+// The query string doesn't change while this page is open.
+const noSubscribe = () => () => {};
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -95,6 +101,12 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bootedRef = useRef(false);
+  // Sent here from chat because the free guest messages ran out.
+  const fromGuest = useSyncExternalStore(
+    noSubscribe,
+    () => new URLSearchParams(window.location.search).get("from") === "guest",
+    () => false,
+  );
 
   // Preview chat state
   const [previewMessages, setPreviewMessages] = useState<PreviewMessage[]>([]);
@@ -148,13 +160,21 @@ export default function LoginPage() {
   // Firebase user exists: create/link the app user on the server, cache it,
   // open chat. fresh = the user just signed in (log it); false = resumed session.
   const finishSignIn = useCallback(async (fresh: boolean) => {
-    const session = await bootstrapSession();
+    // Any chats from before sign-in move to this account.
+    const guestId = peekGuestId();
+    const session = await bootstrapSession(guestId);
     setAnalyticsUser(session.username);
     if (fresh) {
       logEvent("login", { method: "google" });
       // Server decides whether this is a fresh registration; repeat calls are no-ops.
       logCompleteRegistration(session.username, "google");
     }
+    if (guestId) {
+      // The server closed this guest id; after a sign-out it gives no more free messages.
+      saveGuestUsage({ typedUsed: GUEST_TYPED_LIMIT, typedLimit: GUEST_TYPED_LIMIT, totalUsed: GUEST_HARD_CAP, totalLimit: GUEST_HARD_CAP });
+    }
+    // A decision picked as a guest counts once it belongs to the account (server re-checks).
+    if (session.guestClaim?.activated) logActivated(session.username);
     router.push("/chat");
   }, [router]);
 
@@ -218,7 +238,7 @@ export default function LoginPage() {
     <div className="login-page">
       {/* Topbar */}
       <div className="login-topbar">
-        <span className="login-wordmark">macha<em>X</em></span>
+        <span className="login-wordmark"><BackArrow />macha<em>X</em></span>
         <span className="login-status">
           <span className="login-status-dot" />
           council is online &middot; bengaluru
@@ -229,8 +249,17 @@ export default function LoginPage() {
       <div className="login-shell">
         {/* Intro */}
         <div className="login-intro">
-          <h1>first, <em>who dis?</em></h1>
-          <p>the council needs to know before they let you in.</p>
+          {fromGuest ? (
+            <>
+              <h1>don&apos;t leave us <em>hanging</em></h1>
+              <p>sign in to keep the chat going. your chat comes with you.</p>
+            </>
+          ) : (
+            <>
+              <h1>first, <em>who dis?</em></h1>
+              <p>the council needs to know before they let you in.</p>
+            </>
+          )}
         </div>
 
         {/* Split layout: sign-in left, preview right */}
@@ -250,6 +279,11 @@ export default function LoginPage() {
               <p className="login-legal">
                 by continuing you agree to our <Link href="/privacy">privacy policy</Link>.
               </p>
+              {fromGuest && (
+                <p className="login-legal">
+                  <Link href="/chat">back to the chat</Link>
+                </p>
+              )}
             </div>
           </div>
 

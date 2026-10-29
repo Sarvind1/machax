@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { Capacitor } from "@capacitor/core";
-import { AuthRequired, authedFetch, getStoredUser } from "@/lib/api";
+import { AuthRequired, authedFetch, getStoredUser, guestFetch } from "@/lib/api";
 import { PaymentError, buyTopupWeb } from "@/lib/razorpay-checkout";
 import { NativePurchaseError, buyTopupNative, configurePurchases, waitForCredit } from "@/lib/purchases-native";
 import { signOut } from "@/lib/firebase";
@@ -12,6 +12,17 @@ import type { CreditSummary } from "@/lib/credits";
 import { MAX_HISTORY_ENTRIES, MAX_POD_SIZE } from "@/lib/chat-limits";
 import { logEvent } from "@/lib/analytics";
 import { logActivated } from "@/lib/meta-events";
+import { GUEST_TYPED_LIMIT, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
+import {
+  getGuest,
+  guestNeedsSignIn,
+  guestUsername,
+  bumpGuestUsage,
+  saveGuestUsage,
+  setGuestResume,
+  takeGuestResume,
+  type GuestState,
+} from "@/lib/guest";
 import { api } from "../../../convex/_generated/api";
 
 function useSafeQuery<T>(query: any, args?: any): T | null {
@@ -41,6 +52,8 @@ import FriendPill from "./components/friend-pill";
 import TypingIndicator from "./components/typing-indicator";
 import CreditPill from "./components/credit-pill";
 import RechargeSheet from "./components/recharge-sheet";
+import BackArrow from "../back-button";
+import { onBack } from "@/lib/back-nav";
 import "./chat.css";
 
 type ConversationId = Id<"conversations">;
@@ -87,10 +100,23 @@ function isSignedOut(err: unknown): boolean {
 }
 
 const TOAST_MS = 3000;
+// After cutting a round off, how long to keep retrying while the server finishes stopping it.
+const BUSY_RETRY_MS = 15_000;
+const BUSY_RETRY_STEP_MS = 750;
+
+// Shown in place of the credit pill while signed out.
+function guestPillLabel(guest: GuestState): string {
+  const left = Math.max(0, GUEST_TYPED_LIMIT - guest.typedUsed);
+  if (left === 0) return "sign in to keep going";
+  return `${left} free ${left === 1 ? "message" : "messages"} left`;
+}
 
 export default function ChatPage() {
   const router = useRouter();
+  // true once we know who this is: a signed-in user, or a guest (signed out).
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
+  // Set only while signed out: the guest id and how many messages it has used.
+  const [guest, setGuest] = useState<GuestState | null>(null);
   const [credits, setCredits] = useState<CreditSummary | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
   const [buying, setBuying] = useState(false);
@@ -116,9 +142,54 @@ export default function ChatPage() {
   }, [router]);
 
   useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // userName for display (can be display name)
+  const userName = useMemo(() => {
     const user = getStoredUser();
+    return user?.name || user?.username || "friend";
+  }, []);
+
+  // Username for Convex queries (must match what /configure saves under).
+  // A guest's chats are stored under "guest:<id>" until sign-in moves them.
+  const accountUsername = useMemo(() => getStoredUser()?.username ?? null, []);
+  const guestId = guest?.guestId ?? null;
+  const settingsUsername = accountUsername ?? (guestId ? guestUsername(guestId) : null);
+
+  // Load user's saved settings from Convex (pod size, character overrides, etc.)
+  const userSettings = useQuery(api.settings.get, accountUsername ? { username: accountUsername } : "skip");
+
+  const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
+  const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
+  const [decision, setDecision] = useState<Decision | null>(null);
+  const [pod, setPod] = useState<Friend[]>([]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  // Bumped per round so the safety timeout below restarts when a round is cut off.
+  const [roundSeq, setRoundSeq] = useState(0);
+  const [typingAgents, setTypingAgents] = useState<string[]>([]);
+  const [mobileDecisionOpen, setMobileDecisionOpen] = useState(false);
+  const [joinedAgents, setJoinedAgents] = useState<string[]>([]);
+  const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
+  const [isWindingDown, setIsWindingDown] = useState(false);
+  const [activeAgentIds, setActiveAgentIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const user = getStoredUser();
+    // Back from the sign-in screen: reopen the chat they were in, with their text.
+    const resume = takeGuestResume();
+    if (resume?.conversationId) {
+      setActiveConversation(resume.conversationId as ConversationId);
+      setPod((resume.podFriendIds ?? []).map((id) => FRIENDS_BY_ID[id]).filter(Boolean));
+    }
+    if (resume?.draft) setInput(resume.draft);
     if (!user) {
-      router.push("/login");
+      // Signed out: chat as a guest. The server allows a few messages.
+      setGuest(getGuest());
+      setIsAuthed(true);
       return;
     }
     setIsAuthed(true);
@@ -137,37 +208,6 @@ export default function ChatPage() {
       }
     })();
   }, [router, goToLogin]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), TOAST_MS);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  // userName for display (can be display name)
-  const userName = useMemo(() => {
-    const user = getStoredUser();
-    return user?.name || user?.username || "friend";
-  }, []);
-
-  // settingsUsername for Convex queries (must match what /configure saves under)
-  const settingsUsername = useMemo(() => getStoredUser()?.username ?? null, []);
-
-  // Load user's saved settings from Convex (pod size, character overrides, etc.)
-  const userSettings = useQuery(api.settings.get, settingsUsername ? { username: settingsUsername } : "skip");
-
-  const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
-  const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
-  const [decision, setDecision] = useState<Decision | null>(null);
-  const [pod, setPod] = useState<Friend[]>([]);
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [typingAgents, setTypingAgents] = useState<string[]>([]);
-  const [mobileDecisionOpen, setMobileDecisionOpen] = useState(false);
-  const [joinedAgents, setJoinedAgents] = useState<string[]>([]);
-  const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
-  const [isWindingDown, setIsWindingDown] = useState(false);
-  const [activeAgentIds, setActiveAgentIds] = useState<Set<string>>(new Set());
 
   // Session mood state
   const [moodOpen, setMoodOpen] = useState(false);
@@ -222,6 +262,16 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const isStreamingRef = useRef(false);
+  // A message sent mid-round cuts the running round off and starts a new one.
+  // roundRef numbers the rounds; a stream whose number is no longer current
+  // stops touching state. abortRef aborts its fetch, which makes the server
+  // stop that round (its queued replies are dropped) and bill only what it used.
+  const roundRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
+  // Did the current round get a friend reply yet, and was its message an example?
+  // The server counts a guest message once it got a reply.
+  const roundDeliveredRef = useRef(false);
+  const roundExampleRef = useRef(false);
 
   const conversations = useSafeQuery<any[]>(
     api.conversations.list,
@@ -295,22 +345,48 @@ export default function ChatPage() {
       setTypingAgents([]);
     }, 90_000);
     return () => clearTimeout(timeout);
-  }, [isLoading]);
+  }, [isLoading, roundSeq]);
+
+  // Out of free guest messages: remember where they were (and what they typed)
+  // and open the sign-in screen. After sign-in the chat moves to the account.
+  const promptSignIn = useCallback(
+    (draft: string, convoId?: ConversationId | null, podIds?: string[]) => {
+      setGuestResume({
+        ...(convoId ? { conversationId: convoId as string } : {}),
+        ...(podIds && podIds.length > 0 ? { podFriendIds: podIds } : {}),
+        ...(draft ? { draft } : {}),
+      });
+      logEvent("guest_limit_reached", {});
+      router.push("/login?from=guest");
+    },
+    [router],
+  );
 
   const streamChat = useCallback(
     async (
       message: string,
       convoId: ConversationId,
       podIds: string[],
-      history: { from: string; text: string }[]
+      history: { from: string; text: string }[],
+      opts: { interrupting?: boolean } = {}
     ) => {
+      const round = ++roundRef.current;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const live = () => roundRef.current === round;
+      roundDeliveredRef.current = false;
+      roundExampleRef.current = isExamplePrompt(message);
+      setRoundSeq(round);
       setIsLoading(true);
       isStreamingRef.current = true;
       try {
-        const response = await authedFetch("/api/chat", {
+        const init: RequestInit = {
+          signal: controller.signal,
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ...(guestId ? { guestId } : {}),
             conversationId: convoId,
             message,
             // The server rejects bigger pods and keeps only the last history entries.
@@ -326,8 +402,37 @@ export default function ChatPage() {
             conversationDepth: userSettings?.conversationDepth || "normal",
             userEngagementFrequency: userSettings?.userEngagementFrequency ?? 0.4,
           }),
-        });
+        };
+        // Signed out: no token, the server counts it as a guest message.
+        const post = () => (guestId ? guestFetch("/api/chat", init) : authedFetch("/api/chat", init));
+        let response = await post();
+        // Cut a round off: the server frees the old round's lock once it has
+        // stopped it (a few seconds at most), so retry "busy" for a while.
+        const busyDeadline = Date.now() + BUSY_RETRY_MS;
+        while (response.status === 409 && opts.interrupting && Date.now() < busyDeadline) {
+          await new Promise((r) => setTimeout(r, BUSY_RETRY_STEP_MS));
+          if (!live()) return;
+          response = await post();
+        }
+        if (!live()) return;
 
+        if (response.status === 403 && guestId) {
+          // The server says this guest is out of free messages: take back the
+          // unanswered message and ask for sign-in, keeping the text.
+          const body = (await response.json().catch(() => null)) as { guest?: GuestUsage } | null;
+          if (body?.guest) setGuest(saveGuestUsage(body.guest));
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            return last && last.from === "user" && last.text === message ? prev.slice(0, -1) : prev;
+          });
+          promptSignIn(message, convoId, podIds);
+          return;
+        }
+        if (response.status === 429) {
+          setInput((current) => current || message);
+          setToast("lots of people chatting from this network. sign in or try again in a bit");
+          return;
+        }
         if (response.status === 401) {
           await goToLogin();
           return;
@@ -354,6 +459,10 @@ export default function ChatPage() {
 
         while (true) {
           const { done, value } = await reader.read();
+          if (!live()) {
+            reader.cancel().catch(() => {});
+            return;
+          }
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
@@ -361,6 +470,7 @@ export default function ChatPage() {
           buffer = lines.pop() ?? "";
 
           for (const line of lines) {
+            if (!live()) return;
             if (!line.startsWith("data: ")) continue;
             const jsonStr = line.slice(6).trim();
             if (!jsonStr || jsonStr === "[DONE]") continue;
@@ -388,6 +498,7 @@ export default function ChatPage() {
               }
 
               if (data.from && data.text) {
+                roundDeliveredRef.current = true;
                 // Track agents that have actually spoken
                 if (data.from !== "user") {
                   setActiveAgentIds(prev => new Set([...prev, data.from]));
@@ -447,6 +558,10 @@ export default function ChatPage() {
                 }
               }
 
+              if (data.guest && typeof data.guest.typedUsed === "number") {
+                setGuest(saveGuestUsage(data.guest as GuestUsage));
+              }
+
               if (data.credit && typeof data.credit.messagesLeft === "number") {
                 const event = data.credit as CreditEvent;
                 setCredits((prev) => creditFromEvent(event, prev));
@@ -465,23 +580,55 @@ export default function ChatPage() {
           }
         }
       } catch (err) {
+        // Aborted because a newer message cut this round off: not an error.
+        if (!live() || controller.signal.aborted) return;
         if (isSignedOut(err)) {
           await goToLogin();
           return;
         }
         console.error("Chat stream error:", err);
       } finally {
-        isStreamingRef.current = false;
-        setIsLoading(false);
-        setTypingAgents([]);
+        // Only the current round owns the loading state.
+        if (live()) {
+          abortRef.current = null;
+          isStreamingRef.current = false;
+          setIsLoading(false);
+          setTypingAgents([]);
+        }
       }
     },
-    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, goToLogin]
+    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, goToLogin, guestId, promptSignIn]
   );
 
   const handleSubmit = useCallback(async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if (!text) return;
+    // Sent while friends are still replying: cut that round off; the new round
+    // gets everything said so far plus this message, so friends react to it.
+    const interrupting = isLoading;
+    let guestNow = guest;
+    if (interrupting) {
+      roundRef.current++;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setTypingAgents([]);
+      // The cut-off round got a reply, so the server counted it; count it here too
+      // (the round's own count update never arrives now).
+      if (guest && roundDeliveredRef.current) {
+        guestNow = bumpGuestUsage(roundExampleRef.current);
+        setGuest(guestNow);
+      }
+    }
+
+    // Guests: typed messages are limited, ready-made examples are not (up to the hard cap).
+    if (guestNow && guestNeedsSignIn(guestNow, isExamplePrompt(text))) {
+      if (interrupting) {
+        isStreamingRef.current = false;
+        setIsLoading(false);
+      }
+      promptSignIn(text, activeConversation, pod.map((f) => f.id));
+      return;
+    }
 
     // Known to be out of credit: offer a top-up instead of sending. The text stays in the box.
     if (credits?.messagesLeft === 0) {
@@ -589,7 +736,8 @@ export default function ChatPage() {
           text,
           activeConversation,
           pod.map((f) => f.id),
-          history
+          history,
+          { interrupting }
         );
       } catch (err) {
         console.error("Stream failed on subsequent message:", err);
@@ -598,13 +746,18 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     }
-  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, credits]);
+  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, credits, guest, promptSignIn]);
 
   const handleStarterClick = (starterText: string) => {
     setInput(starterText);
   };
 
   const handleNewChat = () => {
+    // Leaving mid-round: stop that round so its replies don't land in the new chat.
+    roundRef.current++;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    isStreamingRef.current = false;
     setActiveConversation(null);
     setMessages([]);
     setDecision(null);
@@ -617,6 +770,33 @@ export default function ChatPage() {
     setIsWindingDown(false);
     setActiveAgentIds(new Set());
   };
+
+  // Android back inside chat: close an open sheet or panel first, then leave the
+  // open conversation for the chat home. On the home screen back closes the app.
+  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false, mobileDecisionOpen: false });
+  const handleNewChatRef = useRef(handleNewChat);
+  useEffect(() => {
+    backStateRef.current = {
+      inChat: activeConversation !== null || messages.length > 0,
+      rechargeOpen,
+      moodOpen,
+      mobileDecisionOpen,
+    };
+    handleNewChatRef.current = handleNewChat;
+  });
+  useEffect(
+    () =>
+      onBack(() => {
+        const st = backStateRef.current;
+        if (st.rechargeOpen) setRechargeOpen(false);
+        else if (st.moodOpen) setMoodOpen(false);
+        else if (st.mobileDecisionOpen) setMobileDecisionOpen(false);
+        else if (st.inChat) handleNewChatRef.current();
+        else return false;
+        return true;
+      }),
+    [],
+  );
 
   const handleLoadConversation = (convoId: ConversationId, convo: { podFriendIds: string[] }) => {
     setActiveConversation(convoId);
@@ -633,6 +813,11 @@ export default function ChatPage() {
         username: settingsUsername,
       });
       logEvent("decision_picked", { option_count: decision?.options.length ?? 0 });
+      if (guest) {
+        // No account yet: Activated is sent after sign-in, when this chat moves over.
+        setToast("locked in. sign in to keep your decisions");
+        return;
+      }
       logActivated(settingsUsername);
       router.push("/decisions");
     } catch (err) {
@@ -721,6 +906,17 @@ export default function ChatPage() {
     }
   };
 
+  const guestPill = guest && (
+    <button
+      type="button"
+      className={`credit-pill${guest.typedUsed >= GUEST_TYPED_LIMIT ? " credit-pill--low" : ""}`}
+      onClick={() => promptSignIn(input.trim(), activeConversation, pod.map((f) => f.id))}
+      title="sign in"
+    >
+      {guestPillLabel(guest)}
+    </button>
+  );
+
   // Shared by the landing and chat views.
   const overlays = (
     <>
@@ -747,7 +943,7 @@ export default function ChatPage() {
         color: "#5A554A",
         fontFamily: "var(--font-body), system-ui, sans-serif",
       }}>
-        <p>redirecting to login...</p>
+        <p>loading...</p>
       </div>
     );
   }
@@ -792,14 +988,14 @@ export default function ChatPage() {
           </a>
           <div className="chat-sidebar-legal">
             <a href="/privacy">privacy</a>
-            <a href="/delete-account">delete account</a>
+            {!guest && <a href="/delete-account">delete account</a>}
           </div>
         </aside>
 
         {/* Landing center */}
         <div className="chat-landing">
           <div className="chat-landing-credit">
-            <CreditPill credits={credits} onClick={openRecharge} />
+            {guest ? guestPill : <CreditPill credits={credits} onClick={openRecharge} />}
           </div>
           <h1 className="chat-landing-title">what&apos;s on your mind?</h1>
           <p className="chat-landing-sub">
@@ -883,7 +1079,7 @@ export default function ChatPage() {
               value={input}
               onChange={setInput}
               onSubmit={handleSubmit}
-              disabled={isLoading}
+              disabled={false}
               placeholder="type it out..."
             />
           </div>
@@ -979,20 +1175,21 @@ export default function ChatPage() {
         </a>
         <div className="chat-sidebar-legal">
           <a href="/privacy">privacy</a>
-          <a href="/delete-account">delete account</a>
+          {!guest && <a href="/delete-account">delete account</a>}
         </div>
       </aside>
 
       {/* Center */}
       <div className="chat-center">
         <div className="chat-header">
+          <BackArrow onClick={() => handleNewChat()} />
           <span className="chat-header-title">the lounge</span>
           {pod.length > 0 && (
             <span className="chat-header-tag">
               {pod.length} friends in the room
             </span>
           )}
-          <CreditPill credits={credits} onClick={openRecharge} />
+          {guest ? guestPill : <CreditPill credits={credits} onClick={openRecharge} />}
           <button
             ref={moodTriggerRef}
             className="chat-mood-trigger"
@@ -1106,7 +1303,7 @@ export default function ChatPage() {
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
-            disabled={isLoading}
+            disabled={false}
           />
         </div>
       </div>

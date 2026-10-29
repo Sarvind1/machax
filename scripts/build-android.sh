@@ -21,7 +21,15 @@ trap cleanup EXIT
 
 # Build static export
 echo "==> Running Next.js static export..."
-CAPACITOR_BUILD=true NEXT_PUBLIC_API_BASE=https://machax.xyz npx next build
+# The app talks to the same Convex deployment as machax.xyz (prod), so accounts,
+# guest chats moved on sign-in, and Meta events all live in one place. 1.2 was
+# built against the "dev" deployment from .env.local, which split them.
+APP_CONVEX_URL="${APP_CONVEX_URL:-https://compassionate-basilisk-625.convex.cloud}"
+echo "==> Convex for the app: $APP_CONVEX_URL"
+CAPACITOR_BUILD=true NEXT_PUBLIC_API_BASE=https://machax.xyz \
+  NEXT_PUBLIC_CONVEX_URL="$APP_CONVEX_URL" \
+  NEXT_PUBLIC_CONVEX_SITE_URL="${APP_CONVEX_URL/.convex.cloud/.convex.site}" \
+  npx next build
 
 # Sync with Capacitor Android
 echo "==> Syncing with Capacitor..."

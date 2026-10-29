@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import BackArrow from "../back-button";
 
 export const metadata: Metadata = {
   title: "Privacy policy · MachaX",
@@ -11,6 +12,7 @@ export default function PrivacyPage() {
   return (
     <main style={styles.page}>
       <article style={styles.card}>
+        <BackArrow />
         <h1 style={styles.heading}>privacy policy</h1>
         <p style={styles.muted}>Last updated: 28 October 2026</p>
 

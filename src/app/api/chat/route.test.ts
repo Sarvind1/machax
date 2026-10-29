@@ -474,3 +474,148 @@ describe("POST /api/chat", () => {
     expect(callsTo("credits:settleMessage")).toHaveLength(1);
   });
 });
+
+describe("POST /api/chat as a guest (no token)", () => {
+  const GID = "11111111-2222-3333-4444-555555555555";
+  const guestReq = (b: Record<string, unknown>, headers: Record<string, string> = {}) =>
+    new Request("http://localhost/api/chat", {
+      method: "POST",
+      headers: { origin: "http://localhost", "content-type": "application/json", "x-real-ip": "1.2.3.4", ...headers },
+      body: JSON.stringify(b),
+    });
+  const usage = (typedUsed: number, totalUsed: number) => ({ typedUsed, typedLimit: 3, totalUsed, totalLimit: 6 });
+
+  function guestConvex(opts: { begin?: unknown } = {}) {
+    mutation.mockImplementation(async (ref: unknown, args: { delivered?: boolean; example?: boolean }) => {
+      const name = getFunctionName(ref as never);
+      if (name === "guests:beginGuestMessage") return opts.begin ?? { ok: true, usage: usage(0, 0), windowStart: 0 };
+      if (name === "guests:settleGuestMessage") {
+        return args.delivered ? usage(args.example ? 0 : 1, 1) : usage(0, 0);
+      }
+      if (name === "traces:save") return null;
+      throw new Error(`unexpected mutation ${name}`);
+    });
+  }
+
+  it("streams replies without a token, never bootstraps a user, and ends with guest counts", async () => {
+    guestConvex();
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+    });
+    const res = await POST(guestReq({ ...body, guestId: GID }));
+    expect(res.status).toBe(200);
+    expect(await events(res)).toEqual([{ from: "a", text: "yo" }, { guest: usage(1, 1) }, { done: true }]);
+    expect(bootstrapUser).not.toHaveBeenCalled();
+    const [begin] = callsTo("guests:beginGuestMessage");
+    expect(begin[1]).toMatchObject({ key: `g:${GID}`, example: false });
+    expect((begin[1] as { ipHash: string }).ipHash).toMatch(/^[0-9a-f]{64}$/);
+    const [settle] = callsTo("guests:settleGuestMessage");
+    expect(settle[1]).toMatchObject({ delivered: true });
+    expect(callsTo("credits:beginMessage")).toHaveLength(0);
+    // the body's userName is only a display name for guests
+    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ userName: "spoofed" });
+  });
+
+  it("marks a starter prompt sent as is as an example", async () => {
+    guestConvex();
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+    });
+    const { STARTERS } = await import("@/lib/friends");
+    await (await POST(guestReq({ ...body, guestId: GID, message: STARTERS[0].text }))).text();
+    expect(callsTo("guests:beginGuestMessage")[0][1]).toMatchObject({ example: true });
+  });
+
+  it("returns 403 login_required with the counts when typed messages are used up", async () => {
+    guestConvex({ begin: { ok: false, reason: "typed_limit", usage: usage(3, 3) } });
+    const res = await POST(guestReq({ ...body, guestId: GID }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "login_required", reason: "typed_limit", guest: usage(3, 3) });
+    expect(orchestrateChat).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 when the IP is over its hourly limit, 409 when busy", async () => {
+    guestConvex({ begin: { ok: false, reason: "rate_limited", usage: usage(0, 0) } });
+    expect((await POST(guestReq({ ...body, guestId: GID }))).status).toBe(429);
+    guestConvex({ begin: { ok: false, reason: "busy", usage: usage(0, 0) } });
+    expect((await POST(guestReq({ ...body, guestId: GID }))).status).toBe(409);
+  });
+
+  it("settles as not delivered when the engine fails before any reply", async () => {
+    guestConvex();
+    orchestrateChat.mockImplementation(async function* () {
+      throw new Error("model down");
+    });
+    const ev = await events(await POST(guestReq({ ...body, guestId: GID })));
+    expect(ev).toEqual([{ guest: usage(0, 0) }, { done: true }]);
+    expect(callsTo("guests:settleGuestMessage")[0][1]).toMatchObject({ delivered: false });
+  });
+
+  it("accepts the 1.1 request shape (no token, no guestId) and keys it by IP and name", async () => {
+    guestConvex();
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+    });
+    const legacy = {
+      conversationId: "j975pvqafyryqnbrsfpqhxdmxh8h48vp",
+      message: "should i quit",
+      podFriendIds: [FRIEND],
+      history: [{ from: "user", text: "earlier" }],
+      userName: "friend",
+      sessionMood: { modes: [], pacing: "natural", energy: "settled" },
+      characterOverrides: null,
+      conversationDepth: "normal",
+      userEngagementFrequency: 0.4,
+    };
+    const res = await POST(guestReq(legacy));
+    expect(res.status).toBe(200);
+    await res.text();
+    const key = (callsTo("guests:beginGuestMessage")[0][1] as { key: string }).key;
+    expect(key).toMatch(/^legacy:[0-9a-f]{64}$/);
+    // a different IP is a different legacy guest
+    await (await POST(guestReq(legacy, { "x-real-ip": "5.6.7.8" }))).text();
+    expect((callsTo("guests:beginGuestMessage")[1][1] as { key: string }).key).not.toBe(key);
+  });
+
+  it("stops the round and settles once when the client aborts mid-round (message sent mid-debate)", async () => {
+    guestConvex();
+    let stopped = false;
+    let release: () => void = () => {};
+    orchestrateChat.mockImplementation(async function* () {
+      try {
+        yield { type: "message", from: "a", text: "first reply" } satisfies EngineEvent;
+        // the next friend is "thinking" when the user cuts in
+        await new Promise<void>((r) => (release = r));
+        yield { type: "message", from: "b", text: "queued reply, must never be sent" } satisfies EngineEvent;
+      } finally {
+        stopped = true;
+      }
+    });
+    const ac = new AbortController();
+    const r = new Request("http://localhost/api/chat", {
+      method: "POST",
+      signal: ac.signal,
+      headers: { origin: "http://localhost", "content-type": "application/json", "x-real-ip": "1.2.3.4" },
+      body: JSON.stringify({ ...body, guestId: GID }),
+    });
+    const res = await POST(r);
+    const reader = res.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    expect(first).toContain("first reply");
+    ac.abort();
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    await Promise.all(afterCallbacks.map((cb) => cb()));
+    expect(stopped).toBe(true);
+    const settles = callsTo("guests:settleGuestMessage");
+    expect(settles).toHaveLength(1);
+    expect(settles[0][1]).toMatchObject({ delivered: true });
+  });
+
+  it("still returns 401 for a bad token instead of falling back to guest", async () => {
+    bootstrapUser.mockRejectedValue(new AuthError("invalid token"));
+    const res = await POST(guestReq({ ...body, guestId: GID }, { authorization: "Bearer bad" }));
+    expect(res.status).toBe(401);
+    expect(mutation).not.toHaveBeenCalled();
+  });
+});

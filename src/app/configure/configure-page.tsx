@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import BackArrow from "../back-button";
 import Link from "next/link";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -290,6 +291,7 @@ export default function ConfigurePage({ userName }: { userName: string }) {
     <div className="config-page">
       {/* ── Header ─────────────────────────────────────────────── */}
       <header className="config-header">
+        <BackArrow />
         <p className="config-wordmark">macha<em>x</em> &middot; configure your pod</p>
         <p className="config-subtitle">tune the people in your group chat.</p>
       </header>

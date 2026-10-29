@@ -2,15 +2,14 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getStoredUser } from "@/lib/stored-user";
 
-// Entry point: a cached user goes to chat, everyone else signs in first.
-// /login re-checks the Firebase session, so a stale cache cannot loop.
+// Entry point: everyone lands in chat. Signed-out users chat as guests and are
+// asked to sign in once their free messages run out (see chat-page.tsx).
 export default function Page() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace(getStoredUser() ? "/chat" : "/login");
+    router.replace("/chat");
   }, [router]);
 
   return null;

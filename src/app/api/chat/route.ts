@@ -17,6 +17,7 @@ import { CostCollector } from "@/lib/cost-collector";
 import { summarize } from "@/lib/credits";
 import { authErrorResponse } from "@/lib/server-auth";
 import { SETTLE_RETURN_TIMEOUT_MS, validateChatInput } from "@/lib/chat-limits";
+import { GUEST_ID_RE, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
 
 // ConvexHttpClient's own types only accept public functions. The admin client
 // can call internal ones, so narrow it to a typed mutation caller.
@@ -34,6 +35,10 @@ type CreditEvent = {
   costMicros: number;
   topupMessages: number;
 };
+
+// The last line before done: the balance for a signed-in user, the guest
+// message counts for a guest.
+type TailEvent = { credit: CreditEvent } | { guest: GuestUsage };
 
 export async function OPTIONS(request: Request) {
   return handleCorsOptions(request) ?? new Response(null, { status: 204 });
@@ -95,15 +100,17 @@ function iteratorToStream(
   opts: {
     convex: AdminMutations;
     conversationId?: string;
-    settle: () => Promise<CreditEvent | null>;
+    // delivered = at least one friend reply was produced.
+    settle: (delivered: boolean) => Promise<TailEvent | null>;
   },
-): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<CreditEvent | null> } {
-  let settling: Promise<CreditEvent | null> | null = null;
+): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<TailEvent | null> } {
+  let settling: Promise<TailEvent | null> | null = null;
   let finished = false;
   let cancelled = false;
+  let delivered = false;
 
   // Every caller (finish, cancel, after) gets the same settle promise.
-  function settleOnce(): Promise<CreditEvent | null> {
+  function settleOnce(): Promise<TailEvent | null> {
     settling ??= settleNow();
     return settling;
   }
@@ -131,17 +138,17 @@ function iteratorToStream(
 
   // Stop the generator (runs its finally blocks; no-op if it already ended),
   // then charge. A bookkeeping failure is logged, never thrown.
-  async function settleNow(): Promise<CreditEvent | null> {
+  async function settleNow(): Promise<TailEvent | null> {
     await stopGenerator();
     // One retry so a transient Convex failure doesn't leave the lock set and the message free.
     try {
-      return await opts.settle();
+      return await opts.settle(delivered);
     } catch (err) {
       console.error("Credit settle failed, retrying:", err);
     }
     await new Promise((resolve) => setTimeout(resolve, SETTLE_RETRY_MS));
     try {
-      return await opts.settle();
+      return await opts.settle(delivered);
     } catch (err) {
       console.error("Credit settle failed:", err);
       return null;
@@ -151,10 +158,10 @@ function iteratorToStream(
   async function finish(controller: ReadableStreamDefaultController<Uint8Array>) {
     if (finished) return;
     finished = true;
-    const credit = await settleOnce();
+    const tail = await settleOnce();
     if (cancelled) return;
-    if (credit) {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ credit })}\n\n`));
+    if (tail) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(tail)}\n\n`));
     }
     controller.enqueue(DONE_LINE);
     controller.close();
@@ -165,6 +172,7 @@ function iteratorToStream(
       try {
         const { value, done } = await iterator.next();
         if (cancelled) return;
+        if (!done && value.type === "message") delivered = true;
         if (done) {
           await finish(controller);
           return;
@@ -212,10 +220,45 @@ function iteratorToStream(
   return { stream, settleOnce };
 }
 
+// Guests are told apart by a client-made id; old 1.1 installs send none, so
+// they fall back to their IP plus the name they send.
+const GUEST_NAME_MAX = 40;
+
+function clientIp(request: Request): string {
+  const real = request.headers.get("x-real-ip")?.trim();
+  if (real) return real;
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  return forwarded || "unknown";
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function guestName(raw: unknown): string {
+  if (typeof raw !== "string") return "friend";
+  const name = raw.trim().slice(0, GUEST_NAME_MAX);
+  return name || "friend";
+}
+
+async function guestIdentity(request: Request, guestId: unknown, userName: string) {
+  const ip = clientIp(request);
+  const ipHash = await sha256Hex(`ip|${ip}`);
+  const key =
+    typeof guestId === "string" && GUEST_ID_RE.test(guestId)
+      ? `g:${guestId}`
+      : `legacy:${await sha256Hex(`legacy|${ip}|${userName}`)}`;
+  return { key, ipHash };
+}
+
 export async function POST(request: Request) {
   const cors = corsHeaders(request);
   try {
-    const { user, username, name, row } = await bootstrapUser(request);
+    // A token means a signed-in user (a bad token is still a 401). No token
+    // means a guest, which is also how old 1.1 installs call this route.
+    const hasToken = (request.headers.get("authorization") ?? "").trim() !== "";
+    const account = hasToken ? await bootstrapUser(request) : null;
 
     const body: unknown = await request.json().catch(() => null);
     // Caps every field that reaches a prompt, so one message's cost stays bounded.
@@ -227,9 +270,10 @@ export async function POST(request: Request) {
       );
     }
     const { message, podFriendIds, history, characterOverrides } = input.value;
-    // userName is still accepted for old clients but ignored: identity comes from the token.
-    const { sessionMood, conversationDepth, userEngagementFrequency, conversationId } = body as {
-      userName?: string;
+    // userName is ignored for signed-in users: identity comes from the token.
+    const { sessionMood, conversationDepth, userEngagementFrequency, conversationId, userName, guestId } = body as {
+      userName?: unknown;
+      guestId?: unknown;
       sessionMood?: { modes?: string[]; pacing?: string; energy?: string };
       conversationDepth?: string;
       userEngagementFrequency?: number;
@@ -248,46 +292,87 @@ export async function POST(request: Request) {
     const convex = getConvexAdmin() as unknown as AdminMutations;
     // The ledger ref of this message; the in-flight lock is tagged with it.
     const ref = `${convId ?? "noconv"}:${crypto.randomUUID()}`;
-    const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid, ref });
-    if (!begin.ok) {
-      if (begin.reason === "out_of_credit") {
+    const collector = new CostCollector();
+    let settle: (delivered: boolean) => Promise<TailEvent | null>;
+    let promptName: string;
+
+    if (account) {
+      const { user, username, name, row } = account;
+      const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid, ref });
+      if (!begin.ok) {
+        if (begin.reason === "out_of_credit") {
+          return Response.json(
+            { error: "out_of_credit", credits: summarize(row) },
+            { status: 402, headers: cors }
+          );
+        }
+        if (begin.reason === "busy") {
+          return Response.json({ error: "busy" }, { status: 409, headers: cors });
+        }
+        // no_account cannot happen after bootstrapUser's ensure; treat as a server fault.
+        throw new Error(`beginMessage refused: ${begin.reason} (uid ${user.uid})`);
+      }
+
+      // null: the account was deleted mid-message, so there is nothing to report.
+      settle = async () => {
+        const costMicros = collector.totalMicros;
+        const after = await convex.mutation(internal.credits.settleMessage, {
+          uid: user.uid,
+          costMicros,
+          ref,
+          meta: collector.toMeta(),
+        });
+        if (!after) return null;
+        const summary = summarize(after);
+        return {
+          credit: {
+            balanceMicros: summary.balanceMicros,
+            messagesLeft: summary.messagesLeft,
+            costMicros,
+            topupMessages: summary.topupMessages,
+          },
+        };
+      };
+      promptName = name ?? username;
+    } else {
+      promptName = guestName(userName);
+      const { key, ipHash } = await guestIdentity(request, guestId, promptName);
+      // Example prompts don't use a typed message, only the hard cap.
+      const example = isExamplePrompt(message);
+      const begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref });
+      if (!begin.ok) {
+        if (begin.reason === "busy") {
+          return Response.json({ error: "busy" }, { status: 409, headers: cors });
+        }
+        if (begin.reason === "rate_limited") {
+          return Response.json({ error: "rate_limited" }, { status: 429, headers: cors });
+        }
+        // typed_limit, cap, or this guest id already signed up.
         return Response.json(
-          { error: "out_of_credit", credits: summarize(row) },
-          { status: 402, headers: cors }
+          { error: "login_required", reason: begin.reason, guest: begin.usage },
+          { status: 403, headers: cors }
         );
       }
-      if (begin.reason === "busy") {
-        return Response.json({ error: "busy" }, { status: 409, headers: cors });
-      }
-      // no_account cannot happen after bootstrapUser's ensure; treat as a server fault.
-      throw new Error(`beginMessage refused: ${begin.reason} (uid ${user.uid})`);
-    }
-
-    const collector = new CostCollector();
-    // null: the account was deleted mid-message, so there is nothing to report.
-    const settle = async (): Promise<CreditEvent | null> => {
-      const costMicros = collector.totalMicros;
-      const after = await convex.mutation(internal.credits.settleMessage, {
-        uid: user.uid,
-        costMicros,
-        ref,
-        meta: collector.toMeta(),
-      });
-      if (!after) return null;
-      const summary = summarize(after);
-      return {
-        balanceMicros: summary.balanceMicros,
-        messagesLeft: summary.messagesLeft,
-        costMicros,
-        topupMessages: summary.topupMessages,
+      const { windowStart } = begin;
+      settle = async (delivered) => {
+        const guest = await convex.mutation(internal.guests.settleGuestMessage, {
+          key,
+          ipHash,
+          windowStart,
+          ref,
+          example,
+          delivered,
+          costMicros: collector.totalMicros,
+        });
+        return { guest };
       };
-    };
+    }
 
     const generator = orchestrateChat({
       message,
       podFriendIds,
       history,
-      userName: name ?? username,
+      userName: promptName,
       sessionMood,
       characterOverrides,
       conversationDepth,
@@ -296,9 +381,12 @@ export async function POST(request: Request) {
     });
 
     const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle });
-    // Keeps the function alive until the message is charged, even when the client
+    // Keeps the function alive until the message is settled, even when the client
     // aborts and the platform would otherwise end the invocation with the response.
     after(() => settleOnce());
+    // The client went away (e.g. it cut this round off by sending a new message):
+    // stop the round now, so its queued replies are dropped and the lock frees fast.
+    request.signal?.addEventListener("abort", () => void settleOnce(), { once: true });
 
     return new Response(stream, {
       headers: {

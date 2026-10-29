@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Fraunces, Caveat, JetBrains_Mono } from "next/font/google";
 import ConvexClientProvider from "./convex-provider";
 import AnalyticsTracker from "./analytics-tracker";
+import { AndroidBackHandler } from "./back-button";
 import { StructuredData } from "@/components/structured-data";
 import "./globals.css";
 
@@ -76,6 +77,7 @@ export default function RootLayout({
           }}
         />
         <AnalyticsTracker />
+        <AndroidBackHandler />
         <ConvexClientProvider>{children}</ConvexClientProvider>
       </body>
     </html>

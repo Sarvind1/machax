@@ -157,6 +157,29 @@ export default defineSchema({
   }).index("by_uid", ["uid", "createdAt"])
     .index("by_ref", ["ref"]),
 
+  // Signed-out chat usage. key is "g:<guestId>" (sent by the app) or
+  // "legacy:<hash>" for old 1.1 installs that send no id. typedCount and
+  // totalCount only go up after a message got replies.
+  guestUsage: defineTable({
+    key: v.string(),
+    typedCount: v.number(),
+    totalCount: v.number(),
+    costMicros: v.number(),
+    inFlightSince: v.optional(v.number()),
+    inFlightRef: v.optional(v.string()),
+    // Username of the account that signed in from this guest id, if any.
+    claimedBy: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  // Guest messages started per hashed IP per hour window.
+  guestIpRate: defineTable({
+    ipHash: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_ip_window", ["ipHash", "windowStart"]),
+
   orders: defineTable({
     uid: v.string(),
     provider: v.string(),

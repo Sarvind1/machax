@@ -12,6 +12,8 @@ import type * as conversations from "../conversations.js";
 import type * as credits from "../credits.js";
 import type * as decisions from "../decisions.js";
 import type * as evals from "../evals.js";
+import type * as guestLimits from "../guestLimits.js";
+import type * as guests from "../guests.js";
 import type * as http from "../http.js";
 import type * as lib_passwords from "../lib/passwords.js";
 import type * as messages from "../messages.js";
@@ -35,6 +37,8 @@ declare const fullApi: ApiFromModules<{
   credits: typeof credits;
   decisions: typeof decisions;
   evals: typeof evals;
+  guestLimits: typeof guestLimits;
+  guests: typeof guests;
   http: typeof http;
   "lib/passwords": typeof lib_passwords;
   messages: typeof messages;
