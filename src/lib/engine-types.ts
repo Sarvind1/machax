@@ -28,6 +28,12 @@ export type EngineEvent =
   | { type: "nudge" } // soft pressure — user was asked a question
   | { type: "winding-down" }
   | { type: "decision"; decision: import("./types").Decision }
+  // How the engine read the user's message; the chat route uses it so small talk and distress stay free for guests.
+  | { type: "intent"; intent: "dilemma" | "smalltalk" | "distress" | "pick"; language: string }
+  // Shown under the gentle reply to a distress message.
+  | { type: "helpline"; helpline: { name: string; numbers: string[]; note: string } }
+  // Example prompts offered under a small-talk reply.
+  | { type: "chips"; chips: string[] }
   | { type: "trace"; data: ConversationTrace }
   | { type: "done" };
 

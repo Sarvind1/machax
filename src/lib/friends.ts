@@ -1958,15 +1958,17 @@ export const FRIENDS_BY_ID = Object.fromEntries(
 
 // ── Starters ──────────────────────────────────────────────────────────
 
+// Ready-made example prompts on the empty screen (and the chips under a
+// small-talk reply). Specific, Indian and a bit roastable, like the ads.
 export const STARTERS = [
-  { tag: "career", text: "I got an offer but I'm weirdly not excited", chip: "\uD83D\uDCBC" },
-  { tag: "relationship", text: "My friend cancelled plans again. Overreacting?", chip: "\uD83D\uDCAC" },
-  { tag: "what-to-buy", text: "iPhone or should I finally try Android", chip: "\uD83D\uDED2" },
-  { tag: "overthinking", text: "Is it weird to text first after a silent week", chip: "\uD83C\uDF00" },
-  { tag: "hot-takes", text: "Give me your worst takes on weekend brunch", chip: "\uD83D\uDD25" },
-  { tag: "feelings", text: "Feeling flat for no reason. Talk to me", chip: "\uD83C\uDF27" },
-  { tag: "money", text: "Should I move out or keep saving", chip: "\u20B9" },
-  { tag: "life", text: "Everyone's getting married and I'm tired", chip: "\u25D0" },
+  { tag: "money", text: "My friend owes me 15k and keeps posting Goa stories", chip: "\u20B9" },
+  { tag: "relationship", text: "Mom set up a rishta meeting this Sunday. Do I go?", chip: "\uD83D\uDC8D" },
+  { tag: "career", text: "Boss texts me on Sunday nights. Reply or ignore?", chip: "\uD83D\uDCBC" },
+  { tag: "relationship", text: "My ex liked my story at 2am. Should I reply?", chip: "\uD83D\uDC40" },
+  { tag: "career", text: "Got a 30% hike offer but the new team seems toxic", chip: "\uD83D\uDCC8" },
+  { tag: "money", text: "Friends want a Bali trip. I have 40k in savings", chip: "\u2708\uFE0F" },
+  { tag: "overthinking", text: "She left me on seen for 2 days. Do I double text?", chip: "\uD83C\uDF00" },
+  { tag: "life", text: "Parents want me home by 10pm. I'm 24", chip: "\uD83C\uDFE0" },
 ];
 
 // ── Conversation Modes ────────────────────────────────────────────────
@@ -1981,11 +1983,8 @@ export const MODES: ConversationMode[] = [
   { id: "conspiracy", name: "Conspiracy Theory", lengthModifier: "longer", promptOverlay: "find the hidden angle. what's actually going on beneath the surface. connect dots." },
   { id: "existential", name: "Existential Crisis", lengthModifier: "same", promptOverlay: "zoom out all the way. make it about the bigger thing." },
   { id: "hype", name: "Hype Mode", lengthModifier: "shorter", promptOverlay: "maximum hype. everything is great. no qualifiers." },
-  { id: "passive-aggressive", name: "Passive Aggressive", lengthModifier: "shorter", promptOverlay: "say something supportive that somehow also lands as a critique. maintain sweetness." },
   { id: "drunk-uncle", name: "Drunk Uncle Wisdom", lengthModifier: "longer", promptOverlay: "say the thing you'd say at 11pm at a wedding — rambling but real, slightly embarrassing, occasionally wise." },
-  { id: "corporate", name: "Corporate Speak Irony", lengthModifier: "same", promptOverlay: "use business jargon and corporate framing for deeply personal issues. play it completely straight." },
   { id: "motivational", name: "Motivational Poster", lengthModifier: "shorter", promptOverlay: "say it like it belongs on a poster. one powerful sentence." },
-  { id: "dark-humor", name: "Dark Humor", lengthModifier: "shorter", promptOverlay: "find the darkly funny angle. make a joke that makes people laugh uncomfortably." },
   { id: "oversharing", name: "Oversharing", lengthModifier: "longer", promptOverlay: "share more than the situation probably warrants. go personal. bring in your own story." },
   { id: "debate-club", name: "Debate Club", lengthModifier: "longer", promptOverlay: "make an argument with a clear position, reasoning, and a response to the obvious counterpoint." },
   { id: "silent-breaker", name: "Silent Treatment Breaker", lengthModifier: "shorter", promptOverlay: "skip the context. say the one thing nobody in the conversation has said yet." },
@@ -2138,6 +2137,19 @@ export function selectPod(tags: string[], count = 7): Friend[] {
 
 // ── Random mode selection ─────────────────────────────────────────────
 
+// The friend most likely to be soft with someone who is hurting: most
+// agreeable, with a bonus for a feelings tag. Used for distress replies.
+export function pickGentlestFriend(podFriendIds: string[]): string | null {
+  let best: { id: string; score: number } | null = null;
+  for (const id of podFriendIds) {
+    const f = FRIENDS_BY_ID[id];
+    if (!f) continue;
+    const score = f.traits.agreementBias + (f.tags.includes("feelings") ? 0.5 : 0);
+    if (!best || score > best.score) best = { id, score };
+  }
+  return best?.id ?? null;
+}
+
 export function pickRandomMode(agreementBias?: number): ConversationMode | null {
   if (Math.random() < 0.6) return null; // 40% chance of mode (reduced from 60%)
 
@@ -2149,7 +2161,7 @@ export function pickRandomMode(agreementBias?: number): ConversationMode | null 
     eligible = eligible.filter((m) => !excluded.has(m.id));
   } else if (agreementBias != null && agreementBias > 0.3) {
     // Agreeable agents don't get aggressive modes
-    const excluded = new Set(["roast", "dark-humor", "passive-aggressive"]);
+    const excluded = new Set(["roast"]);
     eligible = eligible.filter((m) => !excluded.has(m.id));
   }
 

@@ -77,6 +77,12 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
       return { windingDown: true };
     case "decision":
       return { decision: event.decision };
+    case "intent":
+      return { intent: event.intent, language: event.language };
+    case "helpline":
+      return { helpline: event.helpline };
+    case "chips":
+      return { chips: event.chips };
     case "trace":
       return { trace: event.data };
     case "done":

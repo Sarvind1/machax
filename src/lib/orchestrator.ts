@@ -13,7 +13,10 @@ import {
   lengthToInstruction,
   computeTopicAffinity,
   NEUTRAL_TOPIC_AFFINITY,
+  STARTERS,
+  pickGentlestFriend,
 } from "./friends";
+import { HELPLINE, classifyByRules, classifyMessage, looksLikeSmallTalk, type IntentResult } from "./intent";
 import type { Friend } from "./friends";
 import { GEMINI_ENABLED, getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
@@ -288,7 +291,7 @@ async function callAiSdk(
 // max_tokens, so the reply budget sits on top of a thinking allowance sized
 // by effort. Haiku 4.5 (helper calls): no thinking, no effort setting.
 const THINKING_ALLOWANCE: Record<AnthropicEffort, number> = { low: 2_000, medium: 4_000, high: 8_000, xhigh: 16_000, max: 32_000 };
-type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+export type AnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
 // Fail over to Gemini quickly instead of the SDK's 10-minute default. `timeout`
 // covers only the wait for response headers; a stall mid-body is caught by the
 // idle abort in callAnthropic (ANTHROPIC_IDLE_MS without a stream event).
@@ -301,6 +304,7 @@ async function callAnthropic(
   model: string,
   maxTokens: number,
   collector?: CostCollector,
+  effortOverride?: AnthropicEffort,
 ): Promise<{ text: string; model: string; usage: Usage }> {
   anthropicClient ??= new Anthropic();
   const abort = new AbortController();
@@ -313,7 +317,7 @@ async function callAnthropic(
         messages: [{ role: "user", content: userPrompt }],
       }, requestOptions)
     : (() => {
-        const effort = (process.env.ANTHROPIC_EFFORT || "medium") as AnthropicEffort;
+        const effort = effortOverride ?? ((process.env.ANTHROPIC_EFFORT || "medium") as AnthropicEffort);
         return anthropicClient!.beta.messages.stream({
           model,
           max_tokens: maxTokens + (THINKING_ALLOWANCE[effort] ?? 4_000),
@@ -375,6 +379,8 @@ export async function callModel(
   maxTokens: number,
   modelOverride?: string,
   collector?: CostCollector,
+  // Sonnet only: thinking effort for this call (the first reply uses "low" to arrive sooner).
+  effort?: AnthropicEffort,
 ): Promise<{ text: string; model: string; paid: boolean }> {
   if (provider.name === "claude-cli") {
     const { text, costUsd } = await callClaudeCli(system, userPrompt, provider.model, maxTokens);
@@ -383,7 +389,7 @@ export async function callModel(
   }
   if (provider.name === "anthropic") {
     try {
-      const result = await callAnthropic(system, userPrompt, provider.model, maxTokens, collector);
+      const result = await callAnthropic(system, userPrompt, provider.model, maxTokens, collector, effort);
       return { text: result.text, model: provider.model, paid: true };
     } catch (err) {
       if (!GEMINI_ENABLED) throw err;
@@ -827,6 +833,22 @@ export function buildVoiceAnchorBlock(friend: Friend, userMessage: string): stri
   return lines.join("\n");
 }
 
+// ── Language rule ───────────────────────────────────────────────────
+// Every friend answers in the language and script the user wrote in.
+export function languageBlock(language: string, userName: string): string {
+  if (!language) return "";
+  const lang = language.toLowerCase();
+  let extra = "";
+  if (lang.includes("hinglish")) {
+    extra = " Mix Hindi and English the way Indian friends text, in Latin script (e.g. \"bhai seriously, paise maang le\").";
+  } else if (lang.includes("manglish")) {
+    extra = " Mix Malayalam and English in Latin script, the way Kerala friends text.";
+  } else if (!lang.startsWith("english")) {
+    extra = " Use that script. Casual, everyday words, not formal or textbook language. English slang mixed in is fine.";
+  }
+  return `\nLANGUAGE: ${userName} wrote in ${language}. Reply in ${language}.${extra}\n`;
+}
+
 // ── Prompt builder ──────────────────────────────────────────────────
 
 function buildPrompt(
@@ -852,6 +874,7 @@ function buildPrompt(
   isMinimalPrompt: boolean = false,
   traitHints: string = "",
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
+  language: string = "",
 ): string {
   const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Consider this angle: ${contextHint}` : ""}`;
 
@@ -953,10 +976,10 @@ function buildPrompt(
   }
 
   return `${baseIdentity}${topicChangeBlock} ${contextBlock}
-${factsBlock}
+${factsBlock}${languageBlock(language, userName)}
 If someone asks about something you genuinely don't know about, say so naturally — "no idea", "never heard of it", "what's that". Don't fake knowledge.
 
-NEVER say: "Absolutely", "That's a great question", "I'd be happy to", "It's important to note", "delve", "I couldn't agree more", "Certainly", "Indeed", "Furthermore", "I think there's something to be said for", "an endless cycle", "unsustainable", "low-cost high-reward", "it's worth noting". Never hedge. Never explain your reasoning. No formal phrases. No philosophical statements. No business jargon. Talk like you're 22 and texting your friend.
+NEVER say: "Absolutely", "That's a great question", "I'd be happy to", "It's important to note", "delve", "I couldn't agree more", "Certainly", "Indeed", "Furthermore", "I think there's something to be said for", "an endless cycle", "unsustainable", "low-cost high-reward", "it's worth noting", "circle back", "deliverable", "stakeholder", "align", "bandwidth", "synergy", "leverage", "action item", "touch base". Never hedge. Never explain your reasoning. No formal phrases. No philosophical statements. No business jargon. Talk like you're 22 and texting your friend.
 
 ${participantBlock}
 The user's name is ${userName} but do NOT use their name in every message. In a real group chat, you rarely say someone's name — just talk naturally. Use their name at most once in the entire conversation, and only if you're directly asking them something important.
@@ -1003,6 +1026,9 @@ async function callFriend(
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
   overrides: Record<string, any> = {},
   collector?: CostCollector,
+  // language: the user's language (from classifyMessage). allowMode: false on the
+  // first replies of a turn, so they stay in the friend's own voice. effort: Sonnet thinking effort.
+  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort } = {},
 ): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string; model?: string; paid?: boolean } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend)
@@ -1068,7 +1094,7 @@ async function callFriend(
     .filter((n): n is string => !!n);
 
   // Pick mode and length
-  const mode = pickRandomMode(effectiveTraits.agreementBias);
+  const mode = extra.allowMode === false ? null : pickRandomMode(effectiveTraits.agreementBias);
   const isClosingOut = energy < 0.2;
   const affinity = computeTopicAffinity(friend.tags, allMessages[0]?.text || "");
   let length;
@@ -1182,6 +1208,7 @@ async function callFriend(
     isMinimalPrompt,
     traitHintsBlock,
     sessionMood,
+    extra.language ?? "",
   );
 
   // Fix 3 (260519-x71) — character voice anchor at TOP of prompt (U-shape
@@ -1242,6 +1269,7 @@ async function callFriend(
       maxTokens,
       undefined,
       collector,
+      extra.effort,
     );
     text = cleanResponse(text, friend.name);
 
@@ -1424,6 +1452,103 @@ function filterTopicForCharacter(
   return "";
 }
 
+// One vote per friend: a friend listed under two options keeps only the first.
+// Unknown ids are dropped; options keep their order.
+export function normalizeDecision(decision: Decision, podFriendIds: string[]): Decision {
+  const seen = new Set<string>();
+  const options = (decision.options ?? []).slice(0, 4).map((o, i) => {
+    const voices = (Array.isArray(o.voices) ? o.voices : []).filter((id) => {
+      if (!podFriendIds.includes(id) || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    return { id: o.id || `opt${i + 1}`, label: String(o.label ?? ""), blurb: String(o.blurb ?? ""), voices };
+  });
+  return { question: String(decision.question ?? ""), options: options.filter((o) => o.label) };
+}
+
+// ── Simple turns: distress, small talk, pick reactions ─────────────
+// These skip the debate loop: a fixed list of friends replies in order, each
+// seeing the replies before theirs, and no vote card follows.
+
+export function distressInstruction(userName: string): string {
+  return `${userName} might be going through something heavy right now. Drop every joke, roast and hot take. Reply as their warm, caring friend, still in your own voice but soft:
+- say back what they're feeling in plain words, and that you're here and not going anywhere
+- ask ONE gentle question about what's going on
+- gently say that talking to a trained counsellor can really help, and that the Tele-MANAS number (14416, free, any time) is right below this message. Say it like a friend who cares, not a lecture.
+If they mention wanting to die, ending it or hurting themselves: say clearly that you're worried about them and ask them to call 14416 now or tell someone they trust nearby.
+Never diagnose, never give a list of tips, never say you're an AI, no emojis that joke. 2-3 short sentences.`;
+}
+
+export function smallTalkInstruction(userName: string, position: number): string {
+  if (position === 0) {
+    return `${userName} just showed up with small talk and nothing to decide yet. In your own voice, tease them a little for it and ask what the actual drama is: what do they need the group to settle? You can throw in one example (a friend who owes them money, a crush who left them on seen, a boss texting on Sunday). Under 18 words.`;
+  }
+  return `React to what was just said in one short line and push ${userName} to spill the drama. Don't repeat the question the same way. Under 12 words.`;
+}
+
+export function pickInstruction(userName: string, label: string, votedForIt: boolean, isCloser: boolean): string {
+  const stance = votedForIt
+    ? `You pushed for this, so gloat a little or hype them up.`
+    : `You argued for something else. Tease them about it but accept their call, maybe one last tiny warning.`;
+  const close = isCloser
+    ? ` Then tell them to come back and update the group on how it went.`
+    : "";
+  return `${userName} just made their call: "${label}". React in your own voice in one short line. ${stance}${close} Under 20 words.`;
+}
+
+/** Three example prompts for the chips under a small-talk reply. */
+export function pickStarterChips(message: string): string[] {
+  // Rotate by the message so repeated hellos don't always show the same three.
+  let h = 0;
+  for (const ch of message) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const start = h % STARTERS.length;
+  return [0, 1, 2].map((i) => STARTERS[(start + i * 3) % STARTERS.length].text);
+}
+
+async function* simpleTurn(
+  speakers: { friendId: string; instruction: string }[],
+  ctx: {
+    transcript: string;
+    provider: ProviderConfig;
+    userName: string;
+    language: string;
+    collector?: CostCollector;
+    effort?: AnthropicEffort;
+  },
+): AsyncGenerator<EngineEvent> {
+  const said: ChatEntry[] = [];
+  for (const { friendId, instruction } of speakers) {
+    const friend = FRIENDS_BY_ID[friendId];
+    if (!friend) continue;
+    yield { type: "typing", agentId: friendId };
+    const soFar = said.length
+      ? `${ctx.transcript}\n${said.map((m) => `[${FRIENDS_BY_ID[m.from]?.name ?? m.from}] ${m.text}`).join("\n")}`
+      : ctx.transcript;
+    const voice = buildVoiceAnchorBlock(friend, "");
+    const prompt = `${voice ? voice + "\n\n" : ""}You are ${friend.name} (${friend.role}) in a friends group chat on WhatsApp.
+
+Here's the chat:
+${soFar}
+${languageBlock(ctx.language, ctx.userName)}
+${instruction}
+
+Type like you text your close friends. Don't use ${ctx.userName}'s name. Don't prefix with your name. No quotes around your reply. No business jargon.`;
+    let text = "";
+    try {
+      const result = await callModel(friend.systemPrompt, prompt, ctx.provider, 200, undefined, ctx.collector, ctx.effort);
+      text = cleanResponse(result.text, friend.name).replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, "").trim();
+    } catch (err) {
+      engineLog({ ts: new Date().toISOString(), event: "simple-turn-failed", agent: friendId, error: String(err).slice(0, 200) });
+    }
+    yield { type: "typing-stop", agentId: friendId };
+    if (!text || text.length < 2) continue;
+    said.push({ from: friendId, text });
+    yield { type: "joined", agentId: friendId };
+    yield { type: "message", from: friendId, text };
+  }
+}
+
 // ── Main v3 engine ──────────────────────────────────────────────────
 
 export async function* orchestrateChat(params: {
@@ -1436,8 +1561,10 @@ export async function* orchestrateChat(params: {
   conversationDepth?: string; // "quick" | "normal" | "deep"
   userEngagementFrequency?: number; // 0-1
   collector?: CostCollector; // optional: accumulates cost of every model call
+  // Set when the user tapped an option on the vote card; friends react to the pick instead of debating.
+  pickedOption?: { label: string; voices: string[] };
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector } = params;
+  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption } = params;
 
   // Parse character overrides once
   let parsedOverrides: Record<string, any> = {};
@@ -1466,6 +1593,64 @@ export async function* orchestrateChat(params: {
   }
 
   yield { type: "provider", label: provider.label };
+
+  // ── Sort the message: dilemma, small talk, distress (or a pick reaction) ──
+  // Keyword rules answer at once for clear distress and plain greetings; the
+  // cheap model only runs when the rules see a dilemma, to catch softer
+  // distress and to name the language.
+  const earlierUserMessages = history.filter((m) => m.from === "user").map((m) => m.text);
+  const rules = classifyByRules(message);
+  const sorted: IntentResult =
+    pickedOption || rules.intent !== "dilemma"
+      ? rules
+      : await classifyMessage(message, earlierUserMessages.slice(-2), async (system, prompt) =>
+          (await callModel(system, prompt, { ...provider, model: provider.synthesisModel }, 80, undefined, collector)).text,
+        );
+  const language = sorted.language;
+  // A dilemma earlier in this chat means "ok" / "lol" is a reply, not a fresh hello.
+  const hadDilemmaBefore = earlierUserMessages.some((t) => !looksLikeSmallTalk(t));
+  yield { type: "intent", intent: pickedOption ? "pick" : sorted.intent, language };
+  engineLog({ ts: new Date().toISOString(), event: "intent", intent: pickedOption ? "pick" : sorted.intent, language, source: sorted.source });
+
+  const transcriptForSimple = formatTranscript([...history.slice(-8), { from: "user", text: message }], userName);
+
+  if (!pickedOption && sorted.intent === "distress") {
+    const gentleId = pickGentlestFriend(podFriendIds) ?? podFriendIds[0];
+    if (gentleId) {
+      yield* simpleTurn([{ friendId: gentleId, instruction: distressInstruction(userName) }], {
+        transcript: transcriptForSimple, provider, userName, language, collector,
+      });
+    }
+    yield { type: "helpline", helpline: { name: HELPLINE.name, numbers: [...HELPLINE.numbers], note: HELPLINE.note } };
+    return;
+  }
+
+  if (!pickedOption && sorted.intent === "smalltalk" && !hadDilemmaBefore) {
+    const talkers = [...podFriendIds]
+      .sort((a, b) => (FRIENDS_BY_ID[b]?.traits.talkativeness ?? 0.5) - (FRIENDS_BY_ID[a]?.traits.talkativeness ?? 0.5))
+      .slice(0, Math.min(2, podFriendIds.length));
+    yield* simpleTurn(
+      talkers.map((friendId, i) => ({ friendId, instruction: smallTalkInstruction(userName, i) })),
+      { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low" },
+    );
+    yield { type: "chips", chips: pickStarterChips(message) };
+    return;
+  }
+
+  if (pickedOption) {
+    const voters = pickedOption.voices.filter((id) => podFriendIds.includes(id));
+    const others = podFriendIds.filter((id) => !voters.includes(id));
+    const reactors: { friendId: string; instruction: string }[] = [];
+    if (voters[0]) reactors.push({ friendId: voters[0], instruction: pickInstruction(userName, pickedOption.label, true, false) });
+    if (others[0]) reactors.push({ friendId: others[0], instruction: pickInstruction(userName, pickedOption.label, false, false) });
+    const closer = voters[1] ?? others[1];
+    if (closer) reactors.push({ friendId: closer, instruction: pickInstruction(userName, pickedOption.label, voters.includes(closer), true) });
+    if (reactors.length === 0 && podFriendIds[0]) {
+      reactors.push({ friendId: podFriendIds[0], instruction: pickInstruction(userName, pickedOption.label, false, true) });
+    }
+    yield* simpleTurn(reactors, { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low" });
+    return;
+  }
 
   // ── Director agent: research the topic (runs parallel with first batch) ──
   let topicContext = "";
@@ -1709,6 +1894,12 @@ export async function* orchestrateChat(params: {
           sessionMood,
           parsedOverrides,
           collector,
+          {
+            language,
+            // The first replies of a turn stay in each friend's own voice and arrive faster.
+            allowMode: roundResponses.length > 0,
+            effort: roundResponses.length === 0 ? "low" : undefined,
+          },
         );
       }),
     );
@@ -1849,6 +2040,8 @@ export async function* orchestrateChat(params: {
   engineLog({ ts: new Date().toISOString(), event: "conversation-end", finalEnergy: parseFloat(energy.toFixed(3)), iterations, messagesSent: roundResponses.length, reason: energy <= ENERGY_FLOOR ? "energy-depleted" : "max-iterations" });
 
   // ── Synthesis pass — extract decision options ──────────────────────
+  // Small talk inside an ongoing chat gets replies but no new vote card.
+  if (sorted.intent === "smalltalk") return;
 
   const fullTranscript = formatTranscript(allMessages(), userName);
   const friendNames = podFriendIds
@@ -1858,7 +2051,7 @@ export async function* orchestrateChat(params: {
   try {
     const { text: synthesisText } = await callModel(
       `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`,
-      `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 3-4 distinct options/perspectives that emerged. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. Return 3-4 options.`,
+      `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}. Labels are short and punchy (max 6 words). Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`,
       { ...provider, model: provider.synthesisModel },
       600,
       undefined,
@@ -1875,7 +2068,7 @@ export async function* orchestrateChat(params: {
       cleaned = cleaned.slice(startIdx, endIdx + 1);
     }
 
-    const parsed = JSON.parse(cleaned) as Decision;
+    const parsed = normalizeDecision(JSON.parse(cleaned) as Decision, podFriendIds);
     yield { type: "decision", decision: parsed };
   } catch (err) {
     console.error("Error in synthesis pass:", err);
