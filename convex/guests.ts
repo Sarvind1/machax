@@ -38,9 +38,13 @@ function windowStart(now: number): number {
 
 // example = the message is one of the ready-made starter prompts: it does not
 // use one of the typed messages, but it still counts toward the hard cap.
+// kind (from the message sorter): "smalltalk" and "pick" don't use a typed
+// message either; "distress" uses nothing and is answered even at the hard cap.
+const guestKind = v.optional(v.union(v.literal("smalltalk"), v.literal("distress"), v.literal("pick")));
+
 export const beginGuestMessage = internalMutation({
-  args: { key: v.string(), ipHash: v.string(), example: v.boolean(), ref: v.string() },
-  handler: async (ctx, { key, ipHash, example, ref }) => {
+  args: { key: v.string(), ipHash: v.string(), example: v.boolean(), ref: v.string(), kind: guestKind },
+  handler: async (ctx, { key, ipHash, example, ref, kind }) => {
     const now = Date.now();
     const row = await getRow(ctx, key);
 
@@ -50,10 +54,10 @@ export const beginGuestMessage = internalMutation({
     if (row?.inFlightSince !== undefined && now - row.inFlightSince < GUEST_IN_FLIGHT_STALE_MS) {
       return { ok: false as const, reason: "busy" as const, usage: usage(row) };
     }
-    if ((row?.totalCount ?? 0) >= GUEST_HARD_CAP) {
+    if (kind !== "distress" && (row?.totalCount ?? 0) >= GUEST_HARD_CAP) {
       return { ok: false as const, reason: "cap" as const, usage: usage(row) };
     }
-    if (!example && (row?.typedCount ?? 0) >= GUEST_TYPED_LIMIT) {
+    if (!example && kind === undefined && (row?.typedCount ?? 0) >= GUEST_TYPED_LIMIT) {
       return { ok: false as const, reason: "typed_limit" as const, usage: usage(row) };
     }
 
@@ -98,14 +102,16 @@ export const settleGuestMessage = internalMutation({
     example: v.boolean(),
     delivered: v.boolean(),
     costMicros: v.number(),
+    kind: guestKind,
   },
-  handler: async (ctx, { key, ipHash, windowStart: start, ref, example, delivered, costMicros }) => {
+  handler: async (ctx, { key, ipHash, windowStart: start, ref, example, delivered, costMicros, kind }) => {
     const row = await getRow(ctx, key);
     if (!row || row.inFlightRef !== ref) return usage(row);
     const now = Date.now();
     const cost = Number.isFinite(costMicros) && costMicros > 0 ? Math.round(costMicros) : 0;
-    const counts = delivered
-      ? { typedCount: row.typedCount + (example ? 0 : 1), totalCount: row.totalCount + 1 }
+    const typed = example || kind !== undefined ? 0 : 1;
+    const counts = delivered && kind !== "distress"
+      ? { typedCount: row.typedCount + typed, totalCount: row.totalCount + 1 }
       : {};
     await ctx.db.patch(row._id, {
       ...counts,

@@ -1467,6 +1467,23 @@ export function normalizeDecision(decision: Decision, podFriendIds: string[]): D
   return { question: String(decision.question ?? ""), options: options.filter((o) => o.label) };
 }
 
+/**
+ * For the guest gate: the sorter's verdict on a message, before any friend
+ * replies. With useModel the cheap classifier also runs (used only when the
+ * keyword rules saw a dilemma and the guest is out of typed messages).
+ */
+export async function sortGuestMessage(message: string, useModel: boolean): Promise<"smalltalk" | "distress" | undefined> {
+  const rules = classifyByRules(message);
+  if (rules.intent !== "dilemma") return rules.intent;
+  if (!useModel) return undefined;
+  const provider = getActiveProvider();
+  if (!provider) return undefined;
+  const sorted = await classifyMessage(message, [], async (system, prompt) =>
+    (await callModel(system, prompt, { ...provider, model: provider.synthesisModel }, 80)).text,
+  );
+  return sorted.intent === "dilemma" ? undefined : sorted.intent;
+}
+
 // ── Simple turns: distress, small talk, pick reactions ─────────────
 // These skip the debate loop: a fixed list of friends replies in order, each
 // seeing the replies before theirs, and no vote card follows.
@@ -2069,21 +2086,11 @@ export async function* orchestrateChat(params: {
     }
 
     const parsed = normalizeDecision(JSON.parse(cleaned) as Decision, podFriendIds);
-    yield { type: "decision", decision: parsed };
+    // A vote needs at least two real choices; otherwise no card.
+    if (parsed.options.length >= 2) yield { type: "decision", decision: parsed };
   } catch (err) {
+    // No vote card this round; the chat itself still stands.
     console.error("Error in synthesis pass:", err);
-    const fallbackDecision: Decision = {
-      question: "What would you like to do?",
-      options: [
-        {
-          id: "continue",
-          label: "Keep discussing",
-          blurb: "Continue the conversation to explore more angles",
-          voices: podFriendIds.slice(0, 2),
-        },
-      ],
-    };
-    yield { type: "decision", decision: fallbackDecision };
   }
 
   // ── Yield trace data ──

@@ -6,7 +6,7 @@ export const maxDuration = 300;
 
 import { after } from "next/server";
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server";
-import { orchestrateChat } from "@/lib/orchestrator";
+import { orchestrateChat, sortGuestMessage } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
 import { internal } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -35,6 +35,8 @@ type CreditEvent = {
   costMicros: number;
   topupMessages: number;
 };
+
+type MessageIntent = Extract<EngineEvent, { type: "intent" }>["intent"];
 
 // The last line before done: the balance for a signed-in user, the guest
 // message counts for a guest.
@@ -106,14 +108,16 @@ function iteratorToStream(
   opts: {
     convex: AdminMutations;
     conversationId?: string;
-    // delivered = at least one friend reply was produced.
-    settle: (delivered: boolean) => Promise<TailEvent | null>;
+    // delivered = at least one friend reply was produced. intent = how the engine
+    // sorted the message (undefined until it says), so guests aren't charged for small talk.
+    settle: (delivered: boolean, intent?: MessageIntent) => Promise<TailEvent | null>;
   },
 ): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<TailEvent | null> } {
   let settling: Promise<TailEvent | null> | null = null;
   let finished = false;
   let cancelled = false;
   let delivered = false;
+  let intent: MessageIntent | undefined;
 
   // Every caller (finish, cancel, after) gets the same settle promise.
   function settleOnce(): Promise<TailEvent | null> {
@@ -148,13 +152,13 @@ function iteratorToStream(
     await stopGenerator();
     // One retry so a transient Convex failure doesn't leave the lock set and the message free.
     try {
-      return await opts.settle(delivered);
+      return await opts.settle(delivered, intent);
     } catch (err) {
       console.error("Credit settle failed, retrying:", err);
     }
     await new Promise((resolve) => setTimeout(resolve, SETTLE_RETRY_MS));
     try {
-      return await opts.settle(delivered);
+      return await opts.settle(delivered, intent);
     } catch (err) {
       console.error("Credit settle failed:", err);
       return null;
@@ -179,6 +183,7 @@ function iteratorToStream(
         const { value, done } = await iterator.next();
         if (cancelled) return;
         if (!done && value.type === "message") delivered = true;
+        if (!done && value.type === "intent") intent = value.intent;
         if (done) {
           await finish(controller);
           return;
@@ -258,6 +263,17 @@ async function guestIdentity(request: Request, guestId: unknown, userName: strin
   return { key, ipHash };
 }
 
+type GuestKind = "smalltalk" | "distress" | "pick" | undefined;
+
+// { label, voices } from the vote card; voices are kept only if they're in the pod.
+function parsePickedOption(raw: unknown, podFriendIds: string[]): { label: string; voices: string[] } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const { label, voices } = raw as { label?: unknown; voices?: unknown };
+  if (typeof label !== "string" || !label.trim()) return undefined;
+  const ids = Array.isArray(voices) ? voices.filter((id): id is string => typeof id === "string" && podFriendIds.includes(id)) : [];
+  return { label: label.trim().slice(0, 120), voices: ids.slice(0, 9) };
+}
+
 export async function POST(request: Request) {
   const cors = corsHeaders(request);
   try {
@@ -299,7 +315,10 @@ export async function POST(request: Request) {
     // The ledger ref of this message; the in-flight lock is tagged with it.
     const ref = `${convId ?? "noconv"}:${crypto.randomUUID()}`;
     const collector = new CostCollector();
-    let settle: (delivered: boolean) => Promise<TailEvent | null>;
+    let settle: (delivered: boolean, intent?: MessageIntent) => Promise<TailEvent | null>;
+
+    // Tapping an option on the vote card: friends react to the pick.
+    const pickedOption = parsePickedOption((body as { pickedOption?: unknown }).pickedOption, podFriendIds);
     let promptName: string;
 
     if (account) {
@@ -343,9 +362,17 @@ export async function POST(request: Request) {
     } else {
       promptName = guestName(userName);
       const { key, ipHash } = await guestIdentity(request, guestId, promptName);
-      // Example prompts don't use a typed message, only the hard cap.
+      // Example prompts don't use a typed message, only the hard cap. Small talk
+      // and picks don't either; distress is answered even at the hard cap.
       const example = isExamplePrompt(message);
-      const begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref });
+      let kind: GuestKind = pickedOption ? "pick" : await sortGuestMessage(message, false);
+      let begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind });
+      if (!begin.ok && (begin.reason === "typed_limit" || begin.reason === "cap") && kind === undefined) {
+        // Out of messages: ask the classifier before showing the sign-in wall, so a
+        // softly worded "i feel empty" still gets the gentle reply.
+        kind = await sortGuestMessage(message, true).catch(() => undefined);
+        if (kind) begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind });
+      }
       if (!begin.ok) {
         if (begin.reason === "busy") {
           return Response.json({ error: "busy" }, { status: 409, headers: cors });
@@ -360,7 +387,9 @@ export async function POST(request: Request) {
         );
       }
       const { windowStart } = begin;
-      settle = async (delivered) => {
+      settle = async (delivered, intent) => {
+        // The engine's verdict wins; the gate's guess covers a round cut off before it.
+        const settledKind: GuestKind = intent === "dilemma" ? undefined : intent ?? kind;
         const guest = await convex.mutation(internal.guests.settleGuestMessage, {
           key,
           ipHash,
@@ -369,6 +398,7 @@ export async function POST(request: Request) {
           example,
           delivered,
           costMicros: collector.totalMicros,
+          kind: settledKind,
         });
         return { guest };
       };
@@ -384,6 +414,7 @@ export async function POST(request: Request) {
       conversationDepth,
       userEngagementFrequency,
       collector,
+      pickedOption,
     });
 
     const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle });

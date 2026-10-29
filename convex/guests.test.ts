@@ -17,13 +17,14 @@ function setup() {
 // One full guest message: begin, then settle with the given outcome.
 async function send(
   t: ReturnType<typeof setup>,
-  opts: { key?: string; ip?: string; example?: boolean; delivered?: boolean } = {},
+  opts: { key?: string; ip?: string; example?: boolean; delivered?: boolean; kind?: "smalltalk" | "distress" | "pick" } = {},
 ) {
   const key = opts.key ?? KEY;
   const ipHash = opts.ip ?? "ip1";
   const example = opts.example ?? false;
   const ref = crypto.randomUUID();
-  const begin = await t.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref });
+  const kind = opts.kind;
+  const begin = await t.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind });
   if (!begin.ok) return { begin, settled: null };
   const settled = await t.mutation(internal.guests.settleGuestMessage, {
     key,
@@ -33,11 +34,30 @@ async function send(
     example,
     delivered: opts.delivered ?? true,
     costMicros: 1000,
+    kind,
   });
   return { begin, settled };
 }
 
 describe("guest limits", () => {
+  test("small talk and picks don't use typed messages; distress counts nothing and passes the cap", async () => {
+    const t = setup();
+    const hi = await send(t, { kind: "smalltalk" });
+    expect(hi.settled).toMatchObject({ typedUsed: 0, totalUsed: 1 });
+    for (let i = 0; i < GUEST_TYPED_LIMIT; i++) await send(t);
+    // Typed used up: small talk and a pick still go through.
+    expect((await send(t, { kind: "smalltalk" })).begin.ok).toBe(true);
+    expect((await send(t, { kind: "pick" })).settled).toMatchObject({ typedUsed: GUEST_TYPED_LIMIT });
+    // Fill the hard cap with examples, then distress is still answered and free.
+    while (((await send(t, { example: true })).begin.ok)) {
+      // keep going until the cap
+    }
+    const sad = await send(t, { kind: "distress" });
+    expect(sad.begin.ok).toBe(true);
+    expect(sad.settled).toMatchObject({ totalUsed: GUEST_HARD_CAP });
+    expect((await send(t, { kind: "smalltalk" })).begin).toMatchObject({ ok: false, reason: "cap" });
+  });
+
   test("3 typed messages, then typed_limit", async () => {
     const t = setup();
     for (let i = 1; i <= GUEST_TYPED_LIMIT; i++) {

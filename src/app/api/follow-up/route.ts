@@ -16,6 +16,7 @@ import { getActiveProvider } from "@/lib/providers";
 import { callModel, languageBlock } from "@/lib/orchestrator";
 import { FRIENDS_BY_ID } from "@/lib/friends";
 import { classifyByRules } from "@/lib/intent";
+import { GUEST_ID_RE, GUEST_USERNAME_PREFIX } from "@/lib/guest-limits";
 
 type AdminMutations = {
   mutation<F extends FunctionReference<"mutation", "internal">>(
@@ -39,7 +40,21 @@ export async function OPTIONS(request: Request) {
 export async function POST(request: Request) {
   const cors = corsHeaders(request);
   try {
-    const { username, name } = await bootstrapUser(request);
+    // Signed in: the token says who. A guest sends its guest id instead; its
+    // chats are stored under "guest:<id>".
+    const hasToken = (request.headers.get("authorization") ?? "").trim() !== "";
+    let username: string;
+    let name: string | undefined;
+    if (hasToken) {
+      ({ username, name } = await bootstrapUser(request));
+    } else {
+      const body = (await request.json().catch(() => null)) as { guestId?: unknown } | null;
+      const guestId = body?.guestId;
+      if (typeof guestId !== "string" || !GUEST_ID_RE.test(guestId)) {
+        return Response.json({ followUp: null }, { status: 400, headers: cors });
+      }
+      username = `${GUEST_USERNAME_PREFIX}${guestId}`;
+    }
     const convex = getConvexAdmin() as unknown as AdminMutations;
     const due = await convex.mutation(internal.decisions.claimFollowUp, {
       username,
@@ -77,7 +92,7 @@ Open the chat again with ONE short line asking how it went: did they actually do
       text: line,
     });
     return Response.json(
-      { followUp: { conversationId: due.conversationId, from: friendId, text: line } },
+      { followUp: { conversationId: due.conversationId, podFriendIds: due.podFriendIds, from: friendId, text: line } },
       { headers: cors },
     );
   } catch (err) {

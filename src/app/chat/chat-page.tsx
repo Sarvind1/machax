@@ -47,7 +47,9 @@ type ChatMessageWithReply = ChatMessageType & {
 
 import ChatMessage from "./components/chat-message";
 import ChatComposer from "./components/chat-composer";
-import DecisionPanel from "./components/decision-panel";
+import { HelplineCard, StarterChips, VoteCard, cardFrom, isCardMessage, type CardKind, type HelplineInfo } from "./components/chat-cards";
+import { pickShareLines } from "./components/share-card";
+import { classifyByRules } from "@/lib/intent";
 import FriendPill from "./components/friend-pill";
 import TypingIndicator from "./components/typing-indicator";
 import CreditPill from "./components/credit-pill";
@@ -163,15 +165,20 @@ export default function ChatPage() {
   const userSettings = useQuery(api.settings.get, accountUsername ? { username: accountUsername } : "skip");
 
   const [activeConversation, setActiveConversation] = useState<ConversationId | null>(null);
+  const activeConversationRef = useRef<ConversationId | null>(null);
+  useEffect(() => {
+    activeConversationRef.current = activeConversation;
+  }, [activeConversation]);
   const [messages, setMessages] = useState<ChatMessageWithReply[]>([]);
   const [decision, setDecision] = useState<Decision | null>(null);
+  // The option picked on the newest vote card (Convex, or set right away on tap).
+  const [pickedOptionId, setPickedOptionId] = useState<string | null>(null);
   const [pod, setPod] = useState<Friend[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   // Bumped per round so the safety timeout below restarts when a round is cut off.
   const [roundSeq, setRoundSeq] = useState(0);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
-  const [mobileDecisionOpen, setMobileDecisionOpen] = useState(false);
   const [joinedAgents, setJoinedAgents] = useState<string[]>([]);
   const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
   const [isWindingDown, setIsWindingDown] = useState(false);
@@ -319,16 +326,57 @@ export default function ChatPage() {
           question: convexDecision.question,
           options: convexDecision.options,
         });
+        setPickedOptionId(convexDecision.selectedOptionId ?? null);
       } else {
         setDecision(null);
+        setPickedOptionId(null);
       }
     }
   }, [convexDecision, isLoading]);
+
+  // On open (signed in or guest): if an earlier pick is due a "so... did you do it?",
+  // the server adds that friend message and we open that chat. Once per open.
+  const followUpCheckedRef = useRef(false);
+  // Set when a chat is opened for its follow-up: jump to the newest message once it loads.
+  const scrollToEndRef = useRef(false);
+  useEffect(() => {
+    if ((!accountUsername && !guestId) || followUpCheckedRef.current) return;
+    followUpCheckedRef.current = true;
+    (async () => {
+      try {
+        const res = guestId
+          ? await guestFetch("/api/follow-up", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ guestId }),
+            })
+          : await authedFetch("/api/follow-up", { method: "POST" });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          followUp: { conversationId: string; podFriendIds: string[] } | null;
+        };
+        const f = body.followUp;
+        // Don't pull the user out of a chat they already started.
+        if (!f || activeConversationRef.current || isStreamingRef.current) return;
+        scrollToEndRef.current = true;
+        setActiveConversation(f.conversationId as ConversationId);
+        setPod(f.podFriendIds.map((id) => FRIENDS_BY_ID[id]).filter(Boolean));
+        logEvent("follow_up_shown", {});
+      } catch {
+        // No follow-up this time.
+      }
+    })();
+  }, [accountUsername, guestId]);
 
   // Auto-scroll to bottom only if user is near the bottom
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
+    if (scrollToEndRef.current && messages.length > 0) {
+      scrollToEndRef.current = false;
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      return;
+    }
     const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200;
     if (isNearBottom) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -362,13 +410,30 @@ export default function ChatPage() {
     [router],
   );
 
+  // A card in the chat stream (helpline, chips, vote) is stored as a message
+  // from "card:<kind>" with its data as JSON, so it keeps its place on reload.
+  const addCard = useCallback(
+    (kind: CardKind, payload: unknown, target: ConversationId) => {
+      const text = JSON.stringify(payload);
+      const from = cardFrom(kind);
+      setMessages((prev) => [
+        ...prev,
+        { id: `${from}-${Date.now()}-${Math.random()}`, conversationId: target as string, from, text, timestamp: Date.now() },
+      ]);
+      if (settingsUsername) {
+        sendMessage({ conversationId: target, from, text, username: settingsUsername }).catch(() => {});
+      }
+    },
+    [sendMessage, settingsUsername],
+  );
+
   const streamChat = useCallback(
     async (
       message: string,
       convoId: ConversationId,
       podIds: string[],
       history: { from: string; text: string }[],
-      opts: { interrupting?: boolean } = {}
+      opts: { interrupting?: boolean; pickedOption?: { label: string; voices: string[] } } = {}
     ) => {
       const round = ++roundRef.current;
       abortRef.current?.abort();
@@ -376,7 +441,8 @@ export default function ChatPage() {
       abortRef.current = controller;
       const live = () => roundRef.current === round;
       roundDeliveredRef.current = false;
-      roundExampleRef.current = isExamplePrompt(message);
+      // Small talk, distress and picks don't use a typed guest message either.
+      roundExampleRef.current = isExamplePrompt(message) || !!opts.pickedOption || classifyByRules(message).intent !== "dilemma";
       setRoundSeq(round);
       setIsLoading(true);
       isStreamingRef.current = true;
@@ -387,6 +453,7 @@ export default function ChatPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...(guestId ? { guestId } : {}),
+            ...(opts.pickedOption ? { pickedOption: opts.pickedOption } : {}),
             conversationId: convoId,
             message,
             // The server rejects bigger pods and keeps only the last history entries.
@@ -544,8 +611,13 @@ export default function ChatPage() {
                 );
               }
 
+              if (data.helpline) addCard("helpline", data.helpline, convoId);
+              if (Array.isArray(data.chips) && data.chips.length > 0) addCard("chips", data.chips, convoId);
+
               if (data.decision) {
                 setDecision(data.decision);
+                setPickedOptionId(null);
+                addCard("vote", data.decision, convoId);
                 try {
                   await upsertDecision({
                     conversationId: convoId,
@@ -597,11 +669,12 @@ export default function ChatPage() {
         }
       }
     },
-    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, goToLogin, guestId, promptSignIn]
+    [sendMessage, upsertDecision, userName, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, goToLogin, guestId, promptSignIn, addCard]
   );
 
-  const handleSubmit = useCallback(async () => {
-    const text = input.trim();
+  // Sends `raw` (the composer text, or a tapped chip).
+  const submitText = useCallback(async (raw: string) => {
+    const text = raw.trim();
     if (!text) return;
     // Sent while friends are still replying: cut that round off; the new round
     // gets everything said so far plus this message, so friends react to it.
@@ -621,7 +694,11 @@ export default function ChatPage() {
     }
 
     // Guests: typed messages are limited, ready-made examples are not (up to the hard cap).
-    if (guestNow && guestNeedsSignIn(guestNow, isExamplePrompt(text))) {
+    // Out of typed messages, a typed one still goes to the server, which answers
+    // small talk and distress for free and sends anything else to sign-in.
+    // Distress is answered even at the hard cap.
+    const ruleKind = classifyByRules(text).intent;
+    if (guestNow && ruleKind !== "distress" && guestNeedsSignIn(guestNow, true)) {
       if (interrupting) {
         isStreamingRef.current = false;
         setIsLoading(false);
@@ -729,7 +806,7 @@ export default function ChatPage() {
         // continue even if Convex fails
       }
 
-      const history = messages.map((m) => ({ from: m.from, text: m.text }));
+      const history = messages.filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
 
       try {
         await streamChat(
@@ -746,7 +823,9 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     }
-  }, [input, isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, credits, guest, promptSignIn]);
+  }, [isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, credits, guest, promptSignIn]);
+
+  const handleSubmit = useCallback(() => submitText(input), [submitText, input]);
 
   const handleStarterClick = (starterText: string) => {
     setInput(starterText);
@@ -773,14 +852,13 @@ export default function ChatPage() {
 
   // Android back inside chat: close an open sheet or panel first, then leave the
   // open conversation for the chat home. On the home screen back closes the app.
-  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false, mobileDecisionOpen: false });
+  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false });
   const handleNewChatRef = useRef(handleNewChat);
   useEffect(() => {
     backStateRef.current = {
       inChat: activeConversation !== null || messages.length > 0,
       rechargeOpen,
       moodOpen,
-      mobileDecisionOpen,
     };
     handleNewChatRef.current = handleNewChat;
   });
@@ -790,7 +868,6 @@ export default function ChatPage() {
         const st = backStateRef.current;
         if (st.rechargeOpen) setRechargeOpen(false);
         else if (st.moodOpen) setMoodOpen(false);
-        else if (st.mobileDecisionOpen) setMobileDecisionOpen(false);
         else if (st.inChat) handleNewChatRef.current();
         else return false;
         return true;
@@ -804,26 +881,45 @@ export default function ChatPage() {
     setDecision(null);
   };
 
+  // Tapping an option on the vote card: save the pick, post it as the user's
+  // message, and let the friends react to it in the chat.
   const handleDecisionSelect = async (optionId: string) => {
-    if (!activeConversation || !settingsUsername) return;
+    if (!activeConversation || !settingsUsername || !decision) return;
+    const option = decision.options.find((o) => o.id === optionId);
+    if (!option) return;
+    setPickedOptionId(optionId);
     try {
       await selectDecision({
         conversationId: activeConversation,
         optionId,
         username: settingsUsername,
       });
-      logEvent("decision_picked", { option_count: decision?.options.length ?? 0 });
-      if (guest) {
-        // No account yet: Activated is sent after sign-in, when this chat moves over.
-        setToast("locked in. sign in to keep your decisions");
-        return;
-      }
-      logActivated(settingsUsername);
-      router.push("/decisions");
+      logEvent("decision_picked", { option_count: decision.options.length });
+      // No account yet: Activated is sent after sign-in, when this chat moves over.
+      if (!guest) logActivated(settingsUsername);
     } catch (err) {
       console.error("Failed to select decision:", err);
+      setPickedOptionId(null);
+      return;
     }
+
+    const text = `going with: ${option.label}`;
+    const history = messages.filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
+    isStreamingRef.current = true;
+    setMessages((prev) => [
+      ...prev,
+      { id: `user-${Date.now()}`, conversationId: activeConversation as string, from: "user", text, timestamp: Date.now() },
+    ]);
+    sendMessage({ conversationId: activeConversation, from: "user", text, username: settingsUsername }).catch(() => {});
+    await streamChat(text, activeConversation, pod.map((f) => f.id), history, {
+      interrupting: isLoading,
+      pickedOption: { label: option.label, voices: option.voices },
+    });
+    if (guest) setToast("locked in. sign in to keep your decisions");
   };
+
+  // Only the newest vote card can still be picked from.
+  const lastVoteIdx = messages.map((m) => m.from).lastIndexOf(cardFrom("vote"));
 
   const friendsRecord = Object.fromEntries(
     FRIENDS.map((f) => [f.id, { name: f.name, color: f.color }])
@@ -1087,7 +1183,7 @@ export default function ChatPage() {
           <div className="chat-landing-chips">
             {STARTERS.map((s) => (
               <button
-                key={s.tag}
+                key={s.text}
                 className="chat-landing-chip"
                 onClick={() => handleStarterClick(s.text)}
               >
@@ -1256,6 +1352,36 @@ export default function ChatPage() {
 
         <div className="chat-messages" ref={chatContainerRef}>
           {messages.map((m, idx) => {
+            if (isCardMessage(m.from)) {
+              let payload: unknown;
+              try {
+                payload = JSON.parse(m.text);
+              } catch {
+                return null;
+              }
+              if (m.from === cardFrom("helpline")) {
+                return <HelplineCard key={m.id} helpline={payload as HelplineInfo} />;
+              }
+              if (m.from === cardFrom("chips")) {
+                // Only under the newest message: older chips are stale.
+                if (idx !== messages.length - 1 || !Array.isArray(payload)) return null;
+                return <StarterChips key={m.id} chips={payload as string[]} onPick={(t) => void submitText(t)} />;
+              }
+              if (m.from === cardFrom("vote")) {
+                const isLatest = idx === lastVoteIdx;
+                return (
+                  <VoteCard
+                    key={m.id}
+                    decision={payload as Decision}
+                    active={isLatest}
+                    pickedId={isLatest ? pickedOptionId : null}
+                    onPick={(id) => void handleDecisionSelect(id)}
+                    shareLines={pickShareLines(messages.slice(0, idx).filter((x) => !isCardMessage(x.from)))}
+                  />
+                );
+              }
+              return null;
+            }
             const replyMsg = m.replyTo ? [...messages].slice(0, idx).reverse().find(prev => prev.from === m.replyTo) : undefined;
             return (
             <ChatMessage
@@ -1308,23 +1434,6 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Right panel — decision */}
-      <DecisionPanel
-        decision={decision}
-        onSelect={handleDecisionSelect}
-        className={mobileDecisionOpen ? "open" : ""}
-      />
-
-      {/* Mobile decision toggle */}
-      {decision && (
-        <button
-          className="chat-decision-toggle"
-          onClick={() => setMobileDecisionOpen(!mobileDecisionOpen)}
-          aria-label="Toggle decision panel"
-        >
-          ?
-        </button>
-      )}
       {overlays}
     </div>
   );

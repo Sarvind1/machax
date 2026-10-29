@@ -33,9 +33,17 @@ vi.mock("@/lib/bootstrap-user", () => ({
 vi.mock("@/lib/convex-server", () => ({
   getConvexAdmin: () => ({ mutation }),
 }));
-vi.mock("@/lib/orchestrator", () => ({
-  orchestrateChat: (...a: unknown[]) => orchestrateChat(...a),
-}));
+vi.mock("@/lib/orchestrator", async () => {
+  const { classifyByRules } = await vi.importActual<typeof import("@/lib/intent")>("@/lib/intent");
+  return {
+    orchestrateChat: (...a: unknown[]) => orchestrateChat(...a),
+    // Rules only (no model call in tests).
+    sortGuestMessage: async (message: string) => {
+      const intent = classifyByRules(message).intent;
+      return intent === "dilemma" ? undefined : intent;
+    },
+  };
+});
 
 import { AuthError } from "@/lib/server-auth";
 import { POST } from "./route";
