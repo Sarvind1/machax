@@ -22,6 +22,24 @@ export const STICKER_COLORS = [
 ] as const;
 
 const SKIN = ["ae5d29", "d08b5b", "edb98a", "8d5524"];
+
+// Hair that reads as the friend's gender at a glance (gray styles left out: they're 18–30).
+type Head = NonNullable<openPeeps.Options["head"]>[number];
+const HEADS_F: Head[] = ["long", "longCurly", "bun", "bun2", "buns", "bangs", "bangs2", "longBangs", "mediumStraight", "mediumBangs", "medium1", "medium2", "medium3"];
+const HEADS_M: Head[] = ["short1", "short2", "short3", "short4", "short5", "pomp", "flatTop", "turban", "shaved2", "dreads1"];
+
+// The roster has no gender field; this list drives hair + facial hair only.
+const FEMALE_IDS = new Set([
+  "reeva", "aarushi", "priya", "simran", "ananya", "divya", "meera", "rhea", "sonal", "jiya",
+  "tara", "ayesha", "nisha", "pooja", "kritika", "zara", "nalini", "noor", "preethi", "shruti",
+  "sudha", "mira", "pinky", "dimple", "chiku", "nandita", "kamala", "deepa", "malathi", "radha",
+  "asha", "lalitha", "neha", "farida", "geeta", "rajani", "meenakshi", "kiran", "anika", "zoya",
+  "ira", "leela", "sanya", "reva", "tarini", "ketki", "sneha", "madhu", "anjali", "falguni", "prerna",
+]);
+
+function isFemale(friendId: string): boolean {
+  return FEMALE_IDS.has(friendId);
+}
 const HAIR = ["2c1b18", "4a312c", "1a1410", "724133"];
 
 // Resting face per personality group; the message text can override it.
@@ -63,6 +81,21 @@ export function moodFromText(text: string | undefined): FaceMood | null {
   return null;
 }
 
+// Exported for tests: the exact DiceBear options for one friend + mood.
+export function faceOptions(friendId: string, face: FaceMood) {
+  const h = hash(friendId);
+  const female = isFemale(friendId);
+  return {
+    seed: friendId,
+    face: [face],
+    skinColor: [SKIN[h % SKIN.length]],
+    head: [female ? HEADS_F[(h >>> 5) % HEADS_F.length] : HEADS_M[(h >>> 5) % HEADS_M.length]],
+    facialHairProbability: female ? 0 : 35,
+    headContrastColor: [HAIR[(h >>> 3) % HAIR.length]],
+    maskProbability: 0,
+  } satisfies openPeeps.Options & { seed: string };
+}
+
 const cache = new Map<string, string>();
 
 export function faceUri(friendId: string, mood?: FaceMood | null): string {
@@ -70,14 +103,7 @@ export function faceUri(friendId: string, mood?: FaceMood | null): string {
   const key = `${friendId}:${face}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const h = hash(friendId);
-  const uri = createAvatar(openPeeps, {
-    seed: friendId,
-    face: [face],
-    skinColor: [SKIN[h % SKIN.length]],
-    headContrastColor: [HAIR[(h >> 3) % HAIR.length]],
-    maskProbability: 0,
-  }).toDataUri();
+  const uri = createAvatar(openPeeps, faceOptions(friendId, face)).toDataUri();
   cache.set(key, uri);
   return uri;
 }
