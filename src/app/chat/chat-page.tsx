@@ -52,6 +52,7 @@ import { pickShareLines } from "./components/share-card";
 import { classifyByRules } from "@/lib/intent";
 import FriendPill from "./components/friend-pill";
 import TypingIndicator from "./components/typing-indicator";
+import Link from "next/link";
 import CreditPill from "./components/credit-pill";
 import { useStickToBottom } from "./use-stick-to-bottom";
 import RechargeSheet from "./components/recharge-sheet";
@@ -1222,6 +1223,12 @@ export default function ChatPage() {
             ))}
           </div>
 
+          {/* Phones hide the sidebar, so its links (account deletion too) live here. */}
+          <nav className="chat-landing-links">
+            <Link href="/configure">configure pod</Link>
+            <Link href="/privacy">privacy</Link>
+            {!guest && <Link href="/delete-account">delete account</Link>}
+          </nav>
         </div>
         {overlays}
       </div>
