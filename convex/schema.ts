@@ -79,6 +79,8 @@ export default defineSchema({
     ),
     selectedOptionId: v.optional(v.string()),
     selectedAt: v.optional(v.number()),
+    // Set once a friend has asked "so... did you do it?" on a later open.
+    followUpSentAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_conversation", ["conversationId"]),
 
