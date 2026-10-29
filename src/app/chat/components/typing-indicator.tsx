@@ -1,5 +1,8 @@
 "use client";
 
+import FriendAvatar from "@/components/friend-avatar";
+import { stickerColor } from "@/lib/friend-faces";
+
 interface TypingIndicatorProps {
   typingAgents: string[];
   friends: Record<string, { name: string; color: string }>;
@@ -17,7 +20,7 @@ export default function TypingIndicator({
     const f = friends[typingAgents[0]];
     label = (
       <>
-        <span style={{ color: f?.color }}>{f?.name?.toLowerCase() ?? typingAgents[0]}</span>
+        <span style={{ color: stickerColor(typingAgents[0]).ink }}>{f?.name?.toLowerCase() ?? typingAgents[0]}</span>
         {" is typing"}
       </>
     );
@@ -26,9 +29,9 @@ export default function TypingIndicator({
     const f2 = friends[typingAgents[1]];
     label = (
       <>
-        <span style={{ color: f1?.color }}>{f1?.name?.toLowerCase() ?? typingAgents[0]}</span>
+        <span style={{ color: stickerColor(typingAgents[0]).ink }}>{f1?.name?.toLowerCase() ?? typingAgents[0]}</span>
         {" and "}
-        <span style={{ color: f2?.color }}>{f2?.name?.toLowerCase() ?? typingAgents[1]}</span>
+        <span style={{ color: stickerColor(typingAgents[1]).ink }}>{f2?.name?.toLowerCase() ?? typingAgents[1]}</span>
         {" are typing"}
       </>
     );
@@ -38,12 +41,15 @@ export default function TypingIndicator({
 
   return (
     <div className="typing-indicator">
-      <span className="typing-dots">
+      {typingAgents.slice(0, 3).map((id) => (
+        <FriendAvatar key={id} id={id} size={28} />
+      ))}
+      <span className="typing-label">{label}</span>
+      <span className="typing-dots" aria-hidden="true">
         <span className="typing-dot" />
         <span className="typing-dot" />
         <span className="typing-dot" />
       </span>
-      <span className="typing-label">{label}...</span>
     </div>
   );
 }

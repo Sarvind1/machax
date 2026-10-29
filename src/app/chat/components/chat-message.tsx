@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Share } from "@capacitor/share";
 import { FRIENDS_BY_ID } from "@/lib/friends";
+import { moodFromText, stickerColor } from "@/lib/friend-faces";
+import FriendAvatar from "@/components/friend-avatar";
 
 const REPORT_REASONS = ["offensive", "harmful or unsafe", "sexual", "other"];
 
@@ -47,41 +49,24 @@ export default function ChatMessage({ from, text, isUser, replyTo, replyToText, 
 
   return (
     <div className="chat-bubble-row friend">
-      <div
-        className="chat-avatar"
-        style={{
-          background: friend?.color ?? "#888",
-          color: "#fff",
-        }}
-      >
-        {friend?.name[0] ?? "?"}
-      </div>
+      <FriendAvatar id={from} size={34} mood={moodFromText(text)} />
       <div className="chat-bubble-content">
-        {replyTo && (replyFriend || replyTo === "user") && (
-          <div className="reply-to-label">
-            {"↩"} <span style={{ color: replyFriend?.color ?? "#888" }}>
-              {replyTo === "user" ? "you" : replyFriend?.name.toLowerCase() ?? replyTo}
-            </span>
-            {replyToText && (
-              <span style={{ opacity: 0.6 }}>
-                {" · "}{replyToText.length > 40 ? replyToText.slice(0, 40) + "…" : replyToText}
+        <div className="chat-bubble friend">
+          <span className="chat-bubble-name" style={{ color: stickerColor(from).ink }}>
+            {friend?.name.toLowerCase() ?? from}
+          </span>
+          {replyTo && (replyFriend || replyTo === "user") && (
+            <div className="reply-to-label">
+              <span style={{ color: replyFriend ? stickerColor(replyTo ?? "").ink : undefined }}>
+                {replyTo === "user" ? "you" : replyFriend?.name.toLowerCase() ?? replyTo}
               </span>
-            )}
-          </div>
-        )}
-        <span
-          className="chat-bubble-name"
-          style={{ color: friend?.tintInk ?? "#888" }}
-        >
-          {friend?.name ?? from}
-        </span>
-        <div
-          className="chat-bubble friend"
-          style={{
-            background: friend?.tintBg ?? "#eee",
-            color: friend?.tintInk ?? "#333",
-          }}
-        >
+              {replyToText && (
+                <span style={{ opacity: 0.6 }}>
+                  {" · "}{replyToText.length > 40 ? replyToText.slice(0, 40) + "…" : replyToText}
+                </span>
+              )}
+            </div>
+          )}
           {showText && <span>{text}</span>}
           {mediaUrl && (
             <img
@@ -89,7 +74,7 @@ export default function ChatMessage({ from, text, isUser, replyTo, replyToText, 
               alt={mediaAltText || "GIF"}
               loading="lazy"
               style={{
-                maxWidth: 250,
+                maxWidth: "min(250px, 100%)",
                 maxHeight: 200,
                 borderRadius: 8,
                 marginTop: showText ? 6 : 0,

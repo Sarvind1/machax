@@ -1,6 +1,21 @@
 @import "tailwindcss";
 
 :root {
+  /* ===== MachaX app theme (matches the reel covers) ===== */
+  --mx-bottle: #0F4D32;      /* reel green: headers, login */
+  --mx-bottle-deep: #0A3824;
+  --mx-haldi: #FFD23F;       /* reel yellow: your bubbles, main buttons */
+  --mx-chai: #FFF6E5;        /* cream: chat background */
+  --mx-ink: #1A1410;         /* warm ink: text + sticker outlines */
+  --mx-ink-soft: #5B4F45;
+  --mx-ink-faint: #8C7F72;
+  --mx-mint: #CDEBD5;        /* soft text on green */
+  --mx-line: 2.5px solid var(--mx-ink);
+  --mx-line-thin: 2px solid var(--mx-ink);
+  --mx-pop: 3px 3px 0 var(--mx-ink);
+  --mx-pop-lg: 5px 5px 0 var(--mx-ink);
+  --mx-rule: rgba(26, 20, 16, 0.12);
+
   --bg: #f5f4ef;
   --ink: #1a1e16;
   --muted: #5e6358;
@@ -654,4 +669,52 @@ footer .logo {
 .try-btn:hover {
   background: var(--accent);
   color: #fff;
+}
+
+/* ===== Shared app pieces (sticker look) ===== */
+.friend-avatar {
+  display: inline-block;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: var(--mx-line-thin);
+  overflow: hidden;
+  line-height: 0;
+}
+.friend-avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Sticker button: ink outline + hard shadow that "presses" in. */
+.mx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--mx-haldi);
+  color: var(--mx-ink);
+  border: var(--mx-line);
+  border-radius: 16px;
+  box-shadow: var(--mx-pop-lg);
+  padding: 14px 18px;
+  font: 800 17px var(--font-body), system-ui, sans-serif;
+  cursor: pointer;
+}
+.mx-btn:active:not(:disabled) {
+  transform: translate(5px, 5px);
+  box-shadow: none;
+}
+.mx-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.mx-btn:focus-visible,
+.mx-focus:focus-visible {
+  outline: 3px solid var(--mx-haldi);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-btn:active:not(:disabled) { transform: none; }
 }

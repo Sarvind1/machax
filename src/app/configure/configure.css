@@ -1,15 +1,15 @@
 /* configure.css — pod configuration page */
 
 .config-page {
-  --paper: #F4F1E8;
-  --paper-deep: #ECE7D6;
-  --ink: #1E1C16;
-  --ink-soft: #5A554A;
-  --ink-faint: #8A8374;
-  --matcha: #6BAE7E;
-  --matcha-deep: #3E7A50;
-  --rule: rgba(30, 28, 22, 0.12);
-  --bg-2: rgba(30, 28, 22, 0.04);
+  --paper: var(--mx-chai);
+  --paper-deep: #F6E9CC;
+  --ink: var(--mx-ink);
+  --ink-soft: var(--mx-ink-soft);
+  --ink-faint: var(--mx-ink-faint);
+  --matcha: var(--mx-bottle);
+  --matcha-deep: var(--mx-bottle);
+  --rule: var(--mx-rule);
+  --bg-2: rgba(26, 20, 16, 0.04);
 
   min-height: 100vh;
   background: var(--paper);
@@ -25,7 +25,7 @@
   inset: 0;
   background-image: radial-gradient(circle, var(--ink) 0.5px, transparent 0.5px);
   background-size: 18px 18px;
-  opacity: 0.025;
+  opacity: 0;
   pointer-events: none;
   z-index: 0;
 }
@@ -87,7 +87,7 @@
 }
 
 .config-section-num {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 10px;
   letter-spacing: 0.06em;
   color: var(--ink-faint);
@@ -207,7 +207,7 @@
 }
 
 .config-pod-bar-label {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
@@ -215,7 +215,7 @@
 }
 
 .config-pod-counter {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ink-soft);
@@ -224,7 +224,7 @@
 }
 
 .config-pod-full {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: #c0392b;
@@ -336,7 +336,7 @@
 }
 
 .config-dial-spec {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 9px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
@@ -366,7 +366,7 @@
   border: none;
   background: none;
   border-radius: 6px;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.03em;
   color: var(--ink-faint);
@@ -430,7 +430,7 @@
 .config-slider-ticks {
   display: flex;
   justify-content: space-between;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 9px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
@@ -493,7 +493,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 9px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
@@ -571,7 +571,7 @@
 .config-range-labels {
   display: flex;
   justify-content: space-between;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 9px;
   color: var(--ink-faint);
   margin-top: 2px;
@@ -588,7 +588,7 @@
 .config-tag {
   padding: 4px 10px;
   border-radius: 20px;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 10px;
   letter-spacing: 0.03em;
   border: 1px solid var(--rule);
@@ -661,7 +661,7 @@
 }
 
 .config-group-item-spec {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 9px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
@@ -681,7 +681,7 @@
 }
 
 .config-footer-status {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
@@ -695,7 +695,7 @@
 
 .config-reset-btn {
   font: inherit;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ink-faint);
@@ -713,7 +713,7 @@
 }
 
 .config-back-link {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--matcha-deep);
@@ -796,10 +796,72 @@
 }
 
 .config-legal-link {
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-body), system-ui, sans-serif;
   font-size: 11px;
   letter-spacing: 0.04em;
   color: var(--ink-faint, #5e6358);
   text-decoration: none;
 }
 .config-legal-link:hover { text-decoration: underline; }
+
+/* ===== MachaX sticker theme overrides ===== */
+.config-wordmark {
+  font-family: var(--font-display), Impact, sans-serif;
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.config-wordmark em {
+  font-style: normal;
+  display: inline-block;
+  background: var(--mx-haldi);
+  color: var(--mx-ink);
+  border: var(--mx-line-thin);
+  box-shadow: 2px 2px 0 var(--mx-ink);
+  padding: 0 5px;
+  margin-left: 3px;
+  transform: rotate(-6deg);
+}
+.config-subtitle,
+.config-char-role {
+  font-family: var(--font-caveat), cursive;
+  font-style: normal;
+  font-weight: 600;
+}
+.config-subtitle { font-size: 22px; }
+.config-char-role { font-size: 16px; color: var(--mx-ink-soft); }
+.config-section-title {
+  font-family: var(--font-display), Impact, sans-serif;
+  font-weight: 400;
+  font-size: 24px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.config-section-num { font-size: 12px; font-weight: 700; }
+.config-char-card {
+  border: var(--mx-line-thin);
+  border-radius: 16px;
+}
+.config-char-card:hover { border-color: var(--mx-ink); background: #FFF8E0; }
+.config-char-card[data-selected="true"] {
+  border-color: var(--mx-ink);
+  background: var(--mx-haldi);
+}
+.config-char-card[data-disabled="true"]:hover { border-color: var(--mx-ink); background: #fff; }
+.config-char-avatar,
+.config-tune-tab-avatar {
+  border: var(--mx-line-thin);
+  overflow: visible;
+}
+.config-char-avatar .friend-avatar,
+.config-tune-tab-avatar .friend-avatar { border: 0; }
+.config-char-check {
+  background: var(--mx-bottle);
+  border-color: var(--mx-ink);
+}
+.config-char-name { font-weight: 800; font-size: 14px; }
+.config-footer { border-top: var(--mx-line-thin); }
+.config-back-link { font-size: 14px; font-weight: 800; color: var(--mx-bottle); }
+.config-reset-btn { font-size: 13px; border: var(--mx-line-thin); border-radius: 12px; color: var(--mx-ink); }

@@ -1,19 +1,28 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, Fraunces, Caveat, JetBrains_Mono } from "next/font/google";
+import { Anton, Bricolage_Grotesque, Fraunces, Caveat, JetBrains_Mono } from "next/font/google";
 import ConvexClientProvider from "./convex-provider";
 import AnalyticsTracker from "./analytics-tracker";
 import { AndroidBackHandler } from "./back-button";
 import { StructuredData } from "@/components/structured-data";
 import "./globals.css";
 
-const spaceGrotesk = Space_Grotesk({
+// App look: Anton for shouty headlines, Bricolage for chat text, Caveat for side notes.
+const anton = Anton({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-display",
+});
+
+const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
   variable: "--font-body",
 });
 
+// Fraunces + JetBrains Mono are only used by the marketing/blog/admin pages now.
 const fraunces = Fraunces({
   subsets: ["latin"],
   variable: "--font-serif",
+  preload: false,
 });
 
 const caveat = Caveat({
@@ -24,6 +33,7 @@ const caveat = Caveat({
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -58,7 +68,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${spaceGrotesk.variable} ${fraunces.variable} ${caveat.variable} ${jetbrainsMono.variable}`}
+      className={`${anton.variable} ${bricolage.variable} ${fraunces.variable} ${caveat.variable} ${jetbrainsMono.variable}`}
     >
       <body>
         <StructuredData
