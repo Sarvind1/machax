@@ -53,6 +53,7 @@ import { classifyByRules } from "@/lib/intent";
 import FriendPill from "./components/friend-pill";
 import TypingIndicator from "./components/typing-indicator";
 import CreditPill from "./components/credit-pill";
+import { useStickToBottom } from "./use-stick-to-bottom";
 import RechargeSheet from "./components/recharge-sheet";
 import BackArrow from "../back-button";
 import FriendAvatar from "@/components/friend-avatar";
@@ -269,7 +270,6 @@ export default function ChatPage() {
   }, []);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
   const isStreamingRef = useRef(false);
   // A message sent mid-round cuts the running round off and starts a new one.
   // roundRef numbers the rounds; a stream whose number is no longer current
@@ -371,20 +371,20 @@ export default function ChatPage() {
     })();
   }, [accountUsername, guestId]);
 
-  // Auto-scroll to bottom only if user is near the bottom
+  // Stick to the newest message (replies, vote card, GIFs) unless the user
+  // scrolled up to read. Sending a message, or opening a chat, jumps back down.
+  const { ref: chatScrollRef, pin: pinToBottom } = useStickToBottom(activeConversation);
+  const lastUserMsgIdRef = useRef<string | null>(null);
   useEffect(() => {
-    const container = chatContainerRef.current;
-    if (!container) return;
+    const last = messages[messages.length - 1];
     if (scrollToEndRef.current && messages.length > 0) {
       scrollToEndRef.current = false;
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
-      return;
+      pinToBottom();
+    } else if (last?.from === "user" && last.id !== lastUserMsgIdRef.current) {
+      pinToBottom();
     }
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200;
-    if (isNearBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, typingAgents]);
+    if (last?.from === "user") lastUserMsgIdRef.current = last.id;
+  }, [messages, pinToBottom]);
 
   // Safety timeout: if isLoading stays true for 90s, force-reset
   useEffect(() => {
@@ -436,7 +436,13 @@ export default function ChatPage() {
       convoId: ConversationId,
       podIds: string[],
       history: { from: string; text: string }[],
-      opts: { interrupting?: boolean; pickedOption?: { label: string; voices: string[] } } = {}
+      opts: {
+        interrupting?: boolean;
+        pickedOption?: { label: string; voices: string[] };
+        // Runs once the server takes the round (saves the user's message), so a
+        // message sent back to the text box is never also stored as sent.
+        onAccepted?: () => Promise<void>;
+      } = {}
     ) => {
       const round = ++roundRef.current;
       abortRef.current?.abort();
@@ -488,19 +494,27 @@ export default function ChatPage() {
         }
         if (!live()) return;
 
+        // Not sent after all: the text goes back to the box, so drop its (unsaved)
+        // bubble. A pick's message is already saved, so it stays.
+        const dropBubble = () =>
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            return last && last.from === "user" && last.text === message ? prev.slice(0, -1) : prev;
+          });
+        const takeBack = () => {
+          if (opts.onAccepted) dropBubble();
+        };
         if (response.status === 403 && guestId) {
           // The server says this guest is out of free messages: take back the
           // unanswered message and ask for sign-in, keeping the text.
           const body = (await response.json().catch(() => null)) as { guest?: GuestUsage } | null;
           if (body?.guest) setGuest(saveGuestUsage(body.guest));
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            return last && last.from === "user" && last.text === message ? prev.slice(0, -1) : prev;
-          });
+          dropBubble();
           promptSignIn(message, convoId, podIds);
           return;
         }
         if (response.status === 429) {
+          takeBack();
           setInput((current) => current || message);
           setToast("lots of people chatting from this network. sign in or try again in a bit");
           return;
@@ -512,18 +526,23 @@ export default function ChatPage() {
         if (response.status === 402) {
           const body = (await response.json().catch(() => null)) as { credits?: CreditSummary } | null;
           if (body?.credits) setCredits(body.credits);
+          takeBack();
           setInput((current) => current || message);
           setRechargeOpen(true);
           return;
         }
         if (response.status === 409) {
+          takeBack();
           setInput((current) => current || message);
           setToast("still replying, give it a sec");
           return;
         }
+        // Sent (even if the server then failed): keep it as a sent message.
+        await opts.onAccepted?.();
         if (!response.ok || !response.body) {
           throw new Error("Chat API request failed");
         }
+        if (!live()) return;
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -702,8 +721,12 @@ export default function ChatPage() {
     // Out of typed messages, a typed one still goes to the server, which answers
     // small talk and distress for free and sends anything else to sign-in.
     // Distress is answered even at the hard cap.
+    // Out of typed messages and this reads as a real question (not small talk,
+    // distress or an example): show sign-in now instead of waiting seconds for
+    // the server to say so. The server still checks (403 below) as a backstop.
     const ruleKind = classifyByRules(text).intent;
-    if (guestNow && ruleKind !== "distress" && guestNeedsSignIn(guestNow, true)) {
+    const freeForGuest = ruleKind !== "dilemma" || isExamplePrompt(text);
+    if (guestNow && ruleKind !== "distress" && guestNeedsSignIn(guestNow, freeForGuest)) {
       if (interrupting) {
         isStreamingRef.current = false;
         setIsLoading(false);
@@ -777,14 +800,15 @@ export default function ChatPage() {
         };
         setMessages([userMsg]);
 
-        await sendMessage({
-          conversationId: convoId,
-          from: "user",
-          text,
-          username: settingsUsername!,
+        await streamChat(text, convoId, podIds, [], {
+          onAccepted: async () => {
+            try {
+              await sendMessage({ conversationId: convoId, from: "user", text, username: settingsUsername! });
+            } catch {
+              // continue even if Convex fails
+            }
+          },
         });
-
-        await streamChat(text, convoId, podIds, []);
       } catch (err) {
         console.error("Failed to create conversation:", err);
         isStreamingRef.current = false;
@@ -799,17 +823,7 @@ export default function ChatPage() {
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, userMsg]);
-
-      try {
-        await sendMessage({
-          conversationId: activeConversation,
-          from: "user",
-          text,
-          username: settingsUsername!,
-        });
-      } catch {
-        // continue even if Convex fails
-      }
+      const convoId = activeConversation;
 
       const history = messages.filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
 
@@ -819,7 +833,16 @@ export default function ChatPage() {
           activeConversation,
           pod.map((f) => f.id),
           history,
-          { interrupting }
+          {
+            interrupting,
+            onAccepted: async () => {
+              try {
+                await sendMessage({ conversationId: convoId, from: "user", text, username: settingsUsername! });
+              } catch {
+                // continue even if Convex fails
+              }
+            },
+          }
         );
       } catch (err) {
         console.error("Stream failed on subsequent message:", err);
@@ -1359,7 +1382,7 @@ export default function ChatPage() {
           )}
         </div>
 
-        <div className="chat-messages" ref={chatContainerRef}>
+        <div className="chat-messages" ref={chatScrollRef}>
           {messages.map((m, idx) => {
             if (isCardMessage(m.from)) {
               let payload: unknown;
