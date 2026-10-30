@@ -7,7 +7,8 @@
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { GEMINI_ENABLED, getRotatedModel, isGemmaModel } from "./providers";
-import { readFileSync, appendFileSync } from "fs";
+import { readFileSync } from "fs";
+import { mediaLog } from "./engine-log";
 import { join } from "path";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -308,14 +309,9 @@ export async function resolveMedia(vibeText: string, conversationTopic: string =
   }
 }
 
-const MEDIA_LOG_PATH = join(process.cwd(), "media-log.jsonl");
-
+// Readable in prod (Vercel logs + the round's trace); media-log.jsonl in local dev.
 function writeMediaLog(entry: Record<string, unknown>): void {
-  try {
-    appendFileSync(MEDIA_LOG_PATH, JSON.stringify(entry) + "\n", "utf-8");
-  } catch {
-    // logging failures must never break the media flow
-  }
+  mediaLog(entry);
 }
 
 async function resolveMediaChain(vibeText: string, conversationTopic: string = ""): Promise<MediaResult | null> {

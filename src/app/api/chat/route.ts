@@ -9,7 +9,6 @@ import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex
 import { orchestrateChat, sortGuestMessage } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
 import { internal } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
 import { corsHeaders, handleCorsOptions } from "@/lib/cors";
 import { getConvexAdmin } from "@/lib/convex-server";
 import { bootstrapUser } from "@/lib/bootstrap-user";
@@ -19,6 +18,15 @@ import { authErrorResponse } from "@/lib/server-auth";
 import { SETTLE_RETURN_TIMEOUT_MS, validateChatInput } from "@/lib/chat-limits";
 import { GUEST_ID_RE, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
 import { parseAdminUids } from "@/lib/admin-uids";
+import { engineLog, newRoundLog, runInRound, withRoundLog } from "@/lib/engine-log";
+import {
+  recordRejection,
+  recordSignInWall,
+  saveRoundTrace,
+  type EndReason,
+  type RoundType,
+} from "@/lib/chat-log";
+import type { ConversationTrace } from "@/lib/engine-types";
 
 // ConvexHttpClient's own types only accept public functions. The admin client
 // can call internal ones, so narrow it to a typed mutation caller.
@@ -100,6 +108,15 @@ const SETTLE_RETRY_MS = 500;
 // conversationId ends up in the ledger ref, so keep it short and plain.
 const CONVERSATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
+// What the stream saw of a round, handed to onRoundEnd for its trace.
+type RoundEnd = {
+  endReason: EndReason;
+  messages: number;
+  provider?: string;
+  intent?: MessageIntent;
+  engineTrace?: ConversationTrace;
+};
+
 // Streams engine events as SSE. When the engine finishes, throws, or the client
 // disconnects, the message is settled exactly once. The cost is read after the
 // generator has ended, or after SETTLE_RETURN_TIMEOUT_MS if a model call inside
@@ -108,23 +125,31 @@ const CONVERSATION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 function iteratorToStream(
   iterator: AsyncGenerator<EngineEvent>,
   opts: {
-    convex: AdminMutations;
-    conversationId?: string;
     // delivered = at least one friend reply was produced. intent = how the engine
     // sorted the message (undefined until it says), so guests aren't charged for small talk.
     settle: (delivered: boolean, intent?: MessageIntent) => Promise<TailEvent | null>;
     // The trace (prompt, model, timings) goes to the client only in dev or for an admin.
     sendTrace: boolean;
+    // Saves the round's trace (every round, finished or not). Must not throw.
+    onRoundEnd: (end: RoundEnd) => Promise<void>;
+    // Puts a stream error into the round's log.
+    logError: (err: unknown) => void;
   },
-): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<TailEvent | null> } {
+): { stream: ReadableStream<Uint8Array>; settleOnce: (reason?: EndReason) => Promise<TailEvent | null> } {
   let settling: Promise<TailEvent | null> | null = null;
   let finished = false;
   let cancelled = false;
   let delivered = false;
   let intent: MessageIntent | undefined;
+  let messages = 0;
+  let provider: string | undefined;
+  let engineTrace: ConversationTrace | undefined;
+  let endReason: EndReason | undefined;
 
-  // Every caller (finish, cancel, after) gets the same settle promise.
-  function settleOnce(): Promise<TailEvent | null> {
+  // Every caller (finish, cancel, abort, after) gets the same settle promise;
+  // the first one to arrive names how the round ended.
+  function settleOnce(reason?: EndReason): Promise<TailEvent | null> {
+    endReason ??= reason;
     settling ??= settleNow();
     return settling;
   }
@@ -154,6 +179,16 @@ function iteratorToStream(
   // then charge. A bookkeeping failure is logged, never thrown.
   async function settleNow(): Promise<TailEvent | null> {
     await stopGenerator();
+    // The trace is saved alongside the charge, so it doesn't delay the done line further.
+    const traced = opts
+      .onRoundEnd({ endReason: endReason ?? "timeout", messages, provider, intent, engineTrace })
+      .catch((err) => console.error("Trace save failed:", err));
+    const tail = await settleWithRetry();
+    await traced;
+    return tail;
+  }
+
+  async function settleWithRetry(): Promise<TailEvent | null> {
     // One retry so a transient Convex failure doesn't leave the lock set and the message free.
     try {
       return await opts.settle(delivered, intent);
@@ -169,10 +204,10 @@ function iteratorToStream(
     }
   }
 
-  async function finish(controller: ReadableStreamDefaultController<Uint8Array>) {
+  async function finish(controller: ReadableStreamDefaultController<Uint8Array>, reason: EndReason) {
     if (finished) return;
     finished = true;
-    const tail = await settleOnce();
+    const tail = await settleOnce(reason);
     if (cancelled) return;
     if (tail) {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(tail)}\n\n`));
@@ -186,36 +221,18 @@ function iteratorToStream(
       try {
         const { value, done } = await iterator.next();
         if (cancelled) return;
-        if (!done && value.type === "message") delivered = true;
+        if (!done && value.type === "message") {
+          delivered = true;
+          messages++;
+        }
         if (!done && value.type === "intent") intent = value.intent;
+        if (!done && value.type === "provider") provider = value.label;
         if (done) {
-          await finish(controller);
+          await finish(controller, "completed");
           return;
         }
-        // Save trace server-side instead of letting the client do it (best-effort)
-        if (value.type === "trace" && value.data) {
-          try {
-            await opts.convex.mutation(internal.traces.save, {
-              // conversationId comes from the client unchecked; Convex validates it as an Id.
-              ...(opts.conversationId ? { conversationId: opts.conversationId as Id<"conversations"> } : {}),
-              prompt: value.data.prompt,
-              userName: value.data.userName,
-              podFriendIds: value.data.podFriendIds,
-              provider: value.data.provider,
-              sessionMood: value.data.sessionMood,
-              totalTimeMs: value.data.totalTimeMs,
-              totalIterations: value.data.totalIterations,
-              totalMessages: value.data.totalMessages,
-              finalEnergy: value.data.finalEnergy,
-              iterations: typeof value.data.iterations === "string"
-                ? value.data.iterations
-                : JSON.stringify(value.data.iterations),
-            });
-          } catch (err) {
-            console.error("Trace save failed:", err);
-          }
-        }
-        if (cancelled) return;
+        // Kept for the round's trace, saved server-side when the round ends.
+        if (value.type === "trace" && value.data) engineTrace = value.data;
         if (value.type === "trace" && !opts.sendTrace) {
           // Enqueue something (an SSE comment, which clients skip) so the stream keeps pulling.
           controller.enqueue(KEEPALIVE_LINE);
@@ -228,13 +245,14 @@ function iteratorToStream(
       } catch (err) {
         if (cancelled) return;
         console.error("Stream error:", err);
-        await finish(controller);
+        opts.logError(err);
+        await finish(controller, "error");
       }
     },
     // Client disconnected: nobody is listening, but the calls made so far still cost money.
     async cancel() {
       cancelled = true;
-      await settleOnce();
+      await settleOnce("client-left");
     },
   });
   return { stream, settleOnce };
@@ -285,20 +303,41 @@ function parsePickedOption(raw: unknown, podFriendIds: string[]): { label: strin
 
 export async function POST(request: Request) {
   const cors = corsHeaders(request);
+  // For the rejection log: who asked, about which chat (filled in as they are known).
+  let who: string | undefined;
+  let logConversationId: string | undefined;
+  // Every request answered with an error instead of a round is recorded (Convex
+  // chatRejections + a Vercel log line), so refused messages leave a trace.
+  const reject = async (status: number, payload: Record<string, unknown>, reason: string, detail?: string) => {
+    try {
+      await recordRejection(getConvexAdmin() as unknown as AdminMutations, request, {
+        status,
+        reason,
+        ...(detail ? { detail } : {}),
+        ...(who ? { who } : {}),
+        ...(logConversationId ? { conversationId: logConversationId } : {}),
+      });
+    } catch (err) {
+      console.error("chat rejection log failed:", err);
+    }
+    return Response.json(payload, { status, headers: cors });
+  };
   try {
     // A token means a signed-in user (a bad token is still a 401). No token
     // means a guest, which is also how old 1.1 installs call this route.
     const hasToken = (request.headers.get("authorization") ?? "").trim() !== "";
     const account = hasToken ? await bootstrapUser(request) : null;
+    if (account) who = account.username;
 
     const body: unknown = await request.json().catch(() => null);
+    const rawConversationId = (body as { conversationId?: unknown } | null)?.conversationId;
+    if (typeof rawConversationId === "string") logConversationId = rawConversationId.slice(0, 64);
+    const rawGuestId = (body as { guestId?: unknown } | null)?.guestId;
+    if (!account && typeof rawGuestId === "string" && GUEST_ID_RE.test(rawGuestId)) who = `g:${rawGuestId}`;
     // Caps every field that reaches a prompt, so one message's cost stays bounded.
     const input = validateChatInput(body);
     if (!input.ok) {
-      return Response.json(
-        { error: "bad_request", reason: input.reason },
-        { status: 400, headers: cors }
-      );
+      return reject(400, { error: "bad_request", reason: input.reason }, "bad_request", input.reason);
     }
     const { message, podFriendIds, history, characterOverrides } = input.value;
     // userName is ignored for signed-in users: identity comes from the token.
@@ -314,10 +353,7 @@ export async function POST(request: Request) {
     // null counts as absent; anything else must be a short plain id.
     const convId = conversationId ?? undefined;
     if (convId !== undefined && (typeof convId !== "string" || !CONVERSATION_ID_RE.test(convId))) {
-      return Response.json(
-        { error: "invalid conversationId" },
-        { status: 400, headers: cors }
-      );
+      return reject(400, { error: "invalid conversationId" }, "invalid_conversation_id");
     }
 
     const convex = getConvexAdmin() as unknown as AdminMutations;
@@ -339,13 +375,10 @@ export async function POST(request: Request) {
       const begin = await convex.mutation(internal.credits.beginMessage, { uid: user.uid, ref, supersede });
       if (!begin.ok) {
         if (begin.reason === "out_of_credit") {
-          return Response.json(
-            { error: "out_of_credit", credits: summarize(row) },
-            { status: 402, headers: cors }
-          );
+          return reject(402, { error: "out_of_credit", credits: summarize(row) }, "out_of_credit");
         }
         if (begin.reason === "busy") {
-          return Response.json({ error: "busy" }, { status: 409, headers: cors });
+          return reject(409, { error: "busy" }, "busy");
         }
         // no_account cannot happen after bootstrapUser's ensure; treat as a server fault.
         throw new Error(`beginMessage refused: ${begin.reason} (uid ${user.uid})`);
@@ -375,6 +408,7 @@ export async function POST(request: Request) {
     } else {
       promptName = guestName(userName);
       const { key, ipHash } = await guestIdentity(request, guestId, promptName);
+      who = key;
       // Example prompts don't use a typed message, only the hard cap. Small talk
       // and picks don't either; distress is answered even at the hard cap.
       const example = isExamplePrompt(message);
@@ -388,12 +422,20 @@ export async function POST(request: Request) {
       }
       if (!begin.ok) {
         if (begin.reason === "busy") {
-          return Response.json({ error: "busy" }, { status: 409, headers: cors });
+          return reject(409, { error: "busy" }, "busy");
         }
         if (begin.reason === "rate_limited") {
-          return Response.json({ error: "rate_limited" }, { status: 429, headers: cors });
+          return reject(429, { error: "rate_limited" }, "rate_limited");
         }
-        // typed_limit, cap, or this guest id already signed up.
+        // typed_limit, cap, or this guest id already signed up: the sign-in wall.
+        await recordSignInWall(convex, request, {
+          guestKey: key,
+          source: "server",
+          reason: begin.reason,
+          typedUsed: begin.usage.typedUsed,
+          totalUsed: begin.usage.totalUsed,
+          ...(convId ? { conversationId: convId } : {}),
+        });
         return Response.json(
           { error: "login_required", reason: begin.reason, guest: begin.usage },
           { status: 403, headers: cors }
@@ -417,7 +459,11 @@ export async function POST(request: Request) {
       };
     }
 
-    const generator = orchestrateChat({
+    // Everything the engine logs during this round is kept for its trace.
+    const roundLog = newRoundLog();
+    const startedAt = Date.now();
+    const roundWho = who ?? "unknown";
+    const generator = withRoundLog(orchestrateChat({
       message,
       podFriendIds,
       history,
@@ -430,19 +476,45 @@ export async function POST(request: Request) {
       pickedOption,
       // Guests get no reaction stickers.
       allowMedia: !!account,
-    });
+    }), roundLog);
+
+    // One trace per round (debate, small talk, distress, pick), finished or cut off.
+    const onRoundEnd = async (end: RoundEnd) => {
+      const roundType: RoundType = pickedOption ? "pick" : end.intent ?? "unknown";
+      runInRound(roundLog, () =>
+        engineLog({ event: "round-end", who: roundWho, roundType, endReason: end.endReason, messages: end.messages, ms: Date.now() - startedAt }),
+      );
+      await saveRoundTrace(convex, {
+        prompt: message,
+        userName: promptName,
+        podFriendIds,
+        sessionMood,
+        who: roundWho,
+        conversationId: convId,
+        provider: end.provider,
+        roundType,
+        endReason: end.endReason,
+        startedAt,
+        endedAt: Date.now(),
+        messages: end.messages,
+        engineTrace: end.engineTrace,
+        log: roundLog,
+      });
+    };
+    const logError = (err: unknown) =>
+      runInRound(roundLog, () => engineLog({ event: "stream-error", error: String(err).slice(0, 300) }));
 
     // Debug data (the user's prompt, model, timings) never goes to normal users or guests.
     const sendTrace =
       process.env.NODE_ENV !== "production" ||
       (!!account && parseAdminUids(process.env.NEXT_PUBLIC_ADMIN_UIDS).includes(account.user.uid));
-    const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle, sendTrace });
+    const { stream, settleOnce } = iteratorToStream(generator, { settle, sendTrace, onRoundEnd, logError });
     // Keeps the function alive until the message is settled, even when the client
     // aborts and the platform would otherwise end the invocation with the response.
-    after(() => settleOnce());
+    after(() => settleOnce("timeout"));
     // The client went away (e.g. it cut this round off by sending a new message):
     // stop the round now, so its queued replies are dropped and the lock frees fast.
-    request.signal?.addEventListener("abort", () => void settleOnce(), { once: true });
+    request.signal?.addEventListener("abort", () => void settleOnce("client-left"), { once: true });
 
     return new Response(stream, {
       headers: {
@@ -454,8 +526,11 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     const authResponse = authErrorResponse(err, request);
-    if (authResponse) return authResponse;
+    if (authResponse) {
+      await reject(authResponse.status, {}, "unauthorized", err instanceof Error ? err.message : undefined);
+      return authResponse;
+    }
     console.error("Chat API error:", err);
-    return Response.json({ error: "Internal server error" }, { status: 500, headers: cors });
+    return reject(500, { error: "Internal server error" }, "server_error", String(err));
   }
 }

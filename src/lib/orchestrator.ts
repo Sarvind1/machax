@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { google } from "@ai-sdk/google";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { writeFileSync, unlinkSync, appendFileSync } from "fs";
+import { writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -33,11 +33,8 @@ import { buildCharacterMemory } from "./private-memory";
 import type { CostCollector } from "./cost-collector";
 import type { Usage } from "./pricing";
 import { ANTHROPIC_IDLE_MS } from "./chat-limits";
-
-const ENGINE_LOG = join(process.cwd(), "engine-log.jsonl");
-function engineLog(entry: Record<string, unknown>): void {
-  try { appendFileSync(ENGINE_LOG, JSON.stringify(entry) + "\n", "utf-8"); } catch {}
-}
+// Events go to Vercel logs, the round's saved trace, and engine-log.jsonl in dev.
+import { engineLog } from "./engine-log";
 
 const execAsync = promisify(exec);
 
@@ -1652,6 +1649,8 @@ ${instruction}
 Type like you text your close friends. Don't use ${ctx.userName}'s name. Don't prefix with your name. No quotes around your reply. No business jargon.
 ${outputRules(ctx.userName)}`;
     let text = "";
+    // Why this friend ends up saying nothing, for the round's trace.
+    let skipReason = "empty-reply";
     try {
       const ask = async (p: string) =>
         cleanResponse((await callModel(friend.systemPrompt, p, ctx.provider, 200, undefined, ctx.collector, ctx.effort)).text, friend.name)
@@ -1661,14 +1660,21 @@ ${outputRules(ctx.userName)}`;
       if (looksLikeMetaText(text, friend.name)) {
         engineLog({ ts: new Date().toISOString(), event: "garbage-first", agent: friendId, text: text.slice(0, 120), reason: "meta" });
         text = await ask(`${prompt}\n\nIMPORTANT: Output ONLY the chat message itself. No planning or notes.`);
-        if (looksLikeMetaText(text, friend.name)) text = "";
+        if (looksLikeMetaText(text, friend.name)) {
+          text = "";
+          skipReason = "meta-text-after-retry";
+        }
       }
       text = fixCurrency(text, ctx.userText ?? "");
     } catch (err) {
       engineLog({ ts: new Date().toISOString(), event: "simple-turn-failed", agent: friendId, error: String(err).slice(0, 200) });
+      skipReason = "model-error";
     }
     yield { type: "typing-stop", agentId: friendId };
-    if (!text || text.length < 2) continue;
+    if (!text || text.length < 2) {
+      engineLog({ ts: new Date().toISOString(), event: "turn-skipped", agent: friendId, reason: skipReason });
+      continue;
+    }
     said.push({ from: friendId, text });
     yield { type: "joined", agentId: friendId };
     yield { type: "message", from: friendId, text };
