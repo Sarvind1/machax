@@ -47,7 +47,7 @@ type ChatMessageWithReply = ChatMessageType & {
 
 import ChatMessage from "./components/chat-message";
 import ChatComposer from "./components/chat-composer";
-import { HelplineCard, StarterChips, VoteCard, cardFrom, isCardMessage, type CardKind, type HelplineInfo } from "./components/chat-cards";
+import { HelplineCard, StarterChips, cardFrom, isCardMessage, type CardKind, type HelplineInfo } from "./components/chat-cards";
 import { pickShareLines } from "./components/share-card";
 import { classifyByRules } from "@/lib/intent";
 import FriendPill from "./components/friend-pill";
@@ -61,6 +61,8 @@ import FriendAvatar from "@/components/friend-avatar";
 import FaceStack from "@/components/face-stack";
 import { onBack } from "@/lib/back-nav";
 import { lastCardFrom, type LastCard } from "@/lib/vote-card";
+import { planReveal } from "@/lib/reply-pacing";
+import { VotePanel, VotePill, VoteSheet } from "./components/vote-dock";
 import "./chat.css";
 
 type ConversationId = Id<"conversations">;
@@ -178,6 +180,11 @@ export default function ChatPage() {
   const [decision, setDecision] = useState<Decision | null>(null);
   // The option picked on the newest vote card (Convex, or set right away on tap).
   const [pickedOptionId, setPickedOptionId] = useState<string | null>(null);
+  // The vote card sits outside the chat stream. A round only says a card can
+  // be made (cardTeaser); it is made when the user opens it.
+  const [cardTeaser, setCardTeaser] = useState(false);
+  const [cardLoading, setCardLoading] = useState(false);
+  const [voteSheetOpen, setVoteSheetOpen] = useState(false);
   const [pod, setPod] = useState<Friend[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -283,6 +290,8 @@ export default function ChatPage() {
   // The server counts a guest message once it got a reply.
   const roundDeliveredRef = useRef(false);
   const roundExampleRef = useRef(false);
+  // Shows the current round's queued replies right away (see streamChat).
+  const flushRepliesRef = useRef<(() => ChatMessageType[]) | null>(null);
 
   const conversations = useSafeQuery<any[]>(
     api.conversations.list,
@@ -443,6 +452,8 @@ export default function ChatPage() {
         pickedOption?: { label: string; voices: string[] };
         // The newest vote card so far, so the server doesn't re-ask it.
         lastCard?: LastCard;
+        // Only make the vote card for the chat so far (the user opened the teaser).
+        cardOnly?: boolean;
         // Runs once the server takes the round (saves the user's message), so a
         // message sent back to the text box is never also stored as sent.
         onAccepted?: () => Promise<void>;
@@ -455,7 +466,7 @@ export default function ChatPage() {
       const live = () => roundRef.current === round;
       roundDeliveredRef.current = false;
       // Small talk, distress and picks don't use a typed guest message either.
-      roundExampleRef.current = isExamplePrompt(message) || !!opts.pickedOption || classifyByRules(message).intent !== "dilemma";
+      roundExampleRef.current = isExamplePrompt(message) || !!opts.pickedOption || !!opts.cardOnly || classifyByRules(message).intent !== "dilemma";
       setRoundSeq(round);
       setIsLoading(true);
       isStreamingRef.current = true;
@@ -468,6 +479,8 @@ export default function ChatPage() {
             ...(guestId ? { guestId } : {}),
             ...(opts.pickedOption ? { pickedOption: opts.pickedOption } : {}),
             ...(opts.lastCard ? { lastCard: opts.lastCard } : {}),
+            // Old app builds send neither and still get the card inline.
+            ...(opts.cardOnly ? { cardOnly: true } : { lazyCard: true }),
             // Cut the running round off: the server hands this message the lock right away.
             ...(opts.interrupting ? { interrupting: true } : {}),
             conversationId: convoId,
@@ -502,6 +515,7 @@ export default function ChatPage() {
         // Not sent after all: the text goes back to the box, so drop its (unsaved)
         // bubble. A pick's message is already saved, so it stays.
         const dropBubble = () =>
+          !opts.cardOnly &&
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             return last && last.from === "user" && last.text === message ? prev.slice(0, -1) : prev;
@@ -515,12 +529,12 @@ export default function ChatPage() {
           const body = (await response.json().catch(() => null)) as { guest?: GuestUsage } | null;
           if (body?.guest) setGuest(saveGuestUsage(body.guest));
           dropBubble();
-          promptSignIn(message, convoId, podIds);
+          promptSignIn(opts.cardOnly ? "" : message, convoId, podIds);
           return;
         }
         if (response.status === 429) {
           takeBack();
-          setInput((current) => current || message);
+          if (!opts.cardOnly) setInput((current) => current || message);
           setToast("lots of people chatting from this network. sign in or try again in a bit");
           return;
         }
@@ -532,13 +546,13 @@ export default function ChatPage() {
           const body = (await response.json().catch(() => null)) as { credits?: CreditSummary } | null;
           if (body?.credits) setCredits(body.credits);
           takeBack();
-          setInput((current) => current || message);
+          if (!opts.cardOnly) setInput((current) => current || message);
           setRechargeOpen(true);
           return;
         }
         if (response.status === 409) {
           takeBack();
-          setInput((current) => current || message);
+          if (!opts.cardOnly) setInput((current) => current || message);
           setToast("still replying, give it a sec");
           return;
         }
@@ -548,6 +562,134 @@ export default function ChatPage() {
           throw new Error("Chat API request failed");
         }
         if (!live()) return;
+
+        // Replies are handled in order through `paced`: each friend's reply waits
+        // its turn and some typing time (see reply-pacing.ts); other events wait
+        // for the replies before them. Saving to Convex happens on arrival, so a
+        // round cut off mid-way still keeps everything the server sent.
+        type StreamEvent = ReturnType<typeof JSON.parse>;
+        const handle = async (data: StreamEvent) => {
+          if (!live()) return;
+          try {
+            if (data.joined) {
+              const friend = FRIENDS_BY_ID[data.joined];
+              if (friend) {
+                setPod(prev => prev.some(f => f.id === data.joined) ? prev : [...prev, friend]);
+              }
+              setJoinedAgents(prev => [...prev, data.joined]);
+              // Silent join — no system message
+            }
+
+            if (data.lurking) {
+              setLurkingAgents(prev =>
+                prev.includes(data.lurking) ? prev : [...prev, data.lurking]
+              );
+            }
+
+            if (data.windingDown) {
+              setIsWindingDown(true);
+            }
+
+            if (data.from && data.text) {
+              roundDeliveredRef.current = true;
+              // Track agents that have actually spoken
+              if (data.from !== "user") {
+                setActiveAgentIds(prev => new Set([...prev, data.from]));
+              }
+              // Remove this friend from typing list
+              setTypingAgents((prev) => prev.filter((id) => id !== data.from));
+              // Already shown if the user sent something while it was queued.
+              if (unshown.delete(data)) setMessages((prev) => [...prev, toMessage(data)]);
+              if (data.mediaType) logEvent("gif_received", { media_type: data.mediaType });
+            }
+
+            if (data.typing) {
+              setTypingAgents((prev) =>
+                prev.includes(data.typing) ? prev : [...prev, data.typing]
+              );
+            }
+
+            if (data.helpline) addCard("helpline", data.helpline, convoId);
+            if (Array.isArray(data.chips) && data.chips.length > 0) addCard("chips", data.chips, convoId);
+
+            if (data.cardReady) setCardTeaser(true);
+
+            if (data.decision) {
+              setDecision(data.decision);
+              setPickedOptionId(null);
+              setCardTeaser(false);
+              addCard("vote", data.decision, convoId);
+              try {
+                await upsertDecision({
+                  conversationId: convoId,
+                  question: data.decision.question,
+                  options: data.decision.options,
+                  username: settingsUsername!,
+                });
+              } catch {
+                // Convex save failed — decision still shows in UI
+              }
+            }
+
+            if (data.guest && typeof data.guest.typedUsed === "number") {
+              setGuest(saveGuestUsage(data.guest as GuestUsage));
+            }
+
+            if (data.credit && typeof data.credit.messagesLeft === "number") {
+              const event = data.credit as CreditEvent;
+              setCredits((prev) => creditFromEvent(event, prev));
+            }
+
+            if (data.done) {
+              setTypingAgents([]);
+              setIsLoading(false);
+              isStreamingRef.current = false;
+            }
+          } catch {
+            // A bad event shouldn't stop the round.
+          }
+        };
+        const persist = async (data: StreamEvent) => {
+          try {
+            await sendMessage({
+              conversationId: convoId,
+              from: data.from,
+              text: data.text,
+              username: settingsUsername!,
+              ...(data.mediaType ? { mediaType: data.mediaType } : {}),
+              ...(data.mediaUrl ? { mediaUrl: data.mediaUrl } : {}),
+              ...(data.mediaThumbnailUrl ? { mediaThumbnailUrl: data.mediaThumbnailUrl } : {}),
+              ...(data.mediaAltText ? { mediaAltText: data.mediaAltText } : {}),
+              ...(data.replyTo ? { replyTo: data.replyTo } : {}),
+            });
+          } catch {
+            // Convex save failed — message still shows in UI
+          }
+        };
+        const toMessage = (data: StreamEvent): ChatMessageWithReply => ({
+          id: `${data.from}-${Date.now()}-${Math.random()}`,
+          conversationId: convoId as string,
+          from: data.from,
+          text: data.text,
+          replyTo: data.replyTo || undefined,
+          mediaType: data.mediaType,
+          mediaUrl: data.mediaUrl,
+          mediaThumbnailUrl: data.mediaThumbnailUrl,
+          mediaAltText: data.mediaAltText,
+          timestamp: Date.now(),
+        });
+        let paced: Promise<void> = Promise.resolve();
+        let lastRevealAt = Date.now();
+        const typingSince = new Map<string, number>();
+        // Replies that arrived but are still waiting their turn on screen. If the
+        // user sends a message meanwhile, they're shown at once, before it.
+        const unshown = new Set<StreamEvent>();
+        flushRepliesRef.current = () => {
+          const shown = [...unshown].map(toMessage);
+          unshown.clear();
+          if (shown.length > 0) setMessages((prev) => [...prev, ...shown]);
+          return shown;
+        };
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -571,115 +713,30 @@ export default function ChatPage() {
             const jsonStr = line.slice(6).trim();
             if (!jsonStr || jsonStr === "[DONE]") continue;
 
+            let data: StreamEvent;
             try {
-              const data = JSON.parse(jsonStr);
-
-              if (data.joined) {
-                const friend = FRIENDS_BY_ID[data.joined];
-                if (friend) {
-                  setPod(prev => prev.some(f => f.id === data.joined) ? prev : [...prev, friend]);
-                }
-                setJoinedAgents(prev => [...prev, data.joined]);
-                // Silent join — no system message
-              }
-
-              if (data.lurking) {
-                setLurkingAgents(prev =>
-                  prev.includes(data.lurking) ? prev : [...prev, data.lurking]
-                );
-              }
-
-              if (data.windingDown) {
-                setIsWindingDown(true);
-              }
-
-              if (data.from && data.text) {
-                roundDeliveredRef.current = true;
-                // Track agents that have actually spoken
-                if (data.from !== "user") {
-                  setActiveAgentIds(prev => new Set([...prev, data.from]));
-                }
-                // Remove this friend from typing list
-                setTypingAgents((prev) => prev.filter((id) => id !== data.from));
-                const newMsg: ChatMessageWithReply = {
-                  id: `${data.from}-${Date.now()}-${Math.random()}`,
-                  conversationId: convoId as string,
-                  from: data.from,
-                  text: data.text,
-                  replyTo: data.replyTo || undefined,
-                  mediaType: data.mediaType,
-                  mediaUrl: data.mediaUrl,
-                  mediaThumbnailUrl: data.mediaThumbnailUrl,
-                  mediaAltText: data.mediaAltText,
-                  timestamp: Date.now(),
-                };
-                setMessages((prev) => [...prev, newMsg]);
-                if (data.mediaType) logEvent("gif_received", { media_type: data.mediaType });
-
-                // Persist to Convex
-                try {
-                  await sendMessage({
-                    conversationId: convoId,
-                    from: data.from,
-                    text: data.text,
-                    username: settingsUsername!,
-                    ...(data.mediaType ? { mediaType: data.mediaType } : {}),
-                    ...(data.mediaUrl ? { mediaUrl: data.mediaUrl } : {}),
-                    ...(data.mediaThumbnailUrl ? { mediaThumbnailUrl: data.mediaThumbnailUrl } : {}),
-                    ...(data.mediaAltText ? { mediaAltText: data.mediaAltText } : {}),
-                    ...(data.replyTo ? { replyTo: data.replyTo } : {}),
-                  });
-                } catch {
-                  // Convex save failed — message still shows in UI
-                }
-              }
-
-              if (data.typing) {
-                setTypingAgents((prev) =>
-                  prev.includes(data.typing) ? prev : [...prev, data.typing]
-                );
-              }
-
-              if (data.helpline) addCard("helpline", data.helpline, convoId);
-              if (Array.isArray(data.chips) && data.chips.length > 0) addCard("chips", data.chips, convoId);
-
-              if (data.decision) {
-                setDecision(data.decision);
-                setPickedOptionId(null);
-                addCard("vote", data.decision, convoId);
-                try {
-                  await upsertDecision({
-                    conversationId: convoId,
-                    question: data.decision.question,
-                    options: data.decision.options,
-                    username: settingsUsername!,
-                  });
-                } catch {
-                  // Convex save failed — decision still shows in UI
-                }
-              }
-
-              if (data.guest && typeof data.guest.typedUsed === "number") {
-                setGuest(saveGuestUsage(data.guest as GuestUsage));
-              }
-
-              if (data.credit && typeof data.credit.messagesLeft === "number") {
-                const event = data.credit as CreditEvent;
-                setCredits((prev) => creditFromEvent(event, prev));
-              }
-
-              if (data.done) {
-                setTypingAgents([]);
-                setIsLoading(false);
-                isStreamingRef.current = false;
-              }
-
-              // Trace is saved server-side in the chat API route
+              data = JSON.parse(jsonStr);
             } catch {
-              // Skip malformed JSON lines
+              continue; // Skip malformed JSON lines
             }
+            let revealAt = 0;
+            if (typeof data.typing === "string") typingSince.set(data.typing, Date.now());
+            if (data.from && data.text && data.from !== "user") {
+              void persist(data);
+              unshown.add(data);
+              revealAt = planReveal({ now: Date.now(), text: String(data.text), typingSince: typingSince.get(data.from), lastRevealAt });
+              lastRevealAt = revealAt;
+              typingSince.delete(data.from);
+            }
+            paced = paced.then(async () => {
+              const wait = revealAt - Date.now();
+              if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+              await handle(data);
+            });
           }
         }
+        // Let the queued replies finish appearing before the round ends.
+        await paced;
       } catch (err) {
         // Aborted because a newer message cut this round off: not an error.
         if (!live() || controller.signal.aborted) return;
@@ -709,6 +766,8 @@ export default function ChatPage() {
     // gets everything said so far plus this message, so friends react to it.
     const interrupting = isLoading;
     let guestNow = guest;
+    // Replies still queued on screen show now, and count as said before this message.
+    const flushed = interrupting ? flushRepliesRef.current?.() ?? [] : [];
     if (interrupting) {
       roundRef.current++;
       abortRef.current?.abort();
@@ -830,7 +889,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, userMsg]);
       const convoId = activeConversation;
 
-      const history = messages.filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
+      const history = [...messages, ...flushed].filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
 
       try {
         await streamChat(
@@ -840,7 +899,7 @@ export default function ChatPage() {
           history,
           {
             interrupting,
-            lastCard: lastCardFrom(messages),
+            lastCard: lastCardFrom([...messages, ...flushed]),
             onAccepted: async () => {
               try {
                 await sendMessage({ conversationId: convoId, from: "user", text, username: settingsUsername! });
@@ -874,6 +933,8 @@ export default function ChatPage() {
     setActiveConversation(null);
     setMessages([]);
     setDecision(null);
+    setCardTeaser(false);
+    setVoteSheetOpen(false);
     setPod([]);
     setInput("");
     setTypingAgents([]);
@@ -886,13 +947,14 @@ export default function ChatPage() {
 
   // Android back inside chat: close an open sheet or panel first, then leave the
   // open conversation for the chat home. On the home screen back closes the app.
-  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false });
+  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false, voteSheetOpen: false });
   const handleNewChatRef = useRef(handleNewChat);
   useEffect(() => {
     backStateRef.current = {
       inChat: activeConversation !== null || messages.length > 0,
       rechargeOpen,
       moodOpen,
+      voteSheetOpen,
     };
     handleNewChatRef.current = handleNewChat;
   });
@@ -901,6 +963,7 @@ export default function ChatPage() {
       onBack(() => {
         const st = backStateRef.current;
         if (st.rechargeOpen) setRechargeOpen(false);
+        else if (st.voteSheetOpen) setVoteSheetOpen(false);
         else if (st.moodOpen) setMoodOpen(false);
         else if (st.inChat) handleNewChatRef.current();
         else return false;
@@ -913,6 +976,35 @@ export default function ChatPage() {
     setActiveConversation(convoId);
     setPod(convo.podFriendIds.map((id) => FRIENDS_BY_ID[id]).filter(Boolean));
     setDecision(null);
+    setCardTeaser(false);
+    setVoteSheetOpen(false);
+  };
+
+  // Opening the vote card: if the latest round has a teaser, make the card now
+  // (one cheap call); otherwise the card already made is shown, no model call.
+  const requestCard = async () => {
+    if (!cardTeaser || cardLoading || !activeConversation) return;
+    const lines = messages.filter((m) => !isCardMessage(m.from));
+    const lastUser = [...lines].reverse().find((m) => m.from === "user");
+    if (!lastUser) return;
+    setCardLoading(true);
+    try {
+      await streamChat(
+        lastUser.text,
+        activeConversation,
+        pod.map((f) => f.id),
+        lines.map((m) => ({ from: m.from, text: m.text })),
+        { cardOnly: true, lastCard: lastCardFrom(messages) },
+      );
+    } finally {
+      // No new card means the last one still stands; either way the teaser is used up.
+      setCardTeaser(false);
+      setCardLoading(false);
+    }
+  };
+  const openVoteSheet = () => {
+    setVoteSheetOpen(true);
+    void requestCard();
   };
 
   // Tapping an option on the vote card: save the pick, post it as the user's
@@ -937,8 +1029,10 @@ export default function ChatPage() {
       return;
     }
 
+    setVoteSheetOpen(false);
+    const flushed = flushRepliesRef.current?.() ?? [];
     const text = `going with: ${option.label}`;
-    const history = messages.filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
+    const history = [...messages, ...flushed].filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
     isStreamingRef.current = true;
     setMessages((prev) => [
       ...prev,
@@ -952,8 +1046,16 @@ export default function ChatPage() {
     if (guest) setToast("locked in. sign in to keep your decisions");
   };
 
-  // Only the newest vote card can still be picked from.
+  // The newest vote card, shown in the pill / panel; only it can be picked from.
   const lastVoteIdx = messages.map((m) => m.from).lastIndexOf(cardFrom("vote"));
+  const voteDock = {
+    decision,
+    pickedId: pickedOptionId,
+    teaser: cardTeaser,
+    loading: cardLoading,
+    onPick: (id: string) => void handleDecisionSelect(id),
+    shareLines: pickShareLines((lastVoteIdx >= 0 ? messages.slice(0, lastVoteIdx) : messages).filter((x) => !isCardMessage(x.from))),
+  };
 
   const friendsRecord = Object.fromEntries(
     FRIENDS.map((f) => [f.id, { name: f.name, color: f.color }])
@@ -1394,6 +1496,8 @@ export default function ChatPage() {
           )}
         </div>
 
+        <VotePill decision={decision} pickedId={pickedOptionId} teaser={cardTeaser} loading={cardLoading} onOpen={openVoteSheet} />
+
         <div className="chat-messages" ref={chatScrollRef}>
           {messages.map((m, idx) => {
             if (isCardMessage(m.from)) {
@@ -1411,19 +1515,7 @@ export default function ChatPage() {
                 if (idx !== messages.length - 1 || !Array.isArray(payload)) return null;
                 return <StarterChips key={m.id} chips={payload as string[]} onPick={(t) => void submitText(t)} />;
               }
-              if (m.from === cardFrom("vote")) {
-                const isLatest = idx === lastVoteIdx;
-                return (
-                  <VoteCard
-                    key={m.id}
-                    decision={payload as Decision}
-                    active={isLatest}
-                    pickedId={isLatest ? pickedOptionId : null}
-                    onPick={(id) => void handleDecisionSelect(id)}
-                    shareLines={pickShareLines(messages.slice(0, idx).filter((x) => !isCardMessage(x.from)))}
-                  />
-                );
-              }
+              // Vote cards live in the pill / side panel now, not in the stream.
               return null;
             }
             const replyMsg = m.replyTo ? [...messages].slice(0, idx).reverse().find(prev => prev.from === m.replyTo) : undefined;
@@ -1477,6 +1569,9 @@ export default function ChatPage() {
           />
         </div>
       </div>
+
+      <VotePanel {...voteDock} onRequest={() => void requestCard()} />
+      <VoteSheet {...voteDock} open={voteSheetOpen} onClose={() => setVoteSheetOpen(false)} onRequest={() => void requestCard()} />
 
       {overlays}
     </div>

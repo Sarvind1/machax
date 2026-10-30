@@ -81,6 +81,8 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
       return { windingDown: true };
     case "decision":
       return { decision: event.decision };
+    case "card-ready":
+      return { cardReady: true };
     case "intent":
       return { intent: event.intent, language: event.language };
     case "helpline":
@@ -333,6 +335,9 @@ export async function POST(request: Request) {
 
     // Tapping an option on the vote card: friends react to the pick.
     const pickedOption = parsePickedOption((body as { pickedOption?: unknown }).pickedOption, podFriendIds);
+    // New clients: lazyCard = send a teaser instead of the card; cardOnly = the
+    // user opened the teaser, make just the card. Old app builds send neither.
+    const { lazyCard, cardOnly } = body as { lazyCard?: unknown; cardOnly?: unknown };
     let promptName: string;
 
     if (account) {
@@ -379,7 +384,8 @@ export async function POST(request: Request) {
       // Example prompts don't use a typed message, only the hard cap. Small talk
       // and picks don't either; distress is answered even at the hard cap.
       const example = isExamplePrompt(message);
-      let kind: GuestKind = pickedOption ? "pick" : await sortGuestMessage(message, false);
+      // Opening a card doesn't use a typed message either.
+      let kind: GuestKind = pickedOption || cardOnly === true ? "pick" : await sortGuestMessage(message, false);
       let begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind, supersede });
       if (!begin.ok && (begin.reason === "typed_limit" || begin.reason === "cap") && kind === undefined) {
         // Out of messages: ask the classifier before showing the sign-in wall, so a
@@ -430,6 +436,8 @@ export async function POST(request: Request) {
       collector,
       pickedOption,
       lastCard: parseLastCard((body as { lastCard?: unknown }).lastCard),
+      lazyCard: lazyCard === true,
+      cardOnly: cardOnly === true,
       // Guests get no reaction stickers.
       allowMedia: !!account,
     });
