@@ -28,6 +28,7 @@ export type EngineEvent =
   | { type: "nudge" } // soft pressure — user was asked a question
   | { type: "winding-down" }
   | { type: "decision"; decision: import("./types").Decision }
+  | { type: "card-ready" } // a vote card can be made for this round (made when the user opens it)
   // How the engine read the user's message; the chat route uses it so small talk and distress stay free for guests.
   | { type: "intent"; intent: "dilemma" | "smalltalk" | "distress" | "pick"; language: string }
   // Shown under the gentle reply to a distress message.

@@ -19,6 +19,7 @@ import { authErrorResponse } from "@/lib/server-auth";
 import { SETTLE_RETURN_TIMEOUT_MS, validateChatInput } from "@/lib/chat-limits";
 import { GUEST_ID_RE, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
 import { parseAdminUids } from "@/lib/admin-uids";
+import { parseLastCard } from "@/lib/vote-card";
 
 // ConvexHttpClient's own types only accept public functions. The admin client
 // can call internal ones, so narrow it to a typed mutation caller.
@@ -80,6 +81,8 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
       return { windingDown: true };
     case "decision":
       return { decision: event.decision };
+    case "card-ready":
+      return { cardReady: true };
     case "intent":
       return { intent: event.intent, language: event.language };
     case "helpline":
@@ -91,6 +94,17 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
     case "done":
       return { done: true };
   }
+}
+
+// One line per round outcome in the function logs (Vercel), so a round whose
+// replies never showed up can be traced: how it ended and how many replies the
+// client had been sent by then. Replies are saved by the client, so a round cut
+// off on the client shows up here as "superseded" (the next request) or
+// "client-disconnected".
+function logRound(event: string, fields: Record<string, unknown>): void {
+  const line = `[round] ${JSON.stringify({ event, ...fields })}`;
+  if (event === "end") console.info(line);
+  else console.warn(line);
 }
 
 const DONE_LINE = encoder.encode(`data: {"done":true}\n\n`);
@@ -115,6 +129,8 @@ function iteratorToStream(
     settle: (delivered: boolean, intent?: MessageIntent) => Promise<TailEvent | null>;
     // The trace (prompt, model, timings) goes to the client only in dev or for an admin.
     sendTrace: boolean;
+    // The ledger ref of this round, for the round log.
+    ref: string;
   },
 ): { stream: ReadableStream<Uint8Array>; settleOnce: () => Promise<TailEvent | null> } {
   let settling: Promise<TailEvent | null> | null = null;
@@ -122,6 +138,9 @@ function iteratorToStream(
   let cancelled = false;
   let delivered = false;
   let intent: MessageIntent | undefined;
+  let messagesSent = 0;
+  const startedAt = Date.now();
+  const roundFields = () => ({ ref: opts.ref, conversationId: opts.conversationId, messagesSent, ms: Date.now() - startedAt });
 
   // Every caller (finish, cancel, after) gets the same settle promise.
   function settleOnce(): Promise<TailEvent | null> {
@@ -147,6 +166,7 @@ function iteratorToStream(
     clearTimeout(timer);
     if (outcome === "timeout") {
       console.error(`Generator did not stop within ${SETTLE_RETURN_TIMEOUT_MS} ms; settling with the cost so far`);
+      logRound("generator-stop-timeout", roundFields());
     }
   }
 
@@ -189,6 +209,7 @@ function iteratorToStream(
         if (!done && value.type === "message") delivered = true;
         if (!done && value.type === "intent") intent = value.intent;
         if (done) {
+          logRound("end", roundFields());
           await finish(controller);
           return;
         }
@@ -225,15 +246,18 @@ function iteratorToStream(
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(flat)}\n\n`)
         );
+        if (value.type === "message") messagesSent++;
       } catch (err) {
         if (cancelled) return;
         console.error("Stream error:", err);
+        logRound("stream-error", { ...roundFields(), error: String(err).slice(0, 200) });
         await finish(controller);
       }
     },
     // Client disconnected: nobody is listening, but the calls made so far still cost money.
     async cancel() {
       cancelled = true;
+      if (!finished) logRound("client-disconnected", roundFields());
       await settleOnce();
     },
   });
@@ -332,6 +356,14 @@ export async function POST(request: Request) {
 
     // Tapping an option on the vote card: friends react to the pick.
     const pickedOption = parsePickedOption((body as { pickedOption?: unknown }).pickedOption, podFriendIds);
+    // New clients: lazyCard = send a teaser instead of the card; cardOnly = the
+    // user opened the teaser, make just the card. Old app builds send neither.
+    const { lazyCard, cardOnly } = body as { lazyCard?: unknown; cardOnly?: unknown };
+    // The client cut its running round off for this one: that round's replies
+    // stop reaching the client from here on.
+    if (supersede) {
+      logRound("superseded", { conversationId: convId, byRef: ref, by: pickedOption ? "pick" : cardOnly === true ? "card" : "message" });
+    }
     let promptName: string;
 
     if (account) {
@@ -378,7 +410,8 @@ export async function POST(request: Request) {
       // Example prompts don't use a typed message, only the hard cap. Small talk
       // and picks don't either; distress is answered even at the hard cap.
       const example = isExamplePrompt(message);
-      let kind: GuestKind = pickedOption ? "pick" : await sortGuestMessage(message, false);
+      // Opening a card doesn't use a typed message either.
+      let kind: GuestKind = pickedOption || cardOnly === true ? "pick" : await sortGuestMessage(message, false);
       let begin = await convex.mutation(internal.guests.beginGuestMessage, { key, ipHash, example, ref, kind, supersede });
       if (!begin.ok && (begin.reason === "typed_limit" || begin.reason === "cap") && kind === undefined) {
         // Out of messages: ask the classifier before showing the sign-in wall, so a
@@ -428,6 +461,9 @@ export async function POST(request: Request) {
       userEngagementFrequency,
       collector,
       pickedOption,
+      lastCard: parseLastCard((body as { lastCard?: unknown }).lastCard),
+      lazyCard: lazyCard === true,
+      cardOnly: cardOnly === true,
       // Guests get no reaction stickers.
       allowMedia: !!account,
     });
@@ -436,7 +472,7 @@ export async function POST(request: Request) {
     const sendTrace =
       process.env.NODE_ENV !== "production" ||
       (!!account && parseAdminUids(process.env.NEXT_PUBLIC_ADMIN_UIDS).includes(account.user.uid));
-    const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle, sendTrace });
+    const { stream, settleOnce } = iteratorToStream(generator, { convex, conversationId: convId, settle, sendTrace, ref });
     // Keeps the function alive until the message is settled, even when the client
     // aborts and the platform would otherwise end the invocation with the response.
     after(() => settleOnce());
