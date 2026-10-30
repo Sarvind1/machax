@@ -54,7 +54,6 @@ import { pickShareLines } from "./components/share-card";
 import { classifyByRules } from "@/lib/intent";
 import FriendPill from "./components/friend-pill";
 import TypingIndicator from "./components/typing-indicator";
-import Link from "next/link";
 import CreditPill from "./components/credit-pill";
 import { useStickToBottom } from "./use-stick-to-bottom";
 import RechargeSheet from "./components/recharge-sheet";
@@ -130,6 +129,8 @@ export default function ChatPage() {
   const [guest, setGuest] = useState<GuestState | null>(null);
   const [credits, setCredits] = useState<CreditSummary | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
+  // Phones: the sidebar (past chats, sign out) opens as a drawer from the ☰ button.
+  const [menuOpen, setMenuOpen] = useState(false);
   const [buying, setBuying] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -953,7 +954,7 @@ export default function ChatPage() {
 
   // Android back inside chat: close an open sheet or panel first, then leave the
   // open conversation for the chat home. On the home screen back closes the app.
-  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false, voteSheetOpen: false });
+  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false, voteSheetOpen: false, menuOpen: false });
   const handleNewChatRef = useRef(handleNewChat);
   useEffect(() => {
     backStateRef.current = {
@@ -961,6 +962,7 @@ export default function ChatPage() {
       rechargeOpen,
       moodOpen,
       voteSheetOpen,
+      menuOpen,
     };
     handleNewChatRef.current = handleNewChat;
   });
@@ -968,7 +970,8 @@ export default function ChatPage() {
     () =>
       onBack(() => {
         const st = backStateRef.current;
-        if (st.rechargeOpen) setRechargeOpen(false);
+        if (st.menuOpen) setMenuOpen(false);
+        else if (st.rechargeOpen) setRechargeOpen(false);
         else if (st.voteSheetOpen) setVoteSheetOpen(false);
         else if (st.moodOpen) setMoodOpen(false);
         else if (st.inChat) handleNewChatRef.current();
@@ -1176,6 +1179,96 @@ export default function ChatPage() {
     </>
   );
 
+  // One sidebar for both views. Phones hide it until the ☰ button opens it as a drawer.
+  const renderSidebar = (showPod: boolean) => (
+    <>
+      {menuOpen && <div className="chat-sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
+      <aside className={`chat-sidebar${menuOpen ? " chat-sidebar--open" : ""}`}>
+        <a href="/" className="chat-sidebar-logo">
+          macha<em>X</em>
+        </a>
+
+        {showPod && pod.length > 0 && (
+          <>
+            <div className="chat-sidebar-section">your pod</div>
+            <div className="chat-pod-list">
+              {pod.map((f) => {
+                const isActive = activeAgentIds.has(f.id);
+                const isLurking = lurkingAgents.includes(f.id);
+                return (
+                  <div key={f.id} className={`friend-pill-presence ${isActive ? 'active' : isLurking ? 'lurking' : 'joined'}`}>
+                    <span className="presence-dot-small" />
+                    <FriendAvatar id={f.id} size={24} />
+                    <span>{f.name.toLowerCase()}</span>
+                  </div>
+                );
+              })}
+              {lurkingAgents
+                .filter(id => !pod.some(f => f.id === id))
+                .map(id => {
+                  const f = FRIENDS_BY_ID[id];
+                  if (!f) return null;
+                  return (
+                    <div key={id} className="friend-pill-presence lurking">
+                      <span className="presence-dot-small" />
+                      <FriendAvatar id={f.id} size={24} style={{ opacity: 0.5 }} />
+                      <span>{f.name.toLowerCase()}</span>
+                      <span className="lurker-label">reading</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </>
+        )}
+
+        <div className="chat-sidebar-section">recent</div>
+        {conversations.length > 0 ? (
+          <div className="chat-history-list">
+            {conversations.map((c) => (
+              <div
+                key={c._id}
+                className={`chat-history-item ${c._id === activeConversation ? "active" : ""}`}
+                onClick={() => { handleLoadConversation(c._id, c); setMenuOpen(false); }}
+              >
+                {c.title}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="chat-history-empty">no chats yet</div>
+        )}
+
+        <button className="chat-new-btn" onClick={() => { handleNewChat(); setMenuOpen(false); }}>
+          + new chat
+        </button>
+
+        <a href="/configure" style={{
+          display: "block", padding: "10px 16px", fontSize: 12,
+          color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
+          textDecoration: "none", letterSpacing: "0.06em",
+        }}>
+          ⚙ configure pod
+        </a>
+        <div className="chat-sidebar-legal">
+          <a href="/privacy">privacy</a>
+          {!guest && <a href="/delete-account">delete account</a>}
+        </div>
+        {guest ? (
+          <button
+            className="chat-sidebar-account"
+            onClick={() => { setMenuOpen(false); promptSignIn(input.trim(), activeConversation, pod.map((f) => f.id)); }}
+          >
+            sign in
+          </button>
+        ) : (
+          <button className="chat-sidebar-account" onClick={goToLogin}>
+            sign out
+          </button>
+        )}
+      </aside>
+    </>
+  );
+
   if (!isAuthed) {
     return (
       <div style={{
@@ -1196,55 +1289,20 @@ export default function ChatPage() {
   if (!activeConversation && messages.length === 0) {
     return (
       <div className="chat-page">
-        {/* Sidebar */}
-        <aside className="chat-sidebar">
-          <a href="/" className="chat-sidebar-logo">
-            macha<em>X</em>
-          </a>
-
-          {conversations.length > 0 && (
-            <>
-              <div className="chat-sidebar-section">recent</div>
-              <div className="chat-history-list">
-                {conversations.map((c) => (
-                  <div
-                    key={c._id}
-                    className="chat-history-item"
-                    onClick={() => handleLoadConversation(c._id, c)}
-                  >
-                    {c.title}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          <button className="chat-new-btn" onClick={handleNewChat}>
-            + new chat
-          </button>
-
-          <a href="/configure" style={{
-            display: "block", padding: "10px 16px", fontSize: 12,
-            color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
-            textDecoration: "none", letterSpacing: "0.06em",
-          }}>
-            ⚙ configure pod
-          </a>
-          <div className="chat-sidebar-legal">
-            <a href="/privacy">privacy</a>
-            {!guest && <a href="/delete-account">delete account</a>}
-          </div>
-        </aside>
+        {renderSidebar(false)}
 
         {/* Landing center */}
         <div className="chat-landing">
+          <button className="chat-menu-btn" onClick={() => setMenuOpen(true)} aria-label="menu: past chats and account">
+            ☰
+          </button>
           <div className="chat-landing-credit">
             {guest ? guestPill : <CreditPill credits={credits} onClick={openRecharge} />}
           </div>
           {pod.length > 0 && <FaceStack ids={pod.map((f) => f.id)} size={48} max={5} className="chat-landing-faces" />}
           <h1 className="chat-landing-title">what&apos;s the drama?</h1>
           <p className="chat-landing-sub">
-            spill it. your AI friends will roast it, fight about it, and you make the call.
+            your AI friends roast it. you make the call.
           </p>
 
           <div className="chat-mood-landing">
@@ -1330,7 +1388,7 @@ export default function ChatPage() {
           </div>
 
           <div className="chat-landing-chips">
-            {STARTERS.map((s) => (
+            {STARTERS.slice(0, 3).map((s) => (
               <button
                 key={s.text}
                 className="chat-landing-chip"
@@ -1342,12 +1400,6 @@ export default function ChatPage() {
             ))}
           </div>
 
-          {/* Phones hide the sidebar, so its links (account deletion too) live here. */}
-          <nav className="chat-landing-links">
-            <Link href="/configure">configure pod</Link>
-            <Link href="/privacy">privacy</Link>
-            {!guest && <Link href="/delete-account">delete account</Link>}
-          </nav>
         </div>
         {overlays}
       </div>
@@ -1357,82 +1409,14 @@ export default function ChatPage() {
   // Chat state
   return (
     <div className="chat-page">
-      {/* Sidebar */}
-      <aside className="chat-sidebar">
-        <a href="/" className="chat-sidebar-logo">
-          macha<em>X</em>
-        </a>
-
-        {pod.length > 0 && (
-          <>
-            <div className="chat-sidebar-section">your pod</div>
-            <div className="chat-pod-list">
-              {pod.map((f) => {
-                const isActive = activeAgentIds.has(f.id);
-                const isLurking = lurkingAgents.includes(f.id);
-                return (
-                  <div key={f.id} className={`friend-pill-presence ${isActive ? 'active' : isLurking ? 'lurking' : 'joined'}`}>
-                    <span className="presence-dot-small" />
-                    <FriendAvatar id={f.id} size={24} />
-                    <span>{f.name.toLowerCase()}</span>
-                  </div>
-                );
-              })}
-              {lurkingAgents
-                .filter(id => !pod.some(f => f.id === id))
-                .map(id => {
-                  const f = FRIENDS_BY_ID[id];
-                  if (!f) return null;
-                  return (
-                    <div key={id} className="friend-pill-presence lurking">
-                      <span className="presence-dot-small" />
-                      <FriendAvatar id={f.id} size={24} style={{ opacity: 0.5 }} />
-                      <span>{f.name.toLowerCase()}</span>
-                      <span className="lurker-label">reading</span>
-                    </div>
-                  );
-                })}
-            </div>
-          </>
-        )}
-
-        {conversations.length > 0 && (
-          <>
-            <div className="chat-sidebar-section">recent</div>
-            <div className="chat-history-list">
-              {conversations.map((c) => (
-                <div
-                  key={c._id}
-                  className={`chat-history-item ${c._id === activeConversation ? "active" : ""}`}
-                  onClick={() => handleLoadConversation(c._id, c)}
-                >
-                  {c.title}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        <button className="chat-new-btn" onClick={handleNewChat}>
-          + new chat
-        </button>
-
-        <a href="/configure" style={{
-          display: "block", padding: "10px 16px", fontSize: 12,
-          color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
-          textDecoration: "none", letterSpacing: "0.06em",
-        }}>
-          ⚙ configure pod
-        </a>
-        <div className="chat-sidebar-legal">
-          <a href="/privacy">privacy</a>
-          {!guest && <a href="/delete-account">delete account</a>}
-        </div>
-      </aside>
+      {renderSidebar(true)}
 
       {/* Center */}
       <div className="chat-center">
         <div className="chat-header">
+          <button className="chat-menu-btn chat-menu-btn--header" onClick={() => setMenuOpen(true)} aria-label="menu: past chats and account">
+            ☰
+          </button>
           <BackArrow onClick={() => handleNewChat()} />
           {pod.length > 0 && <FaceStack ids={pod.map((f) => f.id)} size={32} max={3} />}
           <div className="chat-header-meta">
