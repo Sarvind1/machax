@@ -20,6 +20,7 @@ import { HELPLINE, classifyByRules, classifyMessage, looksLikeSmallTalk, type In
 import type { Friend } from "./friends";
 import { GEMINI_ENABLED, getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
+import { cardVerdict, lastCardBlock, lastCardFromHistory, parseSynthesisReply, type LastCard } from "./vote-card";
 import type {
   EngineEvent,
   AgentTraits,
@@ -1549,6 +1550,32 @@ function filterTopicForCharacter(
   return "";
 }
 
+export const SYNTHESIS_SYSTEM = `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`;
+
+/**
+ * The vote-card prompt. The earlier chat is background; the card is about the
+ * newest message and the replies to it, so it doesn't drift back to an older
+ * question. With an earlier card, the model may answer {"skip": true}.
+ */
+export function buildSynthesisPrompt(p: {
+  history: ChatEntry[];
+  message: string;
+  roundResponses: ChatEntry[];
+  userName: string;
+  podFriendIds: string[];
+  language: string;
+  prevCard?: LastCard;
+}): string {
+  const { history, message, roundResponses, userName, podFriendIds, language, prevCard } = p;
+  const friendNames = podFriendIds.map((id) => FRIENDS_BY_ID[id]?.name).filter(Boolean);
+  const earlier = formatTranscript(history, userName);
+  const latestRound = formatTranscript([{ from: "user", text: message }, ...roundResponses], userName);
+  const skipRule = prevCard
+    ? `\n\n${lastCardBlock(prevCard, userName)}\n\nOnly make a new card if ${userName}'s newest message brings a NEW or CHANGED choice they face right now. If it is a story update, small talk, a reply to the friends, or the same choice as that card (or one ${userName} already settled), return exactly {"skip": true, "why": "a few words"} instead.`
+    : "";
+  return `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic.\n\nEarlier chat (background only):\n${earlier || "(none)"}\n\nNewest message from ${userName} and the friends' replies to it:\n${latestRound}${skipRule}\n\nThe card is about what ${userName} is deciding NOW, after their newest message, not an older question from earlier in the chat. Extract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}, worded the way these friends would text it: casual, everyday words, like "just ask him for the money back" or "skip the wedding, keep the job". No office or finance-speak (never "maximize", "optimize", "prioritize", "leverage", "financial", "stability", "long-term growth", "explore options"). Labels are short and punchy (max 6 words); the blurb is one short casual line. Money is in rupees (₹, lakh, crore), never €, $ or £. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding now",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`;
+}
+
 // One vote per friend: a friend listed under two options keeps only the first.
 // Unknown ids are dropped; options keep their order.
 export function normalizeDecision(decision: Decision, podFriendIds: string[]): Decision {
@@ -1691,8 +1718,10 @@ export async function* orchestrateChat(params: {
   pickedOption?: { label: string; voices: string[] };
   // false = no stickers in replies (guests).
   allowMedia?: boolean;
+  // The newest vote card in this chat, so the next one isn't a re-ask.
+  lastCard?: LastCard;
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true } = params;
+  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true, lastCard } = params;
 
   // Parse character overrides once
   let parsedOverrides: Record<string, any> = {};
@@ -2186,19 +2215,14 @@ export async function* orchestrateChat(params: {
   // Small talk inside an ongoing chat gets replies but no new vote card.
   if (sorted.intent === "smalltalk") return;
 
-  const fullTranscript = formatTranscript(allMessages(), userName);
-  const friendNames = podFriendIds
-    .map((id) => FRIENDS_BY_ID[id]?.name)
-    .filter(Boolean);
-
+  const prevCard = lastCard ?? lastCardFromHistory(history);
   // The vote card. Haiku sometimes returns broken JSON or a single option, so
   // a failed try gets one more before the round ends without a card.
-  const synthesisSystem = `You are a synthesis engine. You read group chat conversations and extract the distinct decision options that emerged. Output ONLY valid JSON, no markdown fences, no explanation.`;
-  const synthesisPrompt = `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic:\n\n${fullTranscript}\n\nExtract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}, worded the way these friends would text it: casual, everyday words, like "just ask him for the money back" or "skip the wedding, keep the job". No office or finance-speak (never "maximize", "optimize", "prioritize", "leverage", "financial", "stability", "long-term growth", "explore options"). Labels are short and punchy (max 6 words); the blurb is one short casual line. Money is in rupees (₹, lakh, crore), never €, $ or £. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`;
+  const synthesisPrompt = buildSynthesisPrompt({ history, message, roundResponses, userName, podFriendIds, language, prevCard });
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
       const { text: synthesisText } = await callModel(
-        synthesisSystem,
+        SYNTHESIS_SYSTEM,
         synthesisPrompt,
         { ...provider, model: provider.synthesisModel },
         900,
@@ -2206,28 +2230,27 @@ export async function* orchestrateChat(params: {
         collector,
       );
 
-      let cleaned = synthesisText.trim();
-      cleaned = cleaned
-        .replace(/^```(?:json)?\s*\n?/, "")
-        .replace(/\n?```\s*$/, "");
-      const startIdx = cleaned.indexOf("{");
-      const endIdx = cleaned.lastIndexOf("}");
-      if (startIdx >= 0 && endIdx > startIdx) {
-        cleaned = cleaned.slice(startIdx, endIdx + 1);
+      const reply = parseSynthesisReply(synthesisText);
+      if (!reply.skip) {
+        reply.decision = normalizeDecision(reply.decision, podFriendIds);
+        reply.decision.question = fixCurrency(reply.decision.question, message);
+        for (const o of reply.decision.options) {
+          o.label = fixCurrency(o.label, message);
+          o.blurb = fixCurrency(o.blurb, message);
+        }
       }
-
-      const parsed = normalizeDecision(JSON.parse(cleaned) as Decision, podFriendIds);
-      parsed.question = fixCurrency(parsed.question, message);
-      for (const o of parsed.options) {
-        o.label = fixCurrency(o.label, message);
-        o.blurb = fixCurrency(o.blurb, message);
-      }
-      // A vote needs at least two real choices.
-      if (parsed.options.length >= 2) {
-        yield { type: "decision", decision: parsed };
+      const verdict = cardVerdict(reply, prevCard);
+      if (verdict === "show" && !reply.skip) {
+        yield { type: "decision", decision: reply.decision };
         break;
       }
-      engineLog({ ts: new Date().toISOString(), event: "synthesis-thin", attempt, options: parsed.options.length });
+      // No new decision in this message, or the card just re-asks the last one.
+      if (verdict === "skip" || verdict === "repeat") {
+        engineLog({ ts: new Date().toISOString(), event: `card-${verdict}`, why: reply.skip ? reply.why : reply.decision.question, lastQuestion: prevCard?.question, picked: prevCard?.picked });
+        break;
+      }
+      // A vote needs at least two real choices.
+      engineLog({ ts: new Date().toISOString(), event: "synthesis-thin", attempt, options: reply.skip ? 0 : reply.decision.options.length });
     } catch (err) {
       // No vote card from this try; the chat itself still stands.
       console.error(`Error in synthesis pass (try ${attempt}):`, err);

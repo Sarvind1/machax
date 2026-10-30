@@ -60,6 +60,7 @@ import BackArrow from "../back-button";
 import FriendAvatar from "@/components/friend-avatar";
 import FaceStack from "@/components/face-stack";
 import { onBack } from "@/lib/back-nav";
+import { lastCardFrom, type LastCard } from "@/lib/vote-card";
 import "./chat.css";
 
 type ConversationId = Id<"conversations">;
@@ -440,6 +441,8 @@ export default function ChatPage() {
       opts: {
         interrupting?: boolean;
         pickedOption?: { label: string; voices: string[] };
+        // The newest vote card so far, so the server doesn't re-ask it.
+        lastCard?: LastCard;
         // Runs once the server takes the round (saves the user's message), so a
         // message sent back to the text box is never also stored as sent.
         onAccepted?: () => Promise<void>;
@@ -464,6 +467,7 @@ export default function ChatPage() {
           body: JSON.stringify({
             ...(guestId ? { guestId } : {}),
             ...(opts.pickedOption ? { pickedOption: opts.pickedOption } : {}),
+            ...(opts.lastCard ? { lastCard: opts.lastCard } : {}),
             // Cut the running round off: the server hands this message the lock right away.
             ...(opts.interrupting ? { interrupting: true } : {}),
             conversationId: convoId,
@@ -836,6 +840,7 @@ export default function ChatPage() {
           history,
           {
             interrupting,
+            lastCard: lastCardFrom(messages),
             onAccepted: async () => {
               try {
                 await sendMessage({ conversationId: convoId, from: "user", text, username: settingsUsername! });

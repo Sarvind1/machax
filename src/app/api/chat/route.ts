@@ -19,6 +19,7 @@ import { authErrorResponse } from "@/lib/server-auth";
 import { SETTLE_RETURN_TIMEOUT_MS, validateChatInput } from "@/lib/chat-limits";
 import { GUEST_ID_RE, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
 import { parseAdminUids } from "@/lib/admin-uids";
+import { parseLastCard } from "@/lib/vote-card";
 
 // ConvexHttpClient's own types only accept public functions. The admin client
 // can call internal ones, so narrow it to a typed mutation caller.
@@ -428,6 +429,7 @@ export async function POST(request: Request) {
       userEngagementFrequency,
       collector,
       pickedOption,
+      lastCard: parseLastCard((body as { lastCard?: unknown }).lastCard),
       // Guests get no reaction stickers.
       allowMedia: !!account,
     });
