@@ -8,16 +8,21 @@ import { v } from "convex/values";
 const GRAPH_VERSION = "v23.0";
 const REGISTRATION_WINDOW_MS = 30 * 60 * 1000;
 
-export const META_EVENTS = ["CompleteRegistration", "Activated"] as const;
+// fb_mobile_achievement_unlocked = Meta's standard "Achievement Unlocked" app event, sent when
+// the user first picks an option on a decision. "Activated" is its old custom name, still
+// accepted from app builds that predate the rename; both count as the same event per user.
+const ACHIEVEMENT = "fb_mobile_achievement_unlocked";
+const LEGACY_ACHIEVEMENT = "Activated";
+export const META_EVENTS = ["CompleteRegistration", ACHIEVEMENT, LEGACY_ACHIEVEMENT] as const;
 export type MetaEventName = (typeof META_EVENTS)[number];
 
 // Checks the event really happened (server truth, not the client's word) and records it,
-// so a user's CompleteRegistration / Activated fires at most once.
+// so a user's CompleteRegistration / first-pick event fires at most once.
 // Returns what the send step needs, or null when the event shouldn't be sent.
 export const claim = internalMutation({
   args: {
     username: v.string(),
-    eventName: v.union(v.literal("CompleteRegistration"), v.literal("Activated")),
+    eventName: v.union(v.literal("CompleteRegistration"), v.literal(ACHIEVEMENT), v.literal(LEGACY_ACHIEVEMENT)),
     eventId: v.string(),
   },
   handler: async (ctx, { username, eventName, eventId }) => {
@@ -28,16 +33,19 @@ export const claim = internalMutation({
     // Real users: Firebase-linked, or a legacy password account. Demo users have neither.
     if (!user || (!user.firebaseUid && !user.password)) return null;
 
-    const already = await ctx.db
-      .query("metaEvents")
-      .withIndex("by_username_event", (q) => q.eq("username", username).eq("eventName", eventName))
-      .first();
-    if (already) return null;
+    const sameEvent = eventName === "CompleteRegistration" ? [eventName] : [ACHIEVEMENT, LEGACY_ACHIEVEMENT];
+    for (const name of sameEvent) {
+      const already = await ctx.db
+        .query("metaEvents")
+        .withIndex("by_username_event", (q) => q.eq("username", username).eq("eventName", name))
+        .first();
+      if (already) return null;
+    }
 
     if (eventName === "CompleteRegistration") {
       if (Date.now() - user.createdAt > REGISTRATION_WINDOW_MS) return null;
     } else {
-      // Activated = the user has picked an option on at least one decision
+      // First-pick event = the user has picked an option on at least one decision
       const conversations = await ctx.db
         .query("conversations")
         .withIndex("by_username", (q) => q.eq("username", username))

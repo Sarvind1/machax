@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { logActivated, logCompleteRegistration } from "@/lib/meta-events";
+import { logAchievementUnlocked, logCompleteRegistration } from "@/lib/meta-events";
 import { logEvent, setAnalyticsUser } from "@/lib/analytics";
 import { completeRedirectSignIn, getIdToken, signInWithGoogle, signOut } from "@/lib/firebase";
 import { AuthRequired, bootstrapSession } from "@/lib/api";
@@ -161,7 +161,7 @@ export default function LoginPage() {
       saveGuestUsage({ typedUsed: GUEST_TYPED_LIMIT, typedLimit: GUEST_TYPED_LIMIT, totalUsed: GUEST_HARD_CAP, totalLimit: GUEST_HARD_CAP });
     }
     // A decision picked as a guest counts once it belongs to the account (server re-checks).
-    if (session.guestClaim?.activated) logActivated(session.username);
+    if (session.guestClaim?.activated) logAchievementUnlocked(session.username);
     router.push("/chat");
   }, [router]);
 

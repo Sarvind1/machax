@@ -150,7 +150,7 @@ export const settleGuestMessage = internalMutation({
 // messages and decisions, which hang off the conversation) to the account, and
 // close the guest id so it gives no more free messages.
 // activated = one of the moved chats already has a picked decision, so the
-// client can send the Meta Activated event now (the server re-checks it).
+// client can send the Meta AchievementUnlocked event now (the server re-checks it).
 export const claimGuest = internalMutation({
   args: { guestId: v.string(), username: v.string() },
   handler: async (ctx, { guestId, username }) => {

@@ -12,7 +12,10 @@ import { FacebookAnalytics, FacebookEventName, FacebookEventParameterName } from
 
 const CONVEX_SITE_URL = (process.env.NEXT_PUBLIC_CONVEX_URL ?? "").replace(".convex.cloud", ".convex.site");
 
-type MetaEvent = "CompleteRegistration" | "Activated";
+// AchievementUnlocked = first pick on a decision. Sent under the same Meta standard
+// name (fb_mobile_achievement_unlocked) by the server and the SDK, so the pair dedups.
+// It replaces the old custom "Activated" event.
+type MetaEvent = "CompleteRegistration" | typeof FacebookEventName.UnlockedAchievement;
 
 // Meta's 16-slot device info array for app events; unknown slots stay empty
 async function extinfo(): Promise<string[]> {
@@ -74,6 +77,26 @@ export function logCompleteRegistration(username: string, method: string): void 
 }
 
 // Call after the user picks an option on a decision; only their first pick counts
-export function logActivated(username: string): void {
-  track("Activated", username).catch(() => {});
+export function logAchievementUnlocked(username: string): void {
+  track(FacebookEventName.UnlockedAchievement, username, {
+    [FacebookEventParameterName.Description]: "first_decision_pick",
+  }).catch(() => {});
+}
+
+const FIRST_DILEMMA_KEY = "machax-meta-first-dilemma";
+
+// Call when a dilemma is posted (guests too); fires once per device.
+// SDK only, no server copy: guests have no account for the server to check.
+export function logFirstDilemmaPosted(): void {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    if (localStorage.getItem(FIRST_DILEMMA_KEY)) return;
+    localStorage.setItem(FIRST_DILEMMA_KEY, "1");
+  } catch {
+    return;
+  }
+  FacebookAnalytics.logEvent({
+    event: FacebookEventName.CompletedTutorial,
+    params: { [FacebookEventParameterName.Success]: "1", [FacebookEventParameterName.ContentId]: "first_dilemma" },
+  }).catch(() => {});
 }

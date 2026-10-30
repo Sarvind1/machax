@@ -11,7 +11,7 @@ import { signOut } from "@/lib/firebase";
 import type { CreditSummary } from "@/lib/credits";
 import { MAX_HISTORY_ENTRIES, MAX_POD_SIZE } from "@/lib/chat-limits";
 import { logEvent } from "@/lib/analytics";
-import { logActivated } from "@/lib/meta-events";
+import { logAchievementUnlocked, logFirstDilemmaPosted } from "@/lib/meta-events";
 import { GUEST_TYPED_LIMIT, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
 import {
   getGuest,
@@ -859,6 +859,7 @@ export default function ChatPage() {
 
         setActiveConversation(convoId);
         logEvent("dilemma_posted", { pod_size: podIds.length, topic: tag });
+        logFirstDilemmaPosted();
 
         const userMsg: ChatMessageType = {
           id: `user-${Date.now()}`,
@@ -1030,8 +1031,8 @@ export default function ChatPage() {
         username: settingsUsername,
       });
       logEvent("decision_picked", { option_count: decision.options.length });
-      // No account yet: Activated is sent after sign-in, when this chat moves over.
-      if (!guest) logActivated(settingsUsername);
+      // No account yet: AchievementUnlocked is sent after sign-in, when this chat moves over.
+      if (!guest) logAchievementUnlocked(settingsUsername);
     } catch (err) {
       console.error("Failed to select decision:", err);
       setPickedOptionId(null);
