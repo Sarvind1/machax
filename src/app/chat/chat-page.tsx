@@ -37,14 +37,11 @@ function useSafeQuery<T>(query: any, args?: any): T | null {
 }
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ChatMessage as ChatMessageType, Decision } from "@/lib/types";
+import { mediaOf } from "@/lib/chat-media";
 import { FRIENDS, FRIENDS_BY_ID, STARTERS, selectPod, type Friend } from "@/lib/friends";
 
 type ChatMessageWithReply = ChatMessageType & {
   replyTo?: string;
-  mediaType?: "gif" | "sticker" | "meme";
-  mediaUrl?: string;
-  mediaThumbnailUrl?: string;
-  mediaAltText?: string;
 };
 
 import ChatMessage from "./components/chat-message";
@@ -323,10 +320,7 @@ export default function ChatPage() {
           id: m._id,
           conversationId: m.conversationId as string,
           from: m.from,
-          mediaType: m.mediaType,
-          mediaUrl: m.mediaUrl,
-          mediaThumbnailUrl: m.mediaThumbnailUrl,
-          mediaAltText: m.mediaAltText,
+          media: mediaOf(m) ?? undefined,
           replyTo: m.replyTo,
           text: m.text,
           timestamp: m.timestamp,
@@ -602,7 +596,8 @@ export default function ChatPage() {
               setTypingAgents((prev) => prev.filter((id) => id !== data.from));
               // Already shown if the user sent something while it was queued.
               if (unshown.delete(data)) setMessages((prev) => [...prev, toMessage(data)]);
-              if (data.mediaType) logEvent("gif_received", { media_type: data.mediaType });
+              const media = mediaOf(data);
+              if (media) logEvent("gif_received", { media_type: media.kind });
             }
 
             if (data.typing) {
@@ -658,10 +653,7 @@ export default function ChatPage() {
               from: data.from,
               text: data.text,
               username: settingsUsername!,
-              ...(data.mediaType ? { mediaType: data.mediaType } : {}),
-              ...(data.mediaUrl ? { mediaUrl: data.mediaUrl } : {}),
-              ...(data.mediaThumbnailUrl ? { mediaThumbnailUrl: data.mediaThumbnailUrl } : {}),
-              ...(data.mediaAltText ? { mediaAltText: data.mediaAltText } : {}),
+              ...(mediaOf(data) ? { media: mediaOf(data)! } : {}),
               ...(data.replyTo ? { replyTo: data.replyTo } : {}),
             });
           } catch {
@@ -674,10 +666,7 @@ export default function ChatPage() {
           from: data.from,
           text: data.text,
           replyTo: data.replyTo || undefined,
-          mediaType: data.mediaType,
-          mediaUrl: data.mediaUrl,
-          mediaThumbnailUrl: data.mediaThumbnailUrl,
-          mediaAltText: data.mediaAltText,
+          media: mediaOf(data) ?? undefined,
           timestamp: Date.now(),
         });
         let paced: Promise<void> = Promise.resolve();
@@ -1539,16 +1528,13 @@ export default function ChatPage() {
               isUser={m.from === "user"}
               replyTo={m.replyTo}
               replyToText={replyMsg?.text}
-              mediaType={m.mediaType}
-              mediaUrl={m.mediaUrl}
-              mediaThumbnailUrl={m.mediaThumbnailUrl}
-              mediaAltText={m.mediaAltText}
+              media={mediaOf(m)}
               onReport={async (reason) => {
                 await createReport({
                   username: settingsUsername ?? undefined,
                   conversationId: activeConversation ?? undefined,
                   from: m.from,
-                  text: m.text || m.mediaUrl || "",
+                  text: m.text || mediaOf(m)?.url || "",
                   reason,
                 });
               }}

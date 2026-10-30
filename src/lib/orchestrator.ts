@@ -30,6 +30,8 @@ import type {
 } from "./engine-types";
 import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
 import { resolveMedia } from "./media-service";
+import { getMedia, memeMediaEnabled, memeMenuForPrompt } from "./get-media";
+import type { ChatMedia } from "./chat-media";
 import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
 import { buildCharacterMemory } from "./private-memory";
 import type { CostCollector } from "./cost-collector";
@@ -516,6 +518,15 @@ function extractMediaMarker(text: string): { query: string; remainingText: strin
   const query = match[1].trim();
   const remainingText = text.replace(match[0], '').trim();
   return { query, remainingText };
+}
+
+// [MEME: template_id | caption line 1 | caption line 2] (only offered when MEME_MEDIA_ENABLED=1)
+export function extractMemeMarker(text: string): { template: string; caption: string[]; remainingText: string } | null {
+  const match = text.match(/\[MEME:\s*([^\]]+?)\]/i);
+  if (!match) return null;
+  const [template, ...caption] = match[1].split("|").map((s) => s.trim());
+  if (!template) return null;
+  return { template: template.toLowerCase(), caption, remainingText: text.replace(match[0], "").trim() };
 }
 
 // ── Agent traits resolution ──────────────────────────────────────────
@@ -1111,7 +1122,7 @@ async function callFriend(
   // first replies of a turn, so they stay in the friend's own voice. effort: Sonnet thinking effort.
   // allowMedia: false = never send a sticker (guests).
   extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean } = {},
-): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string; model?: string; paid?: boolean } | null> {
+): Promise<{ entry: ChatEntry; replyTo: string | null; media?: ChatMedia; model?: string; paid?: boolean } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend) return null;
 
@@ -1312,6 +1323,9 @@ async function callFriend(
   const shouldOfferGif = allowMedia && Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
   if (shouldOfferGif) {
     prompt += `\n\nReact with a visual this time! Write [REACT: 2-4 words describing your reaction to THIS specific moment] — describe what you're actually feeling right now, don't use generic reactions. You can write text before or after the tag, or just send it alone.`;
+    if (memeMediaEnabled()) {
+      prompt += `\nOr, ONLY if one of these famous memes fits this moment perfectly, use it instead: [MEME: template_id | caption line 1 | caption line 2] (short caption lines about THIS chat, one per line the template has; GIF templates take no caption: [MEME: template_id]). Templates: ${memeMenuForPrompt()}. Use at most one tag.`;
+    }
   }
 
   // Fix 3 (260519-x71) — duplicate mesExample at END of prompt (U-shape's
@@ -1354,13 +1368,22 @@ async function callFriend(
     );
     text = cleanResponse(text, friend.name);
 
-    // ── Extract GIF marker and resolve ──
-    let mediaType: "gif" | "sticker" | "meme" | undefined;
-    let mediaUrl: string | undefined;
-    let mediaThumbnailUrl: string | undefined;
-    let mediaAltText: string | undefined;
+    // ── Extract GIF / meme marker and resolve ──
+    let media: ChatMedia | undefined;
 
-    const marker = extractMediaMarker(text);
+    const meme = extractMemeMarker(text);
+    if (meme) {
+      text = meme.remainingText;
+      if (allowMedia) {
+        const found = await getMedia({ template: meme.template, caption: meme.caption });
+        if (found) {
+          media = found;
+          if (!text) text = "[sent a GIF]";
+        }
+      }
+    }
+
+    const marker = media ? null : extractMediaMarker(text);
     if (marker && !allowMedia) {
       text = marker.remainingText;
     } else if (marker) {
@@ -1371,16 +1394,11 @@ async function callFriend(
         const conversationTopic = allMessages.filter(m => m.from === "user").pop()?.text || "";
         const mediaResult = await resolveMedia(marker.query, conversationTopic);
         if (mediaResult) {
-          // Map source to mediaType
-          switch (mediaResult.source) {
-            case "klipy-gif": mediaType = "gif"; break;
-            case "klipy-sticker": mediaType = "sticker"; break;
-            case "local-meme": mediaType = "meme"; break;
-            case "imgflip": mediaType = "meme"; break;
-          }
-          mediaUrl = mediaResult.url;
-          mediaThumbnailUrl = mediaResult.thumbnailUrl;
-          mediaAltText = mediaResult.altText;
+          media = {
+            kind: mediaResult.source === "klipy-gif" ? "gif" : "sticker",
+            url: mediaResult.url,
+            alt: mediaResult.altText,
+          };
           if (!text) text = "[sent a GIF]";
         }
       } catch (mediaErr) {
@@ -1390,7 +1408,7 @@ async function callFriend(
     }
 
     // Safety net: strip any remaining [REACT...] or [GIF...] markers the model produced
-    text = text.replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, '').trim();
+    text = text.replace(/\[(?:REACT|GIF|MEME)[:\s][^\]]*\]/gi, '').trim();
 
     // Validate response quality — retry once if garbage or truncated
     const looksIncomplete = (t: string) => {
@@ -1418,7 +1436,7 @@ async function callFriend(
             ? "IMPORTANT: Write it in plain English only. No Hindi or Hinglish words."
             : "IMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
       ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, `${prompt}\n\n${fix}`, provider, Math.max(maxTokens, 150), undefined, collector));
-      text = cleanResponse(text, friend.name).replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, "").trim();
+      text = cleanResponse(text, friend.name).replace(/\[(?:REACT|GIF|MEME)[:\s][^\]]*\]/gi, "").trim();
 
       // Still bad after the retry: skip this friend rather than show it.
       // A reply that is still a bit Hinglish is kept; an empty round is worse.
@@ -1430,7 +1448,7 @@ async function callFriend(
     }
     text = fixCurrency(text, latestUserMsg ?? "");
 
-    return { entry: { from: friendId, text }, replyTo: replyToId, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, model: usedModel, paid };
+    return { entry: { from: friendId, text }, replyTo: replyToId, media, model: usedModel, paid };
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
     engineLog({ ts: new Date().toISOString(), event: "agent-error", agent: friendId, error: String(err).slice(0, 200) });
@@ -1768,7 +1786,7 @@ ${outputRules(ctx.userName)}`;
     try {
       const ask = async (p: string) =>
         cleanResponse((await callModel(friend.systemPrompt, p, ctx.provider, 200, undefined, ctx.collector, ctx.effort)).text, friend.name)
-          .replace(/\[(?:REACT|GIF)[:\s][^\]]*\]/gi, "")
+          .replace(/\[(?:REACT|GIF|MEME)[:\s][^\]]*\]/gi, "")
           .trim();
       text = await ask(prompt);
       if (looksLikeMetaText(text, friend.name)) {
@@ -2236,7 +2254,7 @@ export async function* orchestrateChat(params: {
         engineLog({ ts: new Date().toISOString(), event: "null-response", agent: batch[i].agent.id, iteration: iterations });
         continue;
       }
-      const { entry, replyTo, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, model: usedModel, paid } = result.value;
+      const { entry, replyTo, media, model: usedModel, paid } = result.value;
       const agent = batch[i].agent;
       const target = batch[i].target;
 
@@ -2298,21 +2316,21 @@ export async function* orchestrateChat(params: {
       }
 
       // Apply media rate cap: max 2 GIFs per conversation round
-      const includeMedia = mediaType && mediaUrl && mediaMessageCount < 2;
+      const includeMedia = !!media && mediaMessageCount < 2;
       if (includeMedia) mediaMessageCount++;
 
-      if (mediaType && mediaUrl && !includeMedia) {
-        engineLog({ ts: new Date().toISOString(), event: "media-rate-capped", agent: entry.from, mediaSource: mediaType, iteration: iterations, mediaMessageCount });
+      if (media && !includeMedia) {
+        engineLog({ ts: new Date().toISOString(), event: "media-rate-capped", agent: entry.from, mediaSource: media.kind, iteration: iterations, mediaMessageCount });
       }
 
-      engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: entry.from, text: entry.text.slice(0, 80), model: usedModel || "unknown", paid: !!paid, hasMedia: !!includeMedia, mediaSource: mediaType || null, iteration: iterations, energy: parseFloat(energy.toFixed(3)) });
+      engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: entry.from, text: entry.text.slice(0, 80), model: usedModel || "unknown", paid: !!paid, hasMedia: includeMedia, mediaSource: media?.kind ?? null, iteration: iterations, energy: parseFloat(energy.toFixed(3)) });
 
       yield {
         type: "message",
         from: entry.from,
         text: entry.text,
         replyTo: replyTo ?? undefined,
-        ...(includeMedia ? { mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText } : {}),
+        ...(includeMedia && media ? { media } : {}),
       };
 
       // ── Energy decay ──
