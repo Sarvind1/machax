@@ -96,9 +96,45 @@ export default defineSchema({
     totalMessages: v.number(),
     finalEnergy: v.number(),
     iterations: v.string(), // JSON stringified array of iteration trace objects
+    // Saved for every round since 2026-10-30 (older rows: full debates only).
+    // roundType: dilemma | smalltalk | distress | pick | unknown (cut off before sorting).
+    roundType: v.optional(v.string()),
+    // completed | client-left | error | timeout
+    endReason: v.optional(v.string()),
+    // JSON array of the round's engine/media events (turn skips with reasons, failures).
+    events: v.optional(v.string()),
+    eventsDropped: v.optional(v.number()),
+    // Account username, or the guest key ("g:<guestId>").
+    who: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_created", ["createdAt"])
     .index("by_conversation", ["conversationId"]),
+
+  // Every time a guest is sent to sign-in. source "server" = /api/chat answered
+  // 403 login_required; "client" = the app showed the wall itself without asking.
+  signInWalls: defineTable({
+    guestKey: v.string(),
+    source: v.union(v.literal("server"), v.literal("client")),
+    reason: v.string(), // typed_limit | cap | signed_up
+    platform: v.string(), // app | web | unknown
+    typedUsed: v.optional(v.number()),
+    totalUsed: v.optional(v.number()),
+    conversationId: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"])
+    .index("by_guestKey", ["guestKey", "createdAt"]),
+
+  // Every /api/chat request answered with an error instead of a round.
+  chatRejections: defineTable({
+    status: v.number(),
+    reason: v.string(),
+    detail: v.optional(v.string()),
+    who: v.optional(v.string()), // username, guest key, or absent if unknown
+    platform: v.string(),
+    conversationId: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"])
+    .index("by_reason", ["reason", "createdAt"]),
 
   // User reports of offensive / harmful AI messages (Play AI-content policy)
   reports: defineTable({

@@ -97,6 +97,7 @@ function convex(opts: {
       };
     }
     if (name === "traces:save") return null;
+    if (name.startsWith("chatLog:")) return null;
     throw new Error(`unexpected mutation ${name}`);
   });
 }
@@ -136,7 +137,9 @@ describe("POST /api/chat", () => {
     const res = await POST(req());
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
-    expect(mutation).not.toHaveBeenCalled();
+    // The only write is the rejection log.
+    expect(mutation.mock.calls.map(([ref]) => getFunctionName(ref as never))).toEqual(["chatLog:recordRejection"]);
+    expect(callsTo("chatLog:recordRejection")[0][1]).toMatchObject({ status: 401, reason: "unauthorized", platform: "app" });
     expect(orchestrateChat).not.toHaveBeenCalled();
   });
 
@@ -358,6 +361,54 @@ describe("POST /api/chat", () => {
     expect(console.error).toHaveBeenCalled();
   });
 
+  it("records a 400 with its reason and a 402 with the username", async () => {
+    convex({});
+    await POST(req({ ...body, message: "x".repeat(MAX_MESSAGE_CHARS + 1) }));
+    expect(callsTo("chatLog:recordRejection")[0][1]).toMatchObject({
+      status: 400,
+      reason: "bad_request",
+      detail: expect.stringContaining("message"),
+      who: "alice",
+      conversationId: "c1",
+    });
+    convex({ begin: { ok: false, reason: "out_of_credit" } });
+    await POST(req());
+    expect(callsTo("chatLog:recordRejection").at(-1)![1]).toMatchObject({ status: 402, reason: "out_of_credit", who: "alice" });
+  });
+
+  it("still answers when the rejection log itself fails", async () => {
+    mutation.mockImplementation(async (ref: unknown) => {
+      if (getFunctionName(ref as never) === "credits:beginMessage") return { ok: false, reason: "busy" };
+      throw new Error("convex down");
+    });
+    const res = await POST(req());
+    expect(res.status).toBe(409);
+  });
+
+  it("saves the engine's trace for a full debate, tagged with round type and events", async () => {
+    convex({});
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "intent", intent: "dilemma", language: "English" } satisfies EngineEvent;
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+      yield {
+        type: "trace",
+        data: { prompt: "hi", userName: "Alice", podFriendIds: [FRIEND], provider: "p", totalTimeMs: 5, totalIterations: 2, totalMessages: 1, finalEnergy: 0.3, iterations: [{ n: 1 }] },
+      } as unknown as EngineEvent;
+    });
+    await events(await POST(req()));
+    const traces = callsTo("traces:save");
+    expect(traces).toHaveLength(1);
+    expect(traces[0][1]).toMatchObject({
+      provider: "p",
+      totalIterations: 2,
+      finalEnergy: 0.3,
+      iterations: JSON.stringify([{ n: 1 }]),
+      roundType: "dilemma",
+      endReason: "completed",
+      who: "alice",
+    });
+  });
+
   it("returns 500 for no_account from beginMessage", async () => {
     convex({ begin: { ok: false, reason: "no_account" } });
     const res = await POST(req());
@@ -485,24 +536,29 @@ describe("POST /api/chat", () => {
 });
 
 describe("POST /api/chat round log", () => {
-  // The [round] lines the function log gets, parsed.
-  const roundLines = (spy: { mock: { calls: unknown[][] } }) =>
-    spy.mock.calls.map(([l]) => String(l)).filter((l) => l.startsWith("[round] ")).map((l) => JSON.parse(l.slice(8)));
+  // The [machax] engine-log lines the function log gets (info or warning), parsed.
+  const roundLines = (...spies: { mock: { calls: unknown[][] } }[]) =>
+    spies
+      .flatMap((spy) => spy.mock.calls)
+      .filter(([tag]) => tag === "[machax]")
+      .map(([, line]) => JSON.parse(String(line)) as Record<string, unknown>);
 
   it("logs the end of a round with how many replies were sent", async () => {
     convex({});
-    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     orchestrateChat.mockImplementation(async function* () {
       yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
       yield { type: "message", from: "b", text: "sup" } satisfies EngineEvent;
     });
     await events(await POST(req()));
-    expect(roundLines(info)).toEqual([expect.objectContaining({ event: "end", conversationId: "c1", messagesSent: 2 })]);
+    expect(roundLines(log).filter((l) => l.event === "round-end")).toEqual([
+      expect.objectContaining({ endReason: "completed", conversationId: "c1", messages: 2 }),
+    ]);
   });
 
   it("logs a client that leaves mid-round, with the replies it had been sent", async () => {
     convex({});
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     orchestrateChat.mockImplementation(async function* () {
@@ -516,15 +572,20 @@ describe("POST /api/chat round log", () => {
     const cancelling = reader.cancel();
     release();
     await cancelling;
-    expect(roundLines(warn)).toEqual([expect.objectContaining({ event: "client-disconnected", conversationId: "c1", messagesSent: 1 })]);
+    expect(roundLines(log).filter((l) => l.event === "round-end")).toEqual([
+      expect.objectContaining({ endReason: "client-left", conversationId: "c1", messages: 1 }),
+    ]);
   });
 
   it("logs which kind of request cut the running round off", async () => {
     convex({});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     orchestrateChat.mockImplementation(async function* () {});
     await events(await POST(req({ ...body, interrupting: true, pickedOption: { label: "say no", voices: [] } })));
-    expect(roundLines(warn)).toEqual([expect.objectContaining({ event: "superseded", conversationId: "c1", by: "pick" })]);
+    expect(roundLines(log, warn).filter((l) => l.event === "superseded")).toEqual([
+      expect.objectContaining({ conversationId: "c1", by: "pick" }),
+    ]);
   });
 });
 
@@ -546,6 +607,7 @@ describe("POST /api/chat as a guest (no token)", () => {
         return args.delivered ? usage(args.example ? 0 : 1, 1) : usage(0, 0);
       }
       if (name === "traces:save") return null;
+      if (name.startsWith("chatLog:")) return null;
       throw new Error(`unexpected mutation ${name}`);
     });
   }
@@ -668,11 +730,113 @@ describe("POST /api/chat as a guest (no token)", () => {
     expect(settles[0][1]).toMatchObject({ delivered: true });
   });
 
+  it("records each sign-in wall refusal with the guest id, reason, counts and platform", async () => {
+    guestConvex({ begin: { ok: false, reason: "typed_limit", usage: usage(3, 3) } });
+    const res = await POST(guestReq({ ...body, guestId: GID }));
+    expect(res.status).toBe(403);
+    const walls = callsTo("chatLog:recordSignInWall");
+    expect(walls).toHaveLength(1);
+    expect(walls[0][1]).toEqual({
+      guestKey: `g:${GID}`,
+      source: "server",
+      reason: "typed_limit",
+      typedUsed: 3,
+      totalUsed: 3,
+      conversationId: "c1",
+      platform: "app",
+    });
+    expect(callsTo("chatLog:recordRejection")).toHaveLength(0);
+  });
+
+  it("marks a wall hit from the website as web", async () => {
+    guestConvex({ begin: { ok: false, reason: "cap", usage: usage(3, 6) } });
+    await POST(guestReq({ ...body, guestId: GID }, { origin: "https://machax.xyz" }));
+    expect(callsTo("chatLog:recordSignInWall")[0][1]).toMatchObject({ reason: "cap", platform: "web" });
+  });
+
+  it("records a guest's bad request with the guest key", async () => {
+    guestConvex();
+    await POST(guestReq({ ...body, guestId: GID, podFriendIds: ["nobody"] }));
+    expect(callsTo("chatLog:recordRejection")[0][1]).toMatchObject({ status: 400, reason: "bad_request", who: `g:${GID}` });
+  });
+
+  it("records rate-limited and busy guest refusals with the guest key", async () => {
+    guestConvex({ begin: { ok: false, reason: "rate_limited", usage: usage(0, 0) } });
+    await POST(guestReq({ ...body, guestId: GID }));
+    expect(callsTo("chatLog:recordRejection")[0][1]).toEqual({
+      status: 429,
+      reason: "rate_limited",
+      who: `g:${GID}`,
+      conversationId: "c1",
+      platform: "app",
+    });
+  });
+
+  it("saves a trace for a small-talk round, with the reason a friend's turn was skipped", async () => {
+    guestConvex();
+    const { engineLog } = await import("@/lib/engine-log");
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "provider", label: "anthropic" } satisfies EngineEvent;
+      yield { type: "intent", intent: "smalltalk", language: "English" } satisfies EngineEvent;
+      await new Promise((r) => setTimeout(r, 1)); // logged after an await: still this round's
+      engineLog({ event: "turn-skipped", agent: "b", reason: "meta-text-after-retry" });
+      yield { type: "message", from: "a", text: "heyy" } satisfies EngineEvent;
+    });
+    await events(await POST(guestReq({ ...body, guestId: GID })));
+    const traces = callsTo("traces:save");
+    expect(traces).toHaveLength(1);
+    const t = traces[0][1] as Record<string, unknown>;
+    expect(t).toMatchObject({
+      conversationId: "c1",
+      prompt: "hi",
+      provider: "anthropic",
+      roundType: "smalltalk",
+      endReason: "completed",
+      totalMessages: 1,
+      totalIterations: 0,
+      iterations: "[]",
+      who: `g:${GID}`,
+    });
+    const logged = JSON.parse(t.events as string) as { event: string; reason?: string }[];
+    expect(logged).toContainEqual(expect.objectContaining({ event: "turn-skipped", agent: "b", reason: "meta-text-after-retry" }));
+    expect(logged.at(-1)).toMatchObject({ event: "round-end", roundType: "smalltalk", endReason: "completed" });
+  });
+
+  it("saves a trace for a round the user left early", async () => {
+    guestConvex();
+    let release: () => void = () => {};
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "intent", intent: "dilemma", language: "English" } satisfies EngineEvent;
+      yield { type: "message", from: "a", text: "first" } satisfies EngineEvent;
+      await new Promise<void>((r) => (release = r));
+      yield { type: "message", from: "b", text: "never sent" } satisfies EngineEvent;
+    });
+    const ac = new AbortController();
+    const res = await POST(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        signal: ac.signal,
+        headers: { origin: "http://localhost", "content-type": "application/json", "x-real-ip": "1.2.3.4" },
+        body: JSON.stringify({ ...body, guestId: GID }),
+      }),
+    );
+    const reader = res.body!.getReader();
+    await reader.read(); // intent
+    await reader.read(); // first
+    ac.abort();
+    await new Promise((r) => setTimeout(r, 0));
+    release();
+    await Promise.all(afterCallbacks.map((cb) => cb()));
+    const traces = callsTo("traces:save");
+    expect(traces).toHaveLength(1);
+    expect(traces[0][1]).toMatchObject({ roundType: "dilemma", endReason: "client-left", totalMessages: 1 });
+  });
+
   it("still returns 401 for a bad token instead of falling back to guest", async () => {
     bootstrapUser.mockRejectedValue(new AuthError("invalid token"));
     const res = await POST(guestReq({ ...body, guestId: GID }, { authorization: "Bearer bad" }));
     expect(res.status).toBe(401);
-    expect(mutation).not.toHaveBeenCalled();
+    expect(mutation.mock.calls.map(([ref]) => getFunctionName(ref as never))).toEqual(["chatLog:recordRejection"]);
   });
 });
 

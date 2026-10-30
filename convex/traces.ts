@@ -14,6 +14,11 @@ export const save = internalMutation({
     totalMessages: v.number(),
     finalEnergy: v.number(),
     iterations: v.string(),
+    roundType: v.optional(v.string()),
+    endReason: v.optional(v.string()),
+    events: v.optional(v.string()),
+    eventsDropped: v.optional(v.number()),
+    who: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("traces", {

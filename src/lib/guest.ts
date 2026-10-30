@@ -86,3 +86,26 @@ export function bumpGuestUsage(example: boolean): GuestState {
   write(state);
   return state;
 }
+
+/**
+ * The app showed the sign-in wall on its own (it knew the guest was out of free
+ * messages). Tell the server so the hit is counted; best-effort, never throws.
+ * When the server itself refuses (403), it records the hit and this isn't needed.
+ */
+export function reportSignInWall(apiBase: string, state: GuestState, conversationId?: string | null): void {
+  const reason = state.totalUsed >= GUEST_HARD_CAP ? "cap" : "typed_limit";
+  try {
+    fetch(`${apiBase}/api/guest/wall`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        guestId: state.guestId,
+        reason,
+        typedUsed: state.typedUsed,
+        totalUsed: state.totalUsed,
+        ...(conversationId ? { conversationId } : {}),
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {}
+}

@@ -21,8 +21,10 @@ import {
   saveGuestUsage,
   setGuestResume,
   takeGuestResume,
+  reportSignInWall,
   type GuestState,
 } from "@/lib/guest";
+import { API_BASE } from "@/lib/api-base";
 import { api } from "../../../convex/_generated/api";
 
 function useSafeQuery<T>(query: any, args?: any): T | null {
@@ -795,6 +797,7 @@ export default function ChatPage() {
         isStreamingRef.current = false;
         setIsLoading(false);
       }
+      reportSignInWall(API_BASE, guestNow, activeConversation);
       promptSignIn(text, activeConversation, pod.map((f) => f.id));
       return;
     }
