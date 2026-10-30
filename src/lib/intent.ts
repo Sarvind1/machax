@@ -15,6 +15,8 @@ export interface IntentResult {
   source: "model" | "rules";
   /** The classifier says the message asks for sexual content or is hateful/abusive. */
   offLimits?: boolean;
+  /** false: nothing to decide (a story, a vent, news), so no vote card. Unset when unknown. */
+  choice?: boolean;
 }
 
 // Tele-MANAS, the Government of India's 24x7 free mental health line.
@@ -104,9 +106,11 @@ Label it:
 
 Also set "offLimits": true only if the message asks the group for sexual content or sexual roleplay, or pushes hate or slurs against a race, religion, caste, gender or other group. Asking for advice about sex, dating or a hard situation is NOT offLimits; casual swearing is NOT offLimits.
 
+Also set "choice": true when the user faces a real decision the friends could vote on, asked outright ("should I...", "X or Y?", "do I go?") or plainly implied ("my friend owes me 15k and keeps posting Goa stories": ask for it or let it go). Set false when there's nothing to pick between: a story, gossip, news, a share, a vent with no decision in it ("the girl I like posted lilies", "my boss is so annoying today").
+
 Also name the language and script they wrote in, e.g. "English", "Hinglish (Hindi in Latin script)", "Hindi (Devanagari script)", "Malayalam (Malayalam script)", "Manglish (Malayalam in Latin script)".
 
-Return: {"intent":"dilemma|smalltalk|distress","language":"...","offLimits":false}`;
+Return: {"intent":"dilemma|smalltalk|distress","language":"...","offLimits":false,"choice":true}`;
 }
 
 /** Parses the classifier's reply. Keyword rules still win for a crisis. */
@@ -115,7 +119,7 @@ export function parseClassifierReply(raw: string, message: string): IntentResult
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
   try {
-    const parsed = JSON.parse(raw.slice(start, end + 1)) as { intent?: string; language?: string; offLimits?: unknown };
+    const parsed = JSON.parse(raw.slice(start, end + 1)) as { intent?: string; language?: string; offLimits?: unknown; choice?: unknown };
     const intent = parsed.intent;
     if (intent !== "dilemma" && intent !== "smalltalk" && intent !== "distress") return null;
     let language =
@@ -132,6 +136,7 @@ export function parseClassifierReply(raw: string, message: string): IntentResult
       language,
       source: "model",
       ...(parsed.offLimits === true ? { offLimits: true } : {}),
+      ...(typeof parsed.choice === "boolean" ? { choice: parsed.choice } : {}),
     };
   } catch {
     return null;

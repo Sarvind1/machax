@@ -82,12 +82,12 @@ describe("isRepeatCard", () => {
 describe("parseSynthesisReply + cardVerdict", () => {
   const last: LastCard = { question: "lend the cousin money?", options: ["lend it", "say no"], picked: "say no" };
 
-  it("reads a skip and honours it only after an earlier card", () => {
+  it("reads a skip and honours it, with or without an earlier card", () => {
     const reply = parseSynthesisReply('```json\n{"skip": true, "why": "story update"}\n```');
     expect(reply).toEqual({ skip: true, why: "story update" });
     expect(cardVerdict(reply, last)).toBe("skip");
-    // The first dilemma in a chat always gets a card: a skip there is a failed try.
-    expect(cardVerdict(reply, undefined)).toBe("thin");
+    // No real choice in a first message (a story, a share): no card, no retry.
+    expect(cardVerdict(reply, undefined)).toBe("skip");
   });
 
   it("shows a new card, drops a re-ask, and treats one option as thin", () => {

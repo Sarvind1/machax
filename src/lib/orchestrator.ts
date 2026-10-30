@@ -33,6 +33,7 @@ import { resolveMedia } from "./media-service";
 import { getMedia, memeMediaEnabled, memeMenuForPrompt } from "./get-media";
 import type { ChatMedia } from "./chat-media";
 import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
+import { resolveCue, mediaMomentInstruction, type CueMedia, type ResolvedCue } from "./first-round-cues";
 import { buildCharacterMemory } from "./private-memory";
 import type { CostCollector } from "./cost-collector";
 import type { Usage } from "./pricing";
@@ -940,6 +941,34 @@ export function outputRules(userName: string): string {
 Money is in Indian rupees: write ₹, rupees, lakh or crore, never €, $ or £ (unless ${userName} used them).`;
 }
 
+// Lines every friend fell back on ("literally did this once lol"). A reply with
+// one gets a retry asking for something specific.
+export const STOCK_LINE_RE =
+  /\b(literally did this|did this exact thing|did this (once|last (week|month|year))|regretted it so (hard|bad)|the real question (is|isn't)|you already know (the answer|what)|what'?s actually bothering you|been there,? done that)\b/i;
+
+/** True when a message ends on a question ("...what did she say? 💀"), not just has "??" in it. */
+export function endsOnQuestion(text: string): boolean {
+  return /\?[\s\p{Extended_Pictographic}\u200d\ufe0f]*$/u.test(text.trim());
+}
+
+// The first round decides whether a new user stays: specific, funny, and not
+// five friends all asking "what happened?".
+export function firstRoundRules(userName: string, isHook: boolean): string {
+  return `FIRST ROUND: ${userName} just walked into the group with this. Make them want to keep talking.
+- Riff on a concrete detail from their message (a number, a name, a time, a place), not a generic take that fits any problem.
+- Funny first, useful second. Roast the situation, never ${userName}. Indian Gen-Z group-chat voice: UPI, Swiggy, chai, mom's WhatsApp forwards, Bangalore rent, aunties, Insta close friends are fair game when they fit; don't force them.
+- ${isHook ? "You're the one who asks the question this round." : `Don't ask ${userName} a question in this message; another friend will. Give a take, a joke, a plan, or a reaction.`}
+- No stock openers: "literally did this", "did this exact thing", "the real question is", "you already know", "what's actually bothering you".`;
+}
+
+// First round sizing and speed. The first batch (up to 3 replies at once) uses
+// low effort so the first replies arrive fast; FIRST_BATCH_EFFORT overrides it.
+const FIRST_ROUND_MAX_SPEAKERS = 4;
+const FIRST_ROUND_MIN_SPEAKERS = 3;
+// Replies before the closing hook; a batch can overshoot by one or two.
+const FIRST_ROUND_MAX_MESSAGES = 6;
+const FIRST_BATCH_EFFORT: AnthropicEffort = (process.env.FIRST_BATCH_EFFORT as AnthropicEffort) || "low";
+
 // ── Prompt builder ──────────────────────────────────────────────────
 
 function buildPrompt(
@@ -967,7 +996,7 @@ function buildPrompt(
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
   language: string = "",
 ): string {
-  const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Consider this angle: ${contextHint}` : ""}`;
+  const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Your angle this time (say it your own way, don't copy these words): ${contextHint}.` : ""}`;
 
   let contextBlock: string;
   if (isLateJoiner) {
@@ -1010,7 +1039,7 @@ function buildPrompt(
       fewShotExample = `Example: "okay but here's the thing — i switched last year and the camera is better but everything else is the same. save your money unless camera is your thing"`;
       break;
     case lengthInstruction.includes("2-4 sentences"):
-      fewShotExample = `Example: "nah bro listen. i did this exact thing two years ago. quit my job, thought i'd figure it out. spent three months on the couch applying to random stuff. get your interviews lined up FIRST. trust me on this one."`;
+      fewShotExample = `Example: "nah listen. my cousin quit with no offer, spent three months 'building his personal brand' on linkedin. get your interviews lined up FIRST. trust me on this one."`;
       break;
     default:
       fewShotExample = `Examples: "depends if you're paying or parents are", "nah", "if your battery sucks just upgrade"`;
@@ -1121,8 +1150,11 @@ async function callFriend(
   // language: the user's language (from classifyMessage). allowMode: false on the
   // first replies of a turn, so they stay in the friend's own voice. effort: Sonnet thinking effort.
   // allowMedia: false = never send a sticker (guests).
-  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean } = {},
-): Promise<{ entry: ChatEntry; replyTo: string | null; media?: ChatMedia; model?: string; paid?: boolean } | null> {
+  // firstRound: the user's first message in this chat (see FIRST_ROUND_RULES).
+  // mediaMoment: this reply carries the cue's planned sticker. forceMediaOffer: offer
+  // a sticker regardless of the friend's mediaSendProbability. hook: end on a question.
+  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean; firstRound?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string } = {},
+): Promise<{ entry: ChatEntry; replyTo: string | null; media?: ChatMedia; mediaPlan?: CueMedia; model?: string; paid?: boolean } | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend) return null;
 
@@ -1318,9 +1350,19 @@ async function callFriend(
     prompt = `[Your private memory of what you missed: ${memory.summary}]\n\n` + prompt;
   }
 
+  if (extra.firstRound) {
+    prompt += `\n\n${firstRoundRules(userName, !!extra.hook)}`;
+  }
+  if (extra.hook) {
+    prompt += `\n\nEND THE ROUND: you're the last to reply for now. React to the chat in a few words if you like, then ${extra.hook}. One short, specific question ${userName} will want to answer, not "how do you feel" or "what's bothering you". End your message with "?".`;
+  }
+  if (extra.mediaMoment) {
+    prompt += `\n\n${mediaMomentInstruction(extra.mediaMoment)}`;
+  }
+
   // ── GIF prompt injection (conditional) ──
   const allowMedia = extra.allowMedia !== false;
-  const shouldOfferGif = allowMedia && Math.random() < (effectiveTraits.mediaSendProbability ?? 0);
+  const shouldOfferGif = allowMedia && !extra.mediaMoment && (extra.forceMediaOffer || Math.random() < (effectiveTraits.mediaSendProbability ?? 0));
   if (shouldOfferGif) {
     prompt += `\n\nReact with a visual this time! Write [REACT: 2-4 words describing your reaction to THIS specific moment] — describe what you're actually feeling right now, don't use generic reactions. You can write text before or after the tag, or just send it alone.`;
     if (memeMediaEnabled()) {
@@ -1423,6 +1465,7 @@ async function callFriend(
       if (looksIncomplete(t)) return "incomplete";
       if (looksLikeMetaText(t, friend.name)) return "meta";
       if (englishOnly && looksHinglish(t)) return "wrong-language";
+      if (STOCK_LINE_RE.test(t)) return "stock";
       return null;
     };
 
@@ -1434,21 +1477,32 @@ async function callFriend(
           ? "IMPORTANT: Output ONLY the chat message you'd send, exactly as it would appear in the group. No planning, no notes about length, language, rules or your character."
           : reason === "wrong-language"
             ? "IMPORTANT: Write it in plain English only. No Hindi or Hinglish words."
-            : "IMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
+            : reason === "stock"
+              ? `IMPORTANT: "${text.slice(0, 80)}" is a worn-out stock line. Say something specific to THIS situation instead, with a concrete detail.`
+              : "IMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
       ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, `${prompt}\n\n${fix}`, provider, Math.max(maxTokens, 150), undefined, collector));
       text = cleanResponse(text, friend.name).replace(/\[(?:REACT|GIF|MEME)[:\s][^\]]*\]/gi, "").trim();
 
       // Still bad after the retry: skip this friend rather than show it.
-      // A reply that is still a bit Hinglish is kept; an empty round is worse.
+      // A reply that is still a bit Hinglish or stock is kept; an empty round is worse.
       const reason2 = problemWith(text);
-      if (reason2 && reason2 !== "wrong-language") {
+      if (reason2 && reason2 !== "wrong-language" && reason2 !== "stock") {
         engineLog({ ts: new Date().toISOString(), event: "garbage-retry-failed", agent: friendId, text: text.slice(0, 120), reason: reason2, length: text.length });
         return null;
       }
     }
     text = fixCurrency(text, latestUserMsg ?? "");
 
-    return { entry: { from: friendId, text }, replyTo: replyToId, media, model: usedModel, paid };
+    // TODO(stickers): once the `stickers` branch (get-media.ts, chat-media.ts) is merged, resolve
+    // the planned sticker here and return it as `media` (ChatMedia):
+    //   const m = extra.mediaMoment;
+    //   media = (await getMedia({ template: m.template, caption: m.caption?.join("|") }))
+    //        ?? (await getMedia({ search: m.search })) ?? undefined;
+    //   if (media && !text) text = "[sent a GIF]";
+    // and let it through for guests too (allowMedia is false for them today; these are curated
+    // templates, not model-picked searches). Until then the plan rides along as `mediaPlan`,
+    // which the chat route does not send to the app.
+    return { entry: { from: friendId, text }, replyTo: replyToId, media, mediaPlan: extra.mediaMoment, model: usedModel, paid };
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
     engineLog({ ts: new Date().toISOString(), event: "agent-error", agent: friendId, error: String(err).slice(0, 200) });
@@ -1589,8 +1643,8 @@ export function buildSynthesisPrompt(p: {
   const latestRound = formatTranscript([{ from: "user", text: message }, ...roundResponses], userName);
   const skipRule = prevCard
     ? `\n\n${lastCardBlock(prevCard, userName)}\n\nOnly make a new card if ${userName}'s newest message brings a NEW or CHANGED choice they face right now. If it is a story update, small talk, a reply to the friends, or the same choice as that card (or one ${userName} already settled), return exactly {"skip": true, "why": "a few words"} instead.`
-    : "";
-  return `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic.\n\nEarlier chat (background only):\n${earlier || "(none)"}\n\nNewest message from ${userName} and the friends' replies to it:\n${latestRound}${skipRule}\n\nThe card is about what ${userName} is deciding NOW, after their newest message, not an older question from earlier in the chat. Extract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}, worded the way these friends would text it: casual, everyday words, like "just ask him for the money back" or "skip the wedding, keep the job". No office or finance-speak (never "maximize", "optimize", "prioritize", "leverage", "financial", "stability", "long-term growth", "explore options"). Labels are short and punchy (max 6 words); the blurb is one short casual line. Money is in rupees (₹, lakh, crore), never €, $ or £. Return JSON in this exact shape:\n{\n  "question": "a short restatement of what the user is deciding now",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`;
+    : `\n\nOnly make a card if ${userName} faces a real choice here, asked or plainly implied. If there's nothing to pick between (a story, gossip, a share, a vent), return exactly {"skip": true, "why": "a few words"} instead.`;
+  return `Here is a group chat where friends (${friendNames.join(", ")}) discussed a topic.\n\nEarlier chat (background only):\n${earlier || "(none)"}\n\nNewest message from ${userName} and the friends' replies to it:\n${latestRound}${skipRule}\n\nThe card is about what ${userName} is deciding NOW, after their newest message, not an older question from earlier in the chat. Extract 2-4 genuinely different choices the user could make (e.g. "ask for it back directly" vs "drop hints" vs "let it go"), not two wordings of the same move. Each friend who spoke votes for exactly ONE option: put their ID in that option's "voices" (the option they argued for or leaned toward). Talk to ${userName} as "you" in the question, labels and blurbs; never call them by name or "he", "she" or "they". Write "question", "label" and "blurb" in ${language || "the language the user wrote in"}, worded the way these friends would text it: casual, everyday words, like "just ask him for the money back" or "skip the wedding, keep the job". No office or finance-speak (never "maximize", "optimize", "prioritize", "leverage", "financial", "stability", "long-term growth", "explore options"). Labels are short and punchy (max 6 words); the blurb is one short casual line. Money is in rupees (₹, lakh, crore), never €, $ or £. Return JSON in this exact shape:\n{\n  "question": "what you're deciding, asked TO the user as 'you', e.g. 'do you reply to your ex?', never their name or he/she/they",\n  "options": [\n    {\n      "id": "opt1",\n      "label": "short label",\n      "blurb": "1-sentence summary of this option",\n      "voices": ["friendId1"]\n    }\n  ]\n}\n\nUse the friend IDs (${podFriendIds.join(", ")}) in the voices array, not display names. No friend appears in two options. Return 2-4 options.`;
 }
 
 /**
@@ -1847,8 +1901,10 @@ export async function* orchestrateChat(params: {
   // Only make the vote card for the chat so far (the user opened the teaser):
   // `message` is the newest user line, `history` the whole chat.
   cardOnly?: boolean;
+  // Evals only: run this take of a cue chip instead of its `chosen` one.
+  cueTake?: string;
 }): AsyncGenerator<EngineEvent> {
-  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true, lastCard, lazyCard, cardOnly } = params;
+  const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true, lastCard, lazyCard, cardOnly, cueTake } = params;
 
   // Parse character overrides once
   let parsedOverrides: Record<string, any> = {};
@@ -1967,6 +2023,13 @@ export async function* orchestrateChat(params: {
     return;
   }
 
+  // ── First round: the user's first message in this chat ──
+  // A tapped example chip runs its planned cast (first-round-cues.ts); a typed
+  // first message gets 3-4 speakers. Either way every speaker gets a turn.
+  const isFirstRound = history.length === 0;
+  const cue: ResolvedCue | null = isFirstRound ? resolveCue(message, podFriendIds, cueTake) : null;
+  if (cue) engineLog({ ts: new Date().toISOString(), event: "first-round-cue", take: cue.takeId, speakers: cue.speakers, mediaBy: cue.media.friendId, template: cue.media.template });
+
   // ── Director agent: research the topic (runs parallel with first batch) ──
   let topicContext = "";
   const topicContextPromise = Promise.race([
@@ -2018,11 +2081,14 @@ export async function* orchestrateChat(params: {
   // The per-iteration mention check (line ~1340) is kept as a safety net so replyTo
   // chains and follow-up mentions within the same turn still route correctly.
   let speakerIds = podFriendIds;
-  if (podFriendIds.length > 1) {
+  if (cue) {
+    speakerIds = cue.speakers;
+  } else if (podFriendIds.length > 1) {
     const selection = selectSpeakers({
       podFriendIds,
       userMessage: message,
       friendsById: FRIENDS_BY_ID,
+      ...(isFirstRound ? { cap: FIRST_ROUND_MAX_SPEAKERS, minSpeakers: FIRST_ROUND_MIN_SPEAKERS } : {}),
     });
     speakerIds = selection.chosen;
     console.log("[engine] speaker-selection", JSON.stringify(selection.reasons), "scores:", JSON.stringify(
@@ -2032,8 +2098,21 @@ export async function* orchestrateChat(params: {
 
   // ── Initialize presence for all agents ──
   const agents: AgentPresence[] = speakerIds.map((id) => initPresence(id));
+  if (isFirstRound) {
+    // Nobody lurks the first round; a planned cast comes online in speaking order.
+    agents.forEach((a, i) => {
+      a.traits = { ...a.traits, lurkerChance: 0 };
+      if (cue) a.arriveAtMs = i * 300;
+    });
+  }
   // Sort by arrival time so fast agents come online first
   agents.sort((a, b) => a.arriveAtMs - b.arriveAtMs);
+  // Typed first message: the most sticker-happy speaker is offered a sticker on their first reply.
+  let mediaOfferFor: string | null =
+    isFirstRound && !cue
+      ? [...speakerIds].sort((a, b) => (FRIENDS_BY_ID[b]?.traits.mediaSendProbability ?? 0) - (FRIENDS_BY_ID[a]?.traits.mediaSendProbability ?? 0))[0] ?? null
+      : null;
+  let cueMediaSent = false;
 
   // ── Continuous flow loop ──
   // Each iteration: advance time, update presence, pick next responder, call model
@@ -2051,7 +2130,7 @@ export async function* orchestrateChat(params: {
   let emptyStreak = 0;
   let stoppedFor: ReturnType<typeof emptyRoundStop> = null;
 
-  while (energy > ENERGY_FLOOR && callBatches < MAX_ITERATIONS && iterations < MAX_LOOPS) {
+  while (energy > ENERGY_FLOOR && callBatches < MAX_ITERATIONS && iterations < MAX_LOOPS && !(isFirstRound && roundResponses.length >= FIRST_ROUND_MAX_MESSAGES)) {
     iterations++;
 
     const iterTrace: import("./engine-types").IterationTrace = {
@@ -2129,12 +2208,17 @@ export async function* orchestrateChat(params: {
         }
       } else {
         if (!target) continue;
-        if (!shouldRespond(agent, target.score, roundResponses, energy, topicAffinity)) continue;
+        // First round: everyone picked gets their first say.
+        const firstSay = isFirstRound && agent.responseCount === 0;
+        if (!firstSay && !shouldRespond(agent, target.score, roundResponses, energy, topicAffinity)) continue;
       }
 
       if (!target) continue;
 
-      const delay = drawDelay(agent.traits.responseSpeed);
+      // A planned cast speaks in its order the first time round.
+      const delay = cue && agent.responseCount === 0
+        ? cue.speakers.indexOf(agent.id) * 500
+        : drawDelay(agent.traits.responseSpeed);
       scoredCandidates.push({ agent, target, delay });
     }
 
@@ -2200,8 +2284,13 @@ export async function* orchestrateChat(params: {
       batch.map(({ agent, target }, batchIdx) => {
         const attentionWindow = getAttentionWindow(agent.traits);
         const isLateJoiner = agent.responseCount === 0 && roundResponses.length >= 2;
-        // Only the first agent in batch gets the "ask user" nudge
-        const shouldAskUser = needsUserEngagement && batchIdx === 0;
+        // Only the first agent in batch gets the "ask user" nudge (first round: the closing hook asks instead)
+        const shouldAskUser = needsUserEngagement && batchIdx === 0 && !isFirstRound;
+        const firstSay = agent.responseCount === 0;
+        const mediaMoment = cue && !cueMediaSent && agent.id === cue.media.friendId ? cue.media : undefined;
+        if (mediaMoment) cueMediaSent = true;
+        const forceMediaOffer = firstSay && agent.id === mediaOfferFor;
+        if (forceMediaOffer) mediaOfferFor = null;
 
         return callFriend(
           agent.id,
@@ -2214,7 +2303,7 @@ export async function* orchestrateChat(params: {
           podFriendIds,
           userName,
           shouldAskUser,
-          "", // contextHint removed — director agent handles context
+          cue && firstSay ? cue.angles[agent.id] ?? "" : "", // a planned cast's angle, first reply only
           filterTopicForCharacter(topicContext, agent.id, message),
           isMinimalPrompt,
           sessionMood,
@@ -2223,9 +2312,12 @@ export async function* orchestrateChat(params: {
           {
             language,
             // The first replies of a turn stay in each friend's own voice and arrive faster.
-            allowMode: roundResponses.length > 0,
-            effort: roundResponses.length === 0 ? "low" : undefined,
+            allowMode: roundResponses.length > 0 && !isFirstRound,
+            effort: roundResponses.length === 0 ? FIRST_BATCH_EFFORT : undefined,
             allowMedia,
+            firstRound: isFirstRound,
+            mediaMoment,
+            forceMediaOffer,
           },
         );
       }),
@@ -2254,7 +2346,7 @@ export async function* orchestrateChat(params: {
         engineLog({ ts: new Date().toISOString(), event: "null-response", agent: batch[i].agent.id, iteration: iterations });
         continue;
       }
-      const { entry, replyTo, media, model: usedModel, paid } = result.value;
+      const { entry, replyTo, media, mediaPlan, model: usedModel, paid } = result.value;
       const agent = batch[i].agent;
       const target = batch[i].target;
 
@@ -2299,7 +2391,9 @@ export async function* orchestrateChat(params: {
       // Fix 2 (260519-kq3) — carry replyTo on the ChatEntry so future turns'
       // per-character memory filter can resolve "messages where X was the
       // replyTo target" from history without extra plumbing.
-      roundResponses.push({ ...entry, replyTo });
+      // Friends can't see a sticker, so later replies get a note of what it was.
+      const stickerNote = mediaPlan ? ` [sent a ${mediaPlan.kind}: ${mediaPlan.caption?.join(" / ") ?? mediaPlan.template}]` : "";
+      roundResponses.push({ ...entry, text: entry.text + stickerNote, replyTo });
 
       // Update trace with response
       const traceAgent = iterTrace.selectedAgents.find(a => a.agentId === agent.id);
@@ -2331,6 +2425,7 @@ export async function* orchestrateChat(params: {
         text: entry.text,
         replyTo: replyTo ?? undefined,
         ...(includeMedia && media ? { media } : {}),
+        ...(mediaPlan ? { mediaPlan } : {}),
       };
 
       // ── Energy decay ──
@@ -2384,13 +2479,44 @@ export async function* orchestrateChat(params: {
     return;
   }
 
+  // ── First round ends on a question to the user ──
+  // If the last reply doesn't ask them anything, one more friend closes with a hook.
+  if (isFirstRound && roundResponses.length > 0 && !endsOnQuestion(roundResponses[roundResponses.length - 1].text)) {
+    const lastFrom = roundResponses[roundResponses.length - 1].from;
+    const spoke = (id: string) => roundResponses.filter((r) => r.from === id).length;
+    const closer = speakerIds.filter((id) => id !== lastFrom).sort((a, b) => spoke(a) - spoke(b))[0];
+    if (closer) {
+      yield { type: "typing", agentId: closer };
+      const userIdx = baseMessages.length - 1;
+      const closing = await callFriend(
+        closer, allMessages(), provider, { index: userIdx, from: "user", text: message, score: 5 }, false, energy,
+        getAttentionWindow(getTraits(closer)), podFriendIds, userName, false, "",
+        filterTopicForCharacter(topicContext, closer, message), isMinimalPrompt, sessionMood, parsedOverrides, collector,
+        { language, allowMode: false, allowMedia, firstRound: true, hook: cue?.hook ?? "ask about the one detail that would change the group's advice" },
+      ).catch((err) => {
+        engineLog({ ts: new Date().toISOString(), event: "hook-failed", agent: closer, reason: String(err).slice(0, 200) });
+        return null;
+      });
+      if (closing) {
+        roundResponses.push({ ...closing.entry, replyTo: "user" });
+        engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: closer, text: closing.entry.text.slice(0, 80), model: closing.model || "unknown", paid: !!closing.paid, hasMedia: false, mediaSource: null, iteration: iterations + 1, energy: parseFloat(energy.toFixed(3)), hook: true });
+        yield { type: "message", from: closer, text: closing.entry.text, replyTo: "user" };
+      }
+    }
+  }
+
   // ── Synthesis pass — extract decision options ──────────────────────
   // Small talk inside an ongoing chat gets replies but no new vote card.
   if (sorted.intent === "smalltalk") return;
 
-  // New clients get a "card ready" teaser and ask for the card when the user
-  // opens it (cardOnly); older app builds still get the card inline.
-  if (lazyCard) {
+  // A vote card only when there's a real choice: a chip says so in its plan,
+  // otherwise the classifier's "choice" (unknown counts as a choice, as before).
+  const hasChoice = cue ? cue.decision : sorted.choice !== false;
+  if (!hasChoice) {
+    engineLog({ ts: new Date().toISOString(), event: "card-skip", why: "no choice in message" });
+  } else if (lazyCard) {
+    // New clients get a "card ready" teaser and ask for the card when the user
+    // opens it (cardOnly); older app builds still get the card inline.
     yield { type: "card-ready" };
   } else {
     yield* synthesizeCard({ history, message, roundResponses, userName, podFriendIds, language, prevCard: lastCard ?? lastCardFromHistory(history), provider, collector });

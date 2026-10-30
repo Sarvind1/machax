@@ -22,7 +22,7 @@ export type EngineEvent =
   | { type: "typing"; agentId: string }
   | { type: "typing-stop"; agentId: string }
   // media: a GIF or sticker the friend dropped (see chat-media.ts).
-  | { type: "message"; from: string; text: string; replyTo?: string; media?: import("./chat-media").ChatMedia }
+  | { type: "message"; from: string; text: string; replyTo?: string; media?: import("./chat-media").ChatMedia; mediaPlan?: import("./first-round-cues").CueMedia }
   | { type: "joined"; agentId: string }
   | { type: "lurking"; agentId: string }
   | { type: "presence"; agentId: string; state: PresenceState }
