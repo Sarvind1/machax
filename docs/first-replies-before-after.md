@@ -2,7 +2,7 @@
 
 The first round of replies to each example chip, old engine vs new. Model: Sonnet 5.5 (medium effort; first batch of up to 3 replies at low effort), Haiku for helpers. All runs are real API calls with a guest-style pod (`selectPod([tag], 7)`, user name "Arnav"), made with `scripts/first-round-eval.ts`.
 
-**Pick per cue:** each cue has 3 takes (A/B/C) in `src/lib/first-round-cues.ts`; each take ran twice (first-batch effort `low`, the shipped default, and `medium`). To lock in a take, set that cue's `chosen` to its id. To keep a single good line, put it in that friend's `angle`.
+**Pick per cue:** each cue has 3 takes (A/B/C) in `src/lib/first-round-cues.ts`; each take ran twice (first-batch effort `low`, the shipped default, and `medium`). To lock in takes, set that cue's `chosen` to 1-2 take ids (with two, each chat picks one at random). Current picks: `first-replies-picks.md`. To keep a single good line, put it in that friend's `angle`.
 
 **Stickers:** every candidate names the exact `MEME_TEMPLATES` id (stickers branch, `chat-media.ts`) and caption. The sticker isn't rendered yet: the plan rides on the message as `mediaPlan` until the stickers branch is merged (see the `TODO(stickers)` in `orchestrator.ts`).
 

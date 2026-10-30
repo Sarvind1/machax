@@ -4,8 +4,8 @@
 // what order, the angle each one takes, the sticker moment, and the question
 // that ends the round.
 //
-// Each cue has a few "takes". `chosen` picks the one that runs; swap it to try
-// another. A friend in a take who isn't in the user's pod is skipped (the pod
+// Each cue has a few "takes". `chosen` lists the 1-2 takes that run; with two,
+// each new chat picks one at random. Swap them to try another. A friend in a take who isn't in the user's pod is skipped (the pod
 // is picked on the phone), and the round tops up from the pod.
 //
 // Angles are a direction, not a line to copy: the friend still writes in their
@@ -47,7 +47,8 @@ export interface CuePlan {
   text: string;
   /** True when the cue is a real choice, so the round ends with a vote card. */
   decision: boolean;
-  chosen: string;
+  /** Take ids that run (1-2); each first round picks one at random. */
+  chosen: string[];
   takes: CueTake[];
 }
 
@@ -55,7 +56,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "My friend owes me 15k and keeps posting Goa stories",
     decision: true,
-    chosen: "A",
+    chosen: ["C", "B"],
     takes: [
       {
         id: "A",
@@ -99,7 +100,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "Mom set up a rishta meeting this Sunday. Do I go?",
     decision: true,
-    chosen: "A",
+    chosen: ["C", "B"],
     takes: [
       {
         id: "A",
@@ -143,7 +144,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "Boss texts me on Sunday nights. Reply or ignore?",
     decision: true,
-    chosen: "A",
+    chosen: ["B", "A"],
     takes: [
       {
         id: "A",
@@ -187,7 +188,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "My ex liked my story at 2am. Should I reply?",
     decision: true,
-    chosen: "A",
+    chosen: ["C", "B"],
     takes: [
       {
         id: "A",
@@ -231,7 +232,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "Got a 30% hike offer but the new team seems toxic",
     decision: true,
-    chosen: "A",
+    chosen: ["A", "C"],
     takes: [
       {
         id: "A",
@@ -275,7 +276,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "Friends want a Bali trip. I have 40k in savings",
     decision: true,
-    chosen: "A",
+    chosen: ["C", "B"],
     takes: [
       {
         id: "A",
@@ -319,7 +320,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "She left me on seen for 2 days. Do I double text?",
     decision: true,
-    chosen: "A",
+    chosen: ["A"],
     takes: [
       {
         id: "A",
@@ -363,7 +364,7 @@ export const CUE_PLANS: CuePlan[] = [
   {
     text: "Parents want me home by 10pm. I'm 24",
     decision: true,
-    chosen: "A",
+    chosen: ["B"],
     takes: [
       {
         id: "A",
@@ -425,12 +426,14 @@ const MIN_FIRST_ROUND_SPEAKERS = 3;
 
 /**
  * The plan for a cue chip, fitted to the pod, or null when `message` isn't a
- * chip. `takeId` overrides the cue's `chosen` take (for evals).
+ * chip. The take is a random one of the cue's `chosen`; `takeId` overrides it
+ * (for evals). `rand` is injectable for tests.
  */
-export function resolveCue(message: string, podFriendIds: string[], takeId?: string): ResolvedCue | null {
+export function resolveCue(message: string, podFriendIds: string[], takeId?: string, rand: () => number = Math.random): ResolvedCue | null {
   const plan = CUE_PLANS_BY_TEXT[message.trim()];
   if (!plan) return null;
-  const take = plan.takes.find((t) => t.id === (takeId ?? plan.chosen)) ?? plan.takes[0];
+  const picked = plan.chosen[Math.floor(rand() * plan.chosen.length)] ?? plan.chosen[0];
+  const take = plan.takes.find((t) => t.id === takeId) ?? plan.takes.find((t) => t.id === picked) ?? plan.takes[0];
   const inPod = new Set(podFriendIds);
   const speakers = take.cast.map((c) => c.id).filter((id) => inPod.has(id)).slice(0, FIRST_ROUND_SPEAKERS);
   // Top up from the pod, chattiest first, so there are always 3+ voices.

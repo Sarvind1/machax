@@ -17,7 +17,10 @@ describe("cue plans", () => {
 
   it("friends, chosen take and sticker templates all exist", () => {
     for (const plan of CUE_PLANS) {
-      expect(plan.takes.some((t) => t.id === plan.chosen)).toBe(true);
+      expect(plan.chosen.length, plan.text).toBeGreaterThanOrEqual(1);
+      expect(plan.chosen.length, plan.text).toBeLessThanOrEqual(2);
+      expect(new Set(plan.chosen).size, plan.text).toBe(plan.chosen.length);
+      for (const id of plan.chosen) expect(plan.takes.some((t) => t.id === id), `${plan.text} ${id}`).toBe(true);
       for (const take of plan.takes) {
         for (const c of take.cast) expect(FRIENDS_BY_ID[c.id], `${plan.text} ${take.id} ${c.id}`).toBeDefined();
         for (const id of take.media.by) expect(FRIENDS_BY_ID[id]).toBeDefined();
@@ -30,6 +33,7 @@ describe("cue plans", () => {
 
 describe("resolveCue", () => {
   const money = CUE_PLANS[0].text;
+  const FRIENDS_IDS = Object.keys(FRIENDS_BY_ID);
 
   it("is null for a typed message", () => {
     expect(resolveCue("the girl i like posted lilies", ["noor", "suresh", "dev"])).toBeNull();
@@ -49,8 +53,18 @@ describe("resolveCue", () => {
     expect(r.speakers).toContain(r.media.friendId);
   });
 
-  it("falls back to the chosen take for an unknown take id", () => {
-    expect(resolveCue(money, ["noor", "suresh", "pradeep"], "Z")!.takeId).toBe(CUE_PLANS[0].chosen);
+  it("falls back to a chosen take for an unknown take id", () => {
+    expect(CUE_PLANS[0].chosen).toContain(resolveCue(money, ["noor", "suresh", "pradeep"], "Z")!.takeId);
+  });
+
+  it("rotates between the chosen takes", () => {
+    const pod = FRIENDS_IDS;
+    for (const plan of CUE_PLANS) {
+      const first = resolveCue(plan.text, pod, undefined, () => 0)!.takeId;
+      const last = resolveCue(plan.text, pod, undefined, () => 0.999)!.takeId;
+      expect(first).toBe(plan.chosen[0]);
+      expect(last).toBe(plan.chosen[plan.chosen.length - 1]);
+    }
   });
 
   it("names the template and caption for the sender", () => {
