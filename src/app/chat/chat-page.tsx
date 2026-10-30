@@ -60,7 +60,7 @@ import BackArrow from "../back-button";
 import FriendAvatar from "@/components/friend-avatar";
 import FaceStack from "@/components/face-stack";
 import { onBack } from "@/lib/back-nav";
-import { lastCardFrom, type LastCard } from "@/lib/vote-card";
+import { isCardStale, lastCardFrom, type LastCard } from "@/lib/vote-card";
 import { planReveal } from "@/lib/reply-pacing";
 import { VotePanel, VotePill, VoteSheet } from "./components/vote-dock";
 import "./chat.css";
@@ -806,6 +806,8 @@ export default function ChatPage() {
     }
 
     setInput("");
+    // A teaser from the last round is about an older message now.
+    setCardTeaser(false);
 
     // Guard against Convex reactive query overwriting local state during the
     // submit flow.  The sendMessage mutation triggers the convexMessages query
@@ -983,7 +985,8 @@ export default function ChatPage() {
   // Opening the vote card: if the latest round has a teaser, make the card now
   // (one cheap call); otherwise the card already made is shown, no model call.
   const requestCard = async () => {
-    if (!cardTeaser || cardLoading || !activeConversation) return;
+    // Never while friends are replying: starting a request cuts the running round off.
+    if (!cardTeaser || cardLoading || isLoading || !activeConversation) return;
     const lines = messages.filter((m) => !isCardMessage(m.from));
     const lastUser = [...lines].reverse().find((m) => m.from === "user");
     if (!lastUser) return;
@@ -1011,6 +1014,9 @@ export default function ChatPage() {
   // message, and let the friends react to it in the chat.
   const handleDecisionSelect = async (optionId: string) => {
     if (!activeConversation || !settingsUsername || !decision) return;
+    // A pick sent mid-round used to cut off the replies to a newer typed message
+    // (lost rounds on 29 Oct). The card is disabled then too; this is the backstop.
+    if (isLoading || isCardStale(messages, messages.map((m) => m.from).lastIndexOf(cardFrom("vote")))) return;
     const option = decision.options.find((o) => o.id === optionId);
     if (!option) return;
     setPickedOptionId(optionId);
@@ -1055,6 +1061,8 @@ export default function ChatPage() {
     loading: cardLoading,
     onPick: (id: string) => void handleDecisionSelect(id),
     shareLines: pickShareLines((lastVoteIdx >= 0 ? messages.slice(0, lastVoteIdx) : messages).filter((x) => !isCardMessage(x.from))),
+    stale: isCardStale(messages, lastVoteIdx),
+    busy: isLoading,
   };
 
   const friendsRecord = Object.fromEntries(
@@ -1496,7 +1504,7 @@ export default function ChatPage() {
           )}
         </div>
 
-        <VotePill decision={decision} pickedId={pickedOptionId} teaser={cardTeaser} loading={cardLoading} onOpen={openVoteSheet} />
+        <VotePill {...voteDock} onOpen={openVoteSheet} />
 
         <div className="chat-messages" ref={chatScrollRef}>
           {messages.map((m, idx) => {

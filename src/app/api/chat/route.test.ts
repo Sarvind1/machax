@@ -484,6 +484,50 @@ describe("POST /api/chat", () => {
   });
 });
 
+describe("POST /api/chat round log", () => {
+  // The [round] lines the function log gets, parsed.
+  const roundLines = (spy: { mock: { calls: unknown[][] } }) =>
+    spy.mock.calls.map(([l]) => String(l)).filter((l) => l.startsWith("[round] ")).map((l) => JSON.parse(l.slice(8)));
+
+  it("logs the end of a round with how many replies were sent", async () => {
+    convex({});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+      yield { type: "message", from: "b", text: "sup" } satisfies EngineEvent;
+    });
+    await events(await POST(req()));
+    expect(roundLines(info)).toEqual([expect.objectContaining({ event: "end", conversationId: "c1", messagesSent: 2 })]);
+  });
+
+  it("logs a client that leaves mid-round, with the replies it had been sent", async () => {
+    convex({});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "one" } satisfies EngineEvent;
+      await gate;
+      yield { type: "message", from: "a", text: "two" } satisfies EngineEvent;
+    });
+    const reader = (await POST(req())).body!.getReader();
+    await reader.read();
+    await Promise.resolve();
+    const cancelling = reader.cancel();
+    release();
+    await cancelling;
+    expect(roundLines(warn)).toEqual([expect.objectContaining({ event: "client-disconnected", conversationId: "c1", messagesSent: 1 })]);
+  });
+
+  it("logs which kind of request cut the running round off", async () => {
+    convex({});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    orchestrateChat.mockImplementation(async function* () {});
+    await events(await POST(req({ ...body, interrupting: true, pickedOption: { label: "say no", voices: [] } })));
+    expect(roundLines(warn)).toEqual([expect.objectContaining({ event: "superseded", conversationId: "c1", by: "pick" })]);
+  });
+});
+
 describe("POST /api/chat as a guest (no token)", () => {
   const GID = "11111111-2222-3333-4444-555555555555";
   const guestReq = (b: Record<string, unknown>, headers: Record<string, string> = {}) =>

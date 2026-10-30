@@ -35,6 +35,15 @@ export function lastCardFrom(messages: { from: string; text: string }[]): LastCa
   });
 }
 
+/**
+ * True when the user typed a new message after the vote card at `voteIdx`: the
+ * card is about an older question and can't be picked any more (a pick then
+ * would also cut off the replies to the newer message).
+ */
+export function isCardStale(messages: { from: string; text: string }[], voteIdx: number): boolean {
+  return voteIdx >= 0 && messages.slice(voteIdx + 1).some((m) => m.from === "user" && !m.text.startsWith(PICK_PREFIX));
+}
+
 /** Checks a client-sent last card. Anything malformed is dropped, not an error. */
 export function parseLastCard(raw: unknown): LastCard | undefined {
   if (!raw || typeof raw !== "object") return undefined;

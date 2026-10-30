@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Decision } from "./types";
 import {
   cardVerdict,
+  isCardStale,
   isRepeatCard,
   lastCardBlock,
   lastCardFrom,
@@ -110,5 +111,15 @@ describe("lastCardBlock", () => {
     expect(settled).toContain('"q?"');
     expect(settled).toContain('asha already picked: "a"');
     expect(lastCardBlock({ question: "q?", options: [] }, "asha")).toContain("hasn't picked");
+  });
+});
+
+describe("isCardStale", () => {
+  const card = { from: "card:vote", text: "{}" };
+  it("a typed message after the card makes it stale; a pick or friend reply doesn't", () => {
+    expect(isCardStale([card, { from: "dev", text: "lol" }], 0)).toBe(false);
+    expect(isCardStale([card, { from: "user", text: "going with: say no" }], 0)).toBe(false);
+    expect(isCardStale([card, { from: "user", text: "how tall are you all?" }], 0)).toBe(true);
+    expect(isCardStale([{ from: "user", text: "hi" }], -1)).toBe(false);
   });
 });

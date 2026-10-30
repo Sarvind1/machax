@@ -17,15 +17,20 @@ export interface VoteDockState {
   /** A newer card can be made for the latest round (not fetched yet). */
   teaser: boolean;
   loading: boolean;
+  /** The user typed a new message after this card: it's about an older question. */
+  stale: boolean;
+  /** Friends are still replying: a pick or a card request now would cut them off. */
+  busy: boolean;
 }
 
 /** The pill's one line, or null when there's nothing to show. */
-export function votePillLabel({ decision, pickedId, teaser, loading }: VoteDockState): string | null {
+export function votePillLabel({ decision, pickedId, teaser, loading, stale }: Pick<VoteDockState, "decision" | "pickedId" | "teaser" | "loading" | "stale">): string | null {
   if (loading) return "counting the votes…";
   if (teaser) return "the group has a verdict · tap to see";
   if (!decision) return null;
   const picked = decision.options.find((o) => o.id === pickedId);
-  return picked ? `you went with: ${picked.label}` : `the group votes: ${decision.question}`;
+  if (picked) return `you went with: ${picked.label}`;
+  return stale ? `earlier vote: ${decision.question}` : `the group votes: ${decision.question}`;
 }
 
 interface DockProps extends VoteDockState {
@@ -33,20 +38,21 @@ interface DockProps extends VoteDockState {
   shareLines: ShareLine[];
 }
 
-function DockBody({ decision, pickedId, teaser, loading, onPick, shareLines, onRequest }: DockProps & { onRequest: () => void }) {
+function DockBody({ decision, pickedId, teaser, loading, stale, busy, onPick, shareLines, onRequest }: DockProps & { onRequest: () => void }) {
   if (loading) return <div className="chat-decision-empty">counting the votes…</div>;
   if (teaser || !decision) {
     return (
       <>
         <div className="chat-decision-header">the group votes</div>
         <p className="chat-decision-note">they&apos;ve picked sides on your latest message</p>
-        <button type="button" className="chat-decision-pick" onClick={onRequest}>
-          see what the group says
+        <button type="button" className="chat-decision-pick" onClick={onRequest} disabled={busy}>
+          {busy ? "they're still replying…" : "see what the group says"}
         </button>
       </>
     );
   }
-  return <VoteCard decision={decision} active pickedId={pickedId} onPick={onPick} shareLines={shareLines} />;
+  // A stale card stays readable but can't be picked; a busy one waits for the replies.
+  return <VoteCard decision={decision} active={!stale && !busy} pickedId={pickedId} onPick={onPick} shareLines={shareLines} />;
 }
 
 /** Phone: the pill under the header. */
