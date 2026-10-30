@@ -16,6 +16,13 @@ const LEGACY_ACHIEVEMENT = "Activated";
 export const META_EVENTS = ["CompleteRegistration", ACHIEVEMENT, LEGACY_ACHIEVEMENT] as const;
 export type MetaEventName = (typeof META_EVENTS)[number];
 
+// The name Meta gets must match what the SDK logs, or the pair isn't deduped.
+// Clients say "CompleteRegistration" but the SDK logs fb_mobile_complete_registration
+// (all builds, old ones included), so translate here. Other names already match.
+export function capiEventName(eventName: string): string {
+  return eventName === "CompleteRegistration" ? "fb_mobile_complete_registration" : eventName;
+}
+
 // Checks the event really happened (server truth, not the client's word) and records it,
 // so a user's CompleteRegistration / first-pick event fires at most once.
 // Returns what the send step needs, or null when the event shouldn't be sent.
@@ -106,7 +113,7 @@ export const send = internalAction({
     const body: Record<string, unknown> = {
       data: [
         {
-          event_name: args.eventName,
+          event_name: capiEventName(args.eventName),
           event_time: args.eventTime,
           event_id: args.eventId,
           action_source: "app",

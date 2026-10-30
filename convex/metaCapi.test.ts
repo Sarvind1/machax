@@ -3,6 +3,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { internal } from "./_generated/api";
+import { capiEventName } from "./metaCapi";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -55,5 +56,16 @@ describe("metaCapi.claim achievement unlocked", () => {
     const t = await setup(true);
     expect(await claim(t, "fb_mobile_achievement_unlocked", "e1")).not.toBeNull();
     expect(await claim(t, "Activated", "e2")).toBeNull();
+  });
+});
+
+describe("capiEventName matches what the SDK logs", () => {
+  test("sign-up goes to Meta under the SDK's name", () => {
+    expect(capiEventName("CompleteRegistration")).toBe("fb_mobile_complete_registration");
+  });
+
+  test("other names pass through", () => {
+    expect(capiEventName("fb_mobile_achievement_unlocked")).toBe("fb_mobile_achievement_unlocked");
+    expect(capiEventName("Activated")).toBe("Activated");
   });
 });
