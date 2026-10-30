@@ -493,8 +493,6 @@ export async function POST(request: Request) {
       lastCard: parseLastCard((body as { lastCard?: unknown }).lastCard),
       lazyCard: lazyCard === true,
       cardOnly: cardOnly === true,
-      // Guests get no reaction stickers.
-      allowMedia: !!account,
     }), roundLog);
 
     // One trace per round (debate, small talk, distress, pick), finished or cut off.

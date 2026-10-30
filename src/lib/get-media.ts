@@ -2,7 +2,7 @@
 // term, into a ChatMedia attachment. Results are cached in memory.
 //
 // Off unless MEME_MEDIA_ENABLED=1 (getMedia returns null). The older
-// [REACT: ...] cartoon-sticker path in media-service.ts is not affected.
+// [REACT: ...] Klipy GIF/sticker path in media-service.ts is not affected.
 //
 // Sources:
 //   - memegen.link (MIT, self-hostable): global templates with the caption drawn
@@ -18,7 +18,7 @@ import { searchKlipy } from "./media-service";
 export interface MediaRequest {
   // A MEME_TEMPLATES id, e.g. "drake", "rasode".
   template?: string;
-  // Free text; finds a cartoon/animal/emoji sticker (no real people).
+  // Free text; finds a Klipy GIF or sticker.
   search?: string;
   // Caption for memegen templates: one string with lines split by "|", or an array.
   // Ignored for GIF templates (the friend's message text carries it).
