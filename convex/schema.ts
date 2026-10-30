@@ -25,6 +25,13 @@ export default defineSchema({
     mediaUrl: v.optional(v.string()),
     mediaThumbnailUrl: v.optional(v.string()),
     mediaAltText: v.optional(v.string()),
+    // A GIF or sticker a friend dropped: { kind, url, alt }. The flat media*
+    // fields above are the older shape, kept for old rows and old app builds.
+    media: v.optional(v.object({
+      kind: v.union(v.literal("gif"), v.literal("sticker")),
+      url: v.string(),
+      alt: v.string(),
+    })),
     replyTo: v.optional(v.string()),
     timestamp: v.number(),
   }).index("by_conversation", ["conversationId", "timestamp"]),

@@ -5,6 +5,7 @@ import { Share } from "@capacitor/share";
 import { FRIENDS_BY_ID } from "@/lib/friends";
 import { moodFromText, stickerColor } from "@/lib/friend-faces";
 import FriendAvatar from "@/components/friend-avatar";
+import type { ChatMedia } from "@/lib/chat-media";
 
 const REPORT_REASONS = ["offensive", "harmful or unsafe", "sexual", "other"];
 
@@ -14,14 +15,12 @@ interface ChatMessageProps {
   isUser: boolean;
   replyTo?: string;
   replyToText?: string;
-  mediaType?: "gif" | "sticker" | "meme";
-  mediaUrl?: string;
-  mediaThumbnailUrl?: string;
-  mediaAltText?: string;
+  // A GIF or sticker the friend dropped (old flat fields: pass mediaOf(message)).
+  media?: ChatMedia | null;
   onReport?: (reason: string) => Promise<void>;
 }
 
-export default function ChatMessage({ from, text, isUser, replyTo, replyToText, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, onReport }: ChatMessageProps) {
+export default function ChatMessage({ from, text, isUser, replyTo, replyToText, media, onReport }: ChatMessageProps) {
   // System messages (joins, events)
   if (from === "system") {
     return (
@@ -44,7 +43,7 @@ export default function ChatMessage({ from, text, isUser, replyTo, replyToText, 
   }
 
   const replyFriend = replyTo ? FRIENDS_BY_ID[replyTo] : null;
-  const isGifOnly = mediaUrl && text.startsWith("[sent a GIF");
+  const isGifOnly = !!media && /^\[sent an? (gif|sticker|meme)\]$/i.test(text.trim());
   const showText = !isGifOnly && text;
 
   return (
@@ -68,27 +67,39 @@ export default function ChatMessage({ from, text, isUser, replyTo, replyToText, 
             </div>
           )}
           {showText && <span>{text}</span>}
-          {mediaUrl && (
-            <img
-              src={mediaUrl}
-              alt={mediaAltText || "GIF"}
-              loading="lazy"
-              style={{
-                maxWidth: "min(250px, 100%)",
-                maxHeight: 200,
-                borderRadius: 8,
-                marginTop: showText ? 6 : 0,
-                display: "block",
-              }}
-            />
-          )}
+          {media && <ChatMediaView media={media} spaced={!!showText} />}
         </div>
         <MessageActions
-          shareText={`${friend?.name ?? from}: ${showText ? text : mediaUrl ?? ""}`}
+          shareText={`${friend?.name ?? from}: ${showText ? text : media?.url ?? ""}`}
           onReport={onReport}
         />
       </div>
     </div>
+  );
+}
+
+// The GIF/sticker inside a friend's bubble. Lazy-loaded, capped in size, keeps
+// a small placeholder until it loads, and falls back to its alt text if it fails.
+export function ChatMediaView({ media, spaced }: { media: ChatMedia; spaced?: boolean }) {
+  const [state, setState] = useState<"loading" | "loaded" | "failed">("loading");
+  if (state === "failed") {
+    return <span className="chat-media-fallback">[{media.alt || media.kind}]</span>;
+  }
+  return (
+    <img
+      className={`chat-media chat-media--${media.kind}${state === "loading" ? " is-loading" : ""}${spaced ? " is-spaced" : ""}`}
+      src={media.url}
+      alt={media.alt || media.kind}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onLoad={() => setState("loaded")}
+      onError={() => setState("failed")}
+      // Cached images can finish before React attaches onLoad/onError.
+      ref={(img) => {
+        if (img?.complete) setState(img.naturalWidth > 0 ? "loaded" : "failed");
+      }}
+    />
   );
 }
 

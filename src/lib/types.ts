@@ -9,6 +9,8 @@ export interface ChatMessage {
   mediaUrl?: string;
   mediaThumbnailUrl?: string;
   mediaAltText?: string;
+  // Newer shape of the fields above; read both with mediaOf() from chat-media.ts.
+  media?: import("./chat-media").ChatMedia;
   timestamp: number;
 }
 

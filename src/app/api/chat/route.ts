@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 import { after } from "next/server";
+import { legacyFieldsOf } from "@/lib/chat-media";
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server";
 import { orchestrateChat, sortGuestMessage } from "@/lib/orchestrator";
 import type { EngineEvent } from "@/lib/engine-types";
@@ -72,10 +73,8 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
         from: event.from,
         text: event.text,
         ...(event.replyTo ? { replyTo: event.replyTo } : {}),
-        ...(event.mediaType ? { mediaType: event.mediaType } : {}),
-        ...(event.mediaUrl ? { mediaUrl: event.mediaUrl } : {}),
-        ...(event.mediaThumbnailUrl ? { mediaThumbnailUrl: event.mediaThumbnailUrl } : {}),
-        ...(event.mediaAltText ? { mediaAltText: event.mediaAltText } : {}),
+        // `media` for current builds; flat copies for app builds from before it.
+        ...(event.media ? { media: event.media, ...legacyFieldsOf(event.media) } : {}),
       };
     case "joined":
       return { joined: event.agentId };
@@ -494,8 +493,6 @@ export async function POST(request: Request) {
       lastCard: parseLastCard((body as { lastCard?: unknown }).lastCard),
       lazyCard: lazyCard === true,
       cardOnly: cardOnly === true,
-      // Guests get no reaction stickers.
-      allowMedia: !!account,
     }), roundLog);
 
     // One trace per round (debate, small talk, distress, pick), finished or cut off.

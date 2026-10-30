@@ -629,8 +629,6 @@ describe("POST /api/chat as a guest (no token)", () => {
     expect(callsTo("credits:beginMessage")).toHaveLength(0);
     // the body's userName is only a display name for guests
     expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ userName: "spoofed" });
-    // guests never get reaction stickers
-    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ allowMedia: false });
     expect(begin[1]).toMatchObject({ supersede: false });
   });
 
@@ -883,11 +881,10 @@ describe("POST /api/chat debug trace and round takeover", () => {
     expect(ev.some((e) => "trace" in e)).toBe(true);
   });
 
-  it("an interrupting message takes the lock over, and signed-in users may get stickers", async () => {
+  it("an interrupting message takes the lock over", async () => {
     convex({});
     orchestrateChat.mockImplementation(async function* () {});
     await events(await POST(req({ ...body, interrupting: true })));
     expect(callsTo("credits:beginMessage")[0][1]).toMatchObject({ supersede: true });
-    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ allowMedia: true });
   });
 });
