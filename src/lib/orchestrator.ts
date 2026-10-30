@@ -16,7 +16,8 @@ import {
   STARTERS,
   pickGentlestFriend,
 } from "./friends";
-import { HELPLINE, classifyByRules, classifyMessage, looksLikeSmallTalk, type IntentResult } from "./intent";
+import { HELPLINE, classifyByRules, classifyMessage, looksLikeSmallTalk, shouldShowHelpline, type IntentResult } from "./intent";
+import { wornOutLine, wornOutPhrases } from "./repetition";
 import type { Friend } from "./friends";
 import { GEMINI_ENABLED, getActiveProvider, getRotatedModel, getSearchModel, skipExhaustedModels, isGemmaModel, type ProviderConfig } from "./providers";
 import type { Decision } from "./types";
@@ -1111,11 +1112,7 @@ async function callFriend(
   extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean } = {},
 ): Promise<{ entry: ChatEntry; replyTo: string | null; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string; model?: string; paid?: boolean } | null> {
   const friend = FRIENDS_BY_ID[friendId];
-  if (!friend)
-    return {
-      entry: { from: friendId, text: "hmm let me think about that..." },
-      replyTo: null,
-    };
+  if (!friend) return null;
 
   // Merge user's character overrides with static traits
   const userOverride = overrides[friendId];
@@ -1208,6 +1205,8 @@ async function callFriend(
     .map((m) => m.text);
   if (myPreviousMessages.length > 0) {
     alreadySaidBlock += `\n\nYou already said these things earlier in this conversation:\n${myPreviousMessages.map((m) => `- "${m}"`).join("\n")}\nDo NOT repeat or rephrase any of these. Say something COMPLETELY different. If you have nothing new to add, just react briefly ("lol", "valid", "💀").`;
+    const worn = wornOutLine(wornOutPhrases(myPreviousMessages, friend.catchphrases));
+    if (worn) alreadySaidBlock += `\n${worn}`;
   }
 
   // Detect topic change — if user has sent multiple messages, the latest one is what matters
@@ -1434,6 +1433,8 @@ async function callFriend(
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
     engineLog({ ts: new Date().toISOString(), event: "agent-error", agent: friendId, error: String(err).slice(0, 200) });
+    // A refusal goes up to the round, which deflects and stops asking.
+    if (isRefusalError(err)) throw err;
 
     // Last resort: try paid Gemini key before giving up
     const paidKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY_PAID;
@@ -1462,10 +1463,8 @@ async function callFriend(
       }
     }
 
-    return {
-      entry: { from: friendId, text: "hmm let me think about that..." },
-      replyTo: null,
-    };
+    // Nothing to show: the round skips this friend instead of a filler line.
+    return null;
   }
 }
 
@@ -1585,13 +1584,38 @@ export async function sortGuestMessage(message: string, useModel: boolean): Prom
 // These skip the debate loop: a fixed list of friends replies in order, each
 // seeing the replies before theirs, and no vote card follows.
 
-export function distressInstruction(userName: string): string {
+// withCard: the helpline card shows under this reply. Without it (the card is
+// already up in this chat), friends stay with them and don't push the number again.
+export function distressInstruction(userName: string, withCard = true): string {
+  const helpline = withCard
+    ? `- gently say that talking to a trained counsellor can really help, and that the Tele-MANAS number (14416, free, any time) is right below this message. Say it like a friend who cares, not a lecture.`
+    : `- the Tele-MANAS number is already up in this chat. Don't repeat it or tell them to call; just be there and keep talking with them.`;
   return `${userName} might be going through something heavy right now. Drop every joke, roast and hot take. Reply as their warm, caring friend, still in your own voice but soft:
 - say back what they're feeling in plain words, and that you're here and not going anywhere
 - ask ONE gentle question about what's going on
-- gently say that talking to a trained counsellor can really help, and that the Tele-MANAS number (14416, free, any time) is right below this message. Say it like a friend who cares, not a lecture.
+${helpline}
 If they mention wanting to die, ending it or hurting themselves: say clearly that you're worried about them and ask them to call 14416 now or tell someone they trust nearby.
 Never diagnose, never give a list of tips, never say you're an AI, no emojis that joke. 2-3 short sentences.`;
+}
+
+// The user asked for something the group won't do (sexual content, hate).
+export function offLimitsInstruction(userName: string): string {
+  return `${userName} just pushed the chat somewhere this group doesn't go (sexual stuff, or hate about a group of people). In your own voice, turn it down in one short line, the way you'd shut it down with a friend: no lecture, no preaching, don't repeat their words. Then ask what's actually going on with them. Under 18 words.`;
+}
+
+// A round stops asking friends after this many refusals, or this many empty
+// replies in a row (errors, garbage), instead of burning calls on nothing.
+export const MAX_REFUSALS_PER_ROUND = 2;
+export const MAX_EMPTY_STREAK = 3;
+
+export function isRefusalError(err: unknown): boolean {
+  return /anthropic refusal/i.test(String(err));
+}
+
+export function emptyRoundStop(refusals: number, emptyStreak: number): "refusals" | "empty-streak" | null {
+  if (refusals >= MAX_REFUSALS_PER_ROUND) return "refusals";
+  if (emptyStreak >= MAX_EMPTY_STREAK) return "empty-streak";
+  return null;
 }
 
 export function smallTalkInstruction(userName: string, position: number): string {
@@ -1603,12 +1627,12 @@ export function smallTalkInstruction(userName: string, position: number): string
 
 export function pickInstruction(userName: string, label: string, votedForIt: boolean, isCloser: boolean): string {
   const stance = votedForIt
-    ? `You pushed for this, so gloat a little or hype them up.`
-    : `You argued for something else. Tease them about it but accept their call, maybe one last tiny warning.`;
+    ? `You pushed for this one, so you're pleased. Show it your own way.`
+    : `You argued for something else. Rib them a little if that's you, but it's their call.`;
   const close = isCloser
-    ? ` Then tell them to come back and update the group on how it went.`
+    ? ` If it fits, ask one specific thing about what they'll do first.`
     : "";
-  return `${userName} just made their call: "${label}". React in your own voice in one short line. ${stance}${close} Under 20 words.`;
+  return `${userName} just made their call: "${label}". React in your own voice in one short line. ${stance}${close} Everyone in a group chat says "told you", "fine", "good call" or "update us" here, so don't: say something only you would say about this exact choice. Under 20 words.`;
 }
 
 /** Three example prompts for the chips under a small-talk reply. */
@@ -1631,6 +1655,8 @@ async function* simpleTurn(
     effort?: AnthropicEffort;
     /** The user's newest message, for the currency guard. */
     userText?: string;
+    /** Earlier chat, so each friend can skip the phrases they've worn out. */
+    history?: { from: string; text: string }[];
   },
 ): AsyncGenerator<EngineEvent> {
   const said: ChatEntry[] = [];
@@ -1648,6 +1674,7 @@ Here's the chat:
 ${soFar}
 ${languageBlock(ctx.language, ctx.userName)}
 ${instruction}
+${wornOutLine(wornOutPhrases([...(ctx.history ?? []), ...said].filter((m) => m.from === friendId).map((m) => m.text), friend.catchphrases))}
 
 Type like you text your close friends. Don't use ${ctx.userName}'s name. Don't prefix with your name. No quotes around your reply. No business jargon.
 ${outputRules(ctx.userName)}`;
@@ -1673,6 +1700,17 @@ ${outputRules(ctx.userName)}`;
     yield { type: "joined", agentId: friendId };
     yield { type: "message", from: friendId, text };
   }
+}
+
+// One friend (the chattiest in the pod) turns down an off-limits ask.
+function deflectTurn(
+  podFriendIds: string[],
+  ctx: Parameters<typeof simpleTurn>[1],
+): AsyncGenerator<EngineEvent> {
+  const friendId = [...podFriendIds].sort(
+    (a, b) => (FRIENDS_BY_ID[b]?.traits.talkativeness ?? 0.5) - (FRIENDS_BY_ID[a]?.traits.talkativeness ?? 0.5),
+  )[0];
+  return simpleTurn(friendId ? [{ friendId, instruction: offLimitsInstruction(ctx.userName) }] : [], { ...ctx, effort: "low" });
 }
 
 // ── Main v3 engine ──────────────────────────────────────────────────
@@ -1750,13 +1788,24 @@ export async function* orchestrateChat(params: {
   const transcriptForSimple = formatTranscript([...history.slice(-8), { from: "user", text: message }], userName);
 
   if (!pickedOption && sorted.intent === "distress") {
+    // The card shows once per chat; again only on a new explicit crisis signal.
+    // Without it, a second friend joins so the user isn't left with one voice.
+    const withCard = shouldShowHelpline(message, history);
+    engineLog({ ts: new Date().toISOString(), event: "helpline-decision", withCard });
     const gentleId = pickGentlestFriend(podFriendIds) ?? podFriendIds[0];
-    if (gentleId) {
-      yield* simpleTurn([{ friendId: gentleId, instruction: distressInstruction(userName) }], {
-        transcript: transcriptForSimple, provider, userName, language, collector, userText: message,
-      });
-    }
-    yield { type: "helpline", helpline: { name: HELPLINE.name, numbers: [...HELPLINE.numbers], note: HELPLINE.note } };
+    const speakers = gentleId ? [gentleId] : [];
+    const second = withCard ? undefined : podFriendIds.find((id) => id !== gentleId);
+    if (second) speakers.push(second);
+    yield* simpleTurn(speakers.map((friendId) => ({ friendId, instruction: distressInstruction(userName, withCard) })), {
+      transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history,
+    });
+    if (withCard) yield { type: "helpline", helpline: { name: HELPLINE.name, numbers: [...HELPLINE.numbers], note: HELPLINE.note } };
+    return;
+  }
+
+  // Sexual or hateful asks: one friend turns it down, no debate, no vote card.
+  if (!pickedOption && sorted.offLimits) {
+    yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history });
     return;
   }
 
@@ -1783,7 +1832,7 @@ export async function* orchestrateChat(params: {
     if (reactors.length === 0 && podFriendIds[0]) {
       reactors.push({ friendId: podFriendIds[0], instruction: pickInstruction(userName, pickedOption.label, false, true) });
     }
-    yield* simpleTurn(reactors, { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message });
+    yield* simpleTurn(reactors, { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message, history });
     return;
   }
 
@@ -1866,6 +1915,10 @@ export async function* orchestrateChat(params: {
   const MAX_LOOPS = 40;
   let iterations = 0;
   let callBatches = 0;
+  // Refusals and empty replies this round; enough of them ends the round early.
+  let refusals = 0;
+  let emptyStreak = 0;
+  let stoppedFor: ReturnType<typeof emptyRoundStop> = null;
 
   while (energy > ENERGY_FLOOR && callBatches < MAX_ITERATIONS && iterations < MAX_LOOPS) {
     iterations++;
@@ -2050,6 +2103,12 @@ export async function* orchestrateChat(params: {
     // ── Process results ──
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
+      if (result.status !== "fulfilled" || result.value === null) {
+        emptyStreak++;
+        if (result.status !== "fulfilled" && isRefusalError(result.reason)) refusals++;
+      } else {
+        emptyStreak = 0;
+      }
       if (result.status !== "fulfilled") {
         console.error("[engine] Agent call failed:", result.reason);
         engineLog({ ts: new Date().toISOString(), event: "agent-failed", agent: batch[i].agent.id, reason: String(result.reason).slice(0, 200) });
@@ -2177,10 +2236,22 @@ export async function* orchestrateChat(params: {
 
     iterTrace.energyAfter = parseFloat(energy.toFixed(3));
     traceIterations.push(iterTrace);
+
+    stoppedFor = emptyRoundStop(refusals, emptyStreak);
+    if (stoppedFor) break;
   }
 
   console.log("[engine] Loop ended. energy:", energy.toFixed(2), "iterations:", iterations, "messages:", roundResponses.length);
-  engineLog({ ts: new Date().toISOString(), event: "conversation-end", finalEnergy: parseFloat(energy.toFixed(3)), iterations, messagesSent: roundResponses.length, reason: energy <= ENERGY_FLOOR ? "energy-depleted" : callBatches >= MAX_ITERATIONS ? "max-iterations" : "max-loops" });
+  engineLog({ ts: new Date().toISOString(), event: "conversation-end", finalEnergy: parseFloat(energy.toFixed(3)), iterations, messagesSent: roundResponses.length, reason: stoppedFor ?? (energy <= ENERGY_FLOOR ? "energy-depleted" : callBatches >= MAX_ITERATIONS ? "max-iterations" : "max-loops"), refusals });
+
+  // The model refused this topic: one friend turns it down in their own voice
+  // (unless someone already spoke), and there's no vote card to make of it.
+  if (refusals > 0) {
+    if (roundResponses.length === 0) {
+      yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history });
+    }
+    return;
+  }
 
   // ── Synthesis pass — extract decision options ──────────────────────
   // Small talk inside an ongoing chat gets replies but no new vote card.
