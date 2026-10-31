@@ -5,7 +5,7 @@ import { Share } from "@capacitor/share";
 import { FRIENDS_BY_ID } from "@/lib/friends";
 import { moodFromText, stickerColor } from "@/lib/friend-faces";
 import FriendAvatar from "@/components/friend-avatar";
-import type { ChatMedia } from "@/lib/chat-media";
+import { isKlipyMedia, type ChatMedia } from "@/lib/chat-media";
 
 const REPORT_REASONS = ["offensive", "harmful or unsafe", "sexual", "other"];
 
@@ -85,7 +85,7 @@ export function ChatMediaView({ media, spaced }: { media: ChatMedia; spaced?: bo
   if (state === "failed") {
     return <span className="chat-media-fallback">[{media.alt || media.kind}]</span>;
   }
-  return (
+  const image = (
     <img
       className={`chat-media chat-media--${media.kind}${state === "loading" ? " is-loading" : ""}${spaced ? " is-spaced" : ""}`}
       src={media.url}
@@ -100,6 +100,14 @@ export function ChatMediaView({ media, spaced }: { media: ChatMedia; spaced?: bo
         if (img?.complete) setState(img.naturalWidth > 0 ? "loaded" : "failed");
       }}
     />
+  );
+  if (!isKlipyMedia(media)) return image;
+  // Klipy's attribution: a small "Powered by KLIPY" under their GIFs and stickers.
+  return (
+    <>
+      {image}
+      <span className="chat-media-credit">Powered by KLIPY</span>
+    </>
   );
 }
 

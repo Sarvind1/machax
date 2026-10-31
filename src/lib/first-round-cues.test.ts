@@ -2,13 +2,9 @@ import { describe, expect, it } from "vitest";
 import { CUE_PLANS, resolveCue, mediaMomentInstruction } from "./first-round-cues";
 import { FRIENDS_BY_ID, STARTERS } from "./friends";
 import { endsOnQuestion } from "./orchestrator";
+import { MEME_TEMPLATES_BY_ID } from "./chat-media";
 
-// MEME_TEMPLATES ids in chat-media.ts on the `stickers` branch (f6318bd).
-const TEMPLATE_IDS = new Set([
-  "rasode", "utha-le", "paisa-hi-paisa", "mast-plan", "game-bajana", "risk-nahi",
-  "drake", "distracted-boyfriend", "this-is-fine", "roll-safe", "change-my-mind", "is-this-a-pigeon",
-  "stonks", "why-not-both", "panik-kalm-panik", "always-has-been", "hide-the-pain",
-]);
+const TEMPLATE_IDS = new Set(Object.keys(MEME_TEMPLATES_BY_ID));
 
 describe("cue plans", () => {
   it("every example chip has a plan, and every plan is a chip", () => {
@@ -80,5 +76,21 @@ describe("endsOnQuestion", () => {
     expect(endsOnQuestion("lol who ended it? 💀")).toBe(true);
     expect(endsOnQuestion("TILL MARRIAGE?? THEN HE'S HELD HOSTAGE")).toBe(false);
     expect(endsOnQuestion("is he a close friend or a we used to be close one")).toBe(false);
+  });
+});
+
+describe("gender-neutral take text", () => {
+  it("the 10pm takes never call the user he/she", async () => {
+    const plan = CUE_PLANS.find((p) => p.text.startsWith("Parents want me home by 10pm"))!;
+    for (const take of plan.takes) {
+      const text = [take.hook, take.media.setup, ...(take.media.caption ?? []), ...take.cast.map((c) => c.angle)].join(" ");
+      expect(text).not.toMatch(/\b(he|she|him|her|his|hers|bhai|bro)\b/i);
+    }
+  });
+
+  it("a {user} hook gets the user's name; no hook gets the default", async () => {
+    const { closingHook } = await import("./orchestrator");
+    expect(closingHook("ask if {user} pays anything at home", "Kiran")).toBe("ask if Kiran pays anything at home");
+    expect(closingHook(undefined, "Kiran")).toMatch(/^ask about the one detail/);
   });
 });

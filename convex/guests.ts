@@ -1,6 +1,7 @@
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
+import { userGender } from "./schema";
 import {
   GUEST_HARD_CAP,
   GUEST_ID_RE,
@@ -98,7 +99,7 @@ export const beginGuestMessage = internalMutation({
         updatedAt: now,
       });
     }
-    return { ok: true as const, usage: usage(row), windowStart: start };
+    return { ok: true as const, usage: usage(row), windowStart: start, gender: row?.gender, genderFor: row?.genderFor };
   },
 });
 
@@ -151,6 +152,15 @@ export const settleGuestMessage = internalMutation({
 // close the guest id so it gives no more free messages.
 // activated = one of the moved chats already has a picked decision, so the
 // client can send the Meta AchievementUnlocked event now (the server re-checks it).
+// Stores how friends refer to this guest (src/lib/gender.ts) and the name it was worked out from.
+export const setGender = internalMutation({
+  args: { key: v.string(), gender: userGender, genderFor: v.string() },
+  handler: async (ctx, { key, gender, genderFor }) => {
+    const row = await getRow(ctx, key);
+    if (row) await ctx.db.patch(row._id, { gender, genderFor, updatedAt: Date.now() });
+  },
+});
+
 export const claimGuest = internalMutation({
   args: { guestId: v.string(), username: v.string() },
   handler: async (ctx, { guestId, username }) => {

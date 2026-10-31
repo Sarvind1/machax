@@ -7,6 +7,8 @@
  * Usage:
  *   npx tsx scripts/first-round-eval.ts [--runs 2] [--cue 0,3] [--label before] [--out file.jsonl]
  *   npx tsx scripts/first-round-eval.ts --text "the girl i like posted the lilies..."
+ *   --name Kiran   the user's display name (default Arnav); gender is detected from it
+ *                  in parallel, the way the chat route does
  *
  * Runs one round at a time (fanless machine). Sets ANTHROPIC_EFFORT=medium
  * unless already set, to match production.
@@ -43,7 +45,8 @@ async function main() {
   const { orchestrateChat } = await import("../src/lib/orchestrator");
   const { selectPod, STARTERS, FRIENDS_BY_ID } = await import("../src/lib/friends");
   const { CostCollector } = await import("../src/lib/cost-collector");
-  const { endsOnQuestion } = await import("../src/lib/orchestrator");
+  const { endsOnQuestion, detectUserGender } = await import("../src/lib/orchestrator");
+  const userName = arg("name") ?? "Arnav";
 
   const runs = Number(arg("runs") ?? 1);
   const label = arg("label") ?? "run";
@@ -66,11 +69,15 @@ async function main() {
       let cardReady = false;
       let mediaPlan: unknown = null;
       const t0 = Date.now();
+      // Like the chat route: friends use "neutral" until the detection lands.
+      let gender: "male" | "female" | "neutral" = "neutral";
+      const genderDone = detectUserGender(userName, cue.text, collector).then((g) => (gender = g));
       for await (const ev of orchestrateChat({
         message: cue.text,
         podFriendIds: podIds,
         history: [],
-        userName: "Arnav",
+        userName,
+        getUserGender: () => gender,
         allowMedia,
         collector,
         cueTake: arg("take"),
@@ -83,6 +90,7 @@ async function main() {
         if (ev.type === "decision") card = ev.decision;
         if (ev.type === "card-ready") cardReady = true;
       }
+      await genderDone;
       const speakers = new Set(msgs.map((m) => m.from));
       const last = msgs[msgs.length - 1]?.text ?? "";
       const row = {
@@ -90,6 +98,8 @@ async function main() {
         take: arg("take") ?? "chosen",
         firstBatchEffort: process.env.FIRST_BATCH_EFFORT || "low",
         cue: cue.text,
+        userName,
+        gender,
         pod: podIds,
         secs: Math.round((Date.now() - t0) / 1000),
         speakers: speakers.size,
@@ -105,7 +115,7 @@ async function main() {
       totalMicros += collector.totalMicros;
       totalCalls += collector.calls.length;
       if (out) appendFileSync(out, JSON.stringify(row) + "\n");
-      console.log(`\n=== [${label}] ${cue.text}  (${row.speakers} friends, ${row.count} msgs, ${row.secs}s, $${row.costUsd.toFixed(3)})`);
+      console.log(`\n=== [${label}] ${cue.text}  (${userName}: ${gender}; ${row.speakers} friends, ${row.count} msgs, ${row.secs}s, $${row.costUsd.toFixed(3)}, ends on question: ${row.endsWithHook})`);
       for (const m of row.messages) console.log(`  ${m.name}: ${m.text}${m.media ? `  [media ${JSON.stringify(m.media)}]` : ""}${(m as { mediaPlan?: unknown }).mediaPlan ? `  [STICKER ${JSON.stringify((m as { mediaPlan?: unknown }).mediaPlan)}]` : ""}`);
       if (card) console.log(`  CARD: ${JSON.stringify(card)}`);
       else console.log(`  card: ${cardReady ? "teaser" : "none"}`);

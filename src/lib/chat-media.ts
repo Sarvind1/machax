@@ -11,6 +11,18 @@ export interface ChatMedia {
   alt: string;
 }
 
+// Klipy GIFs and stickers are served from klipy.com hosts (static.klipy.com).
+// Klipy's terms ask for a "Powered by KLIPY" mark wherever their content shows;
+// memegen memes and the app's own /memes files don't get it.
+export function isKlipyMedia(media: Pick<ChatMedia, "url">): boolean {
+  try {
+    const host = new URL(media.url).hostname.toLowerCase();
+    return host === "klipy.com" || host.endsWith(".klipy.com");
+  } catch {
+    return false;
+  }
+}
+
 // Old messages (and old app builds) use flat fields instead of `media`.
 export interface LegacyMediaFields {
   mediaType?: "gif" | "sticker" | "meme";

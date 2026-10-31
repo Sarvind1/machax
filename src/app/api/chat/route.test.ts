@@ -6,6 +6,7 @@ import type { EngineEvent } from "@/lib/engine-types";
 const bootstrapUser = vi.fn();
 const mutation = vi.fn();
 const orchestrateChat = vi.fn();
+const detectUserGender = vi.fn(async (..._a: unknown[]) => "neutral");
 // after() needs a Next request scope; collect the callbacks and run them by hand.
 const afterCallbacks: (() => unknown)[] = [];
 
@@ -37,6 +38,8 @@ vi.mock("@/lib/orchestrator", async () => {
   const { classifyByRules } = await vi.importActual<typeof import("@/lib/intent")>("@/lib/intent");
   return {
     orchestrateChat: (...a: unknown[]) => orchestrateChat(...a),
+    // No model call in tests: every user reads as "neutral".
+    detectUserGender: (...a: unknown[]) => detectUserGender(...a),
     // Rules only (no model call in tests).
     sortGuestMessage: async (message: string) => {
       const intent = classifyByRules(message).intent;

@@ -1509,3 +1509,12 @@
   font-size: 12px;
   opacity: 0.6;
 }
+/* Klipy attribution under their GIFs/stickers */
+.chat-media-credit {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  opacity: 0.5;
+}

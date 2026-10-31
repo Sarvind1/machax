@@ -35,6 +35,8 @@ import type { ChatMedia } from "./chat-media";
 import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
 import { resolveCue, mediaMomentInstruction, type CueMedia, type ResolvedCue } from "./first-round-cues";
 import { buildCharacterMemory } from "./private-memory";
+import { GENDER_JSON_SCHEMA, GENDER_MODEL, GENDER_SYSTEM, GENDER_TIMEOUT_MS, detectGender, genderInstruction, genderPrompt, type UserGender } from "./gender";
+import { clip, dropBrokenChars, fixMixedScript, hasMixedScript } from "./text-glitch";
 import type { CostCollector } from "./cost-collector";
 import type { Usage } from "./pricing";
 import { ANTHROPIC_IDLE_MS } from "./chat-limits";
@@ -330,6 +332,9 @@ async function callAnthropic(
   effortOverride?: AnthropicEffort,
 ): Promise<{ text: string; model: string; usage: Usage }> {
   anthropicClient ??= new Anthropic();
+  // A half emoji anywhere in the prompt makes the API reject the request.
+  system = dropBrokenChars(system);
+  userPrompt = dropBrokenChars(userPrompt);
   const abort = new AbortController();
   const requestOptions = { ...ANTHROPIC_REQUEST_OPTIONS, signal: abort.signal };
   const stream = model.startsWith("claude-haiku")
@@ -391,6 +396,33 @@ async function callAnthropic(
   const text = finalTextOf(msg.content as { type: string; text?: string }[]);
   if (!text) throw new Error(`anthropic returned no text (stop_reason=${msg.stop_reason})`);
   return { text, model: msg.model, usage: msg.usage };
+}
+
+// ── User gender (gender.ts) ──
+/**
+ * One Haiku call: how should friends refer to this user? Uses the engine's
+ * Anthropic client and key, strict JSON output and a short timeout. Any error,
+ * timeout or unclear answer is "neutral". Never throws.
+ */
+export async function detectUserGender(name: string, message: string, collector?: CostCollector): Promise<UserGender> {
+  if (!process.env.ANTHROPIC_API_KEY) return "neutral";
+  return detectGender(async () => {
+    anthropicClient ??= new Anthropic();
+    const msg = await anthropicClient.messages.create(
+      {
+        model: GENDER_MODEL,
+        max_tokens: 30,
+        system: GENDER_SYSTEM,
+        messages: [{ role: "user", content: genderPrompt(name, message) }],
+        output_config: { format: { type: "json_schema", schema: GENDER_JSON_SCHEMA as unknown as Record<string, unknown> } },
+      },
+      { timeout: GENDER_TIMEOUT_MS, maxRetries: 0 },
+    );
+    collector?.addAnthropic(msg.model, msg.usage);
+    const text = finalTextOf(msg.content as { type: string; text?: string }[]);
+    engineLog({ ts: new Date().toISOString(), event: "user-gender", reply: text.slice(0, 60) });
+    return text;
+  });
 }
 
 // ── Unified call function ──
@@ -459,6 +491,11 @@ function cleanResponse(text: string, friendName: string): string {
   // Remove name prefix
   const namePrefix = new RegExp(`^${friendName}:\\s*`, "i");
   text = text.replace(namePrefix, "");
+  // Letters from another script inside a Latin word ("SUресh"): spell them out in Latin.
+  if (hasMixedScript(text)) {
+    engineLog({ ts: new Date().toISOString(), event: "mixed-script-fixed", text: text.slice(0, 120) });
+    text = fixMixedScript(text);
+  }
   return text.trim();
 }
 
@@ -961,6 +998,11 @@ export function firstRoundRules(userName: string, isHook: boolean): string {
 - No stock openers: "literally did this", "did this exact thing", "the real question is", "you already know", "what's actually bothering you".`;
 }
 
+/** The closer's question for this round. A cue's hook can name the user as {user}. */
+export function closingHook(cueHook: string | undefined, userName: string): string {
+  return (cueHook ?? "ask about the one detail that would change the group's advice").replace(/\{user\}/g, userName);
+}
+
 // First round sizing and speed. The first batch (up to 3 replies at once) uses
 // low effort so the first replies arrive fast; FIRST_BATCH_EFFORT overrides it.
 const FIRST_ROUND_MAX_SPEAKERS = 4;
@@ -1130,6 +1172,8 @@ ${outputRules(userName)}`;
 
 // ── Call a friend with v3 engine context ────────────────────────────
 
+type FriendReply = { entry: ChatEntry; replyTo: string | null; media?: ChatMedia; mediaPlan?: CueMedia; model?: string; paid?: boolean };
+
 async function callFriend(
   friendId: string,
   allMessages: ChatEntry[],
@@ -1153,8 +1197,9 @@ async function callFriend(
   // firstRound: the user's first message in this chat (see FIRST_ROUND_RULES).
   // mediaMoment: this reply carries the cue's planned sticker. forceMediaOffer: offer
   // a sticker regardless of the friend's mediaSendProbability. hook: end on a question.
-  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean; firstRound?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string } = {},
-): Promise<{ entry: ChatEntry; replyTo: string | null; media?: ChatMedia; mediaPlan?: CueMedia; model?: string; paid?: boolean } | null> {
+  // gender: how to refer to the user (gender.ts); missing = "neutral".
+  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean; firstRound?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string; gender?: UserGender } = {},
+): Promise<FriendReply | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend) return null;
 
@@ -1236,11 +1281,11 @@ async function callFriend(
   let alreadySaidBlock = "";
   if (agentMessages.length >= 2) {
     const keyPhrases = agentMessages
-      .map((m) => m.text.slice(0, 60).replace(/"/g, ""))
+      .map((m) => clip(m.text, 60).replace(/"/g, ""))
       .join('", "');
     alreadySaidBlock = `Others already said: "${keyPhrases}". DON'T repeat these. If everyone agrees on something, disagree or bring a totally different angle. Real friend groups argue — don't pile on.`;
   } else if (agentMessages.length === 1) {
-    alreadySaidBlock = `Someone already said: "${agentMessages[0].text.slice(0, 60).replace(/"/g, "")}". Say something DIFFERENT — agree or disagree, but add a new angle.`;
+    alreadySaidBlock = `Someone already said: "${clip(agentMessages[0].text, 60).replace(/"/g, "")}". Say something DIFFERENT — agree or disagree, but add a new angle.`;
   }
 
   // What THIS agent already said in the conversation (including history) — prevent self-repetition across rounds
@@ -1353,6 +1398,7 @@ async function callFriend(
   if (extra.firstRound) {
     prompt += `\n\n${firstRoundRules(userName, !!extra.hook)}`;
   }
+  prompt += `\n\n${genderInstruction(extra.gender ?? "neutral", userName)}`;
   if (extra.hook) {
     prompt += `\n\nEND THE ROUND: you're the last to reply for now. React to the chat in a few words if you like, then ${extra.hook}. One short, specific question ${userName} will want to answer, not "how do you feel" or "what's bothering you". End your message with "?".`;
   }
@@ -1452,6 +1498,21 @@ async function callFriend(
     // Safety net: strip any remaining [REACT...] or [GIF...] markers the model produced
     text = text.replace(/\[(?:REACT|GIF|MEME)[:\s][^\]]*\]/gi, '').trim();
 
+    // ── A chip's planned first-round meme (first-round-cues.ts) ──
+    // Curated templates, so it goes out for guests too (allowMedia doesn't apply).
+    // It replaces anything the friend picked; the template's search is the fallback.
+    let mediaPlan: CueMedia | undefined;
+    if (extra.mediaMoment) {
+      const m = extra.mediaMoment;
+      const planned = (await getMedia({ template: m.template, caption: m.caption })) ?? (await getMedia({ search: m.search }));
+      engineLog({ ts: new Date().toISOString(), event: "planned-media", agent: friendId, template: m.template, found: planned ? planned.kind : null });
+      if (planned) {
+        media = planned;
+        mediaPlan = m;
+        if (!text) text = `[sent a ${planned.kind === "gif" ? "GIF" : "sticker"}]`;
+      }
+    }
+
     // Validate response quality — retry once if garbage or truncated
     const looksIncomplete = (t: string) => {
       if (t.length < 3) return true; // too short
@@ -1478,7 +1539,7 @@ async function callFriend(
           : reason === "wrong-language"
             ? "IMPORTANT: Write it in plain English only. No Hindi or Hinglish words."
             : reason === "stock"
-              ? `IMPORTANT: "${text.slice(0, 80)}" is a worn-out stock line. Say something specific to THIS situation instead, with a concrete detail.`
+              ? `IMPORTANT: "${clip(text, 80)}" is a worn-out stock line. Say something specific to THIS situation instead, with a concrete detail.`
               : "IMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
       ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, `${prompt}\n\n${fix}`, provider, Math.max(maxTokens, 150), undefined, collector));
       text = cleanResponse(text, friend.name).replace(/\[(?:REACT|GIF|MEME)[:\s][^\]]*\]/gi, "").trim();
@@ -1493,16 +1554,7 @@ async function callFriend(
     }
     text = fixCurrency(text, latestUserMsg ?? "");
 
-    // TODO(stickers): once the `stickers` branch (get-media.ts, chat-media.ts) is merged, resolve
-    // the planned sticker here and return it as `media` (ChatMedia):
-    //   const m = extra.mediaMoment;
-    //   media = (await getMedia({ template: m.template, caption: m.caption?.join("|") }))
-    //        ?? (await getMedia({ search: m.search })) ?? undefined;
-    //   if (media && !text) text = "[sent a GIF]";
-    // and let it through for guests too (allowMedia is false for them today; these are curated
-    // templates, not model-picked searches). Until then the plan rides along as `mediaPlan`,
-    // which the chat route does not send to the app.
-    return { entry: { from: friendId, text }, replyTo: replyToId, media, mediaPlan: extra.mediaMoment, model: usedModel, paid };
+    return { entry: { from: friendId, text }, replyTo: replyToId, media, mediaPlan, model: usedModel, paid };
   } catch (err) {
     console.error(`Error generating response for ${friendId}:`, err);
     engineLog({ ts: new Date().toISOString(), event: "agent-error", agent: friendId, error: String(err).slice(0, 200) });
@@ -1813,6 +1865,8 @@ async function* simpleTurn(
     userText?: string;
     /** Earlier chat, so each friend can skip the phrases they've worn out. */
     history?: { from: string; text: string }[];
+    /** How to refer to the user (gender.ts); read per friend so a late result still lands. */
+    gender?: () => UserGender;
   },
 ): AsyncGenerator<EngineEvent> {
   const said: ChatEntry[] = [];
@@ -1833,6 +1887,7 @@ ${instruction}
 ${wornOutLine(wornOutPhrases([...(ctx.history ?? []), ...said].filter((m) => m.from === friendId).map((m) => m.text), friend.catchphrases))}
 
 Type like you text your close friends. Don't use ${ctx.userName}'s name. Don't prefix with your name. No quotes around your reply. No business jargon.
+${genderInstruction(ctx.gender?.() ?? "neutral", ctx.userName)}
 ${outputRules(ctx.userName)}`;
     let text = "";
     // Why this friend ends up saying nothing, for the round's trace.
@@ -1903,8 +1958,12 @@ export async function* orchestrateChat(params: {
   cardOnly?: boolean;
   // Evals only: run this take of a cue chip instead of its `chosen` one.
   cueTake?: string;
+  // How to refer to the user (gender.ts). Read before each reply, so a detection
+  // still running when the round starts lands on later replies; "neutral" until then.
+  getUserGender?: () => UserGender;
 }): AsyncGenerator<EngineEvent> {
   const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true, lastCard, lazyCard, cardOnly, cueTake } = params;
+  const userGender = (): UserGender => params.getUserGender?.() ?? "neutral";
 
   // Parse character overrides once
   let parsedOverrides: Record<string, any> = {};
@@ -1984,7 +2043,7 @@ export async function* orchestrateChat(params: {
     const second = withCard ? undefined : podFriendIds.find((id) => id !== gentleId);
     if (second) speakers.push(second);
     yield* simpleTurn(speakers.map((friendId) => ({ friendId, instruction: distressInstruction(userName, withCard) })), {
-      transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history,
+      transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history, gender: userGender,
     });
     if (withCard) yield { type: "helpline", helpline: { name: HELPLINE.name, numbers: [...HELPLINE.numbers], note: HELPLINE.note } };
     return;
@@ -1992,7 +2051,7 @@ export async function* orchestrateChat(params: {
 
   // Sexual or hateful asks: one friend turns it down, no debate, no vote card.
   if (!pickedOption && sorted.offLimits) {
-    yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history });
+    yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history, gender: userGender });
     return;
   }
 
@@ -2002,7 +2061,7 @@ export async function* orchestrateChat(params: {
       .slice(0, Math.min(2, podFriendIds.length));
     yield* simpleTurn(
       talkers.map((friendId, i) => ({ friendId, instruction: smallTalkInstruction(userName, i) })),
-      { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message },
+      { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message, gender: userGender },
     );
     yield { type: "chips", chips: pickStarterChips(message) };
     return;
@@ -2019,7 +2078,7 @@ export async function* orchestrateChat(params: {
     if (reactors.length === 0 && podFriendIds[0]) {
       reactors.push({ friendId: podFriendIds[0], instruction: pickInstruction(userName, pickedOption.label, false, true) });
     }
-    yield* simpleTurn(reactors, { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message, history });
+    yield* simpleTurn(reactors, { transcript: transcriptForSimple, provider, userName, language, collector, effort: "low", userText: message, history, gender: userGender });
     return;
   }
 
@@ -2318,6 +2377,7 @@ export async function* orchestrateChat(params: {
             firstRound: isFirstRound,
             mediaMoment,
             forceMediaOffer,
+            gender: userGender(),
           },
         );
       }),
@@ -2474,34 +2534,68 @@ export async function* orchestrateChat(params: {
   // (unless someone already spoke), and there's no vote card to make of it.
   if (refusals > 0) {
     if (roundResponses.length === 0) {
-      yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history });
+      yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history, gender: userGender });
     }
     return;
   }
 
   // ── First round ends on a question to the user ──
   // If the last reply doesn't ask them anything, one more friend closes with a hook.
+  // A closing line that still doesn't end on "?" gets one retry; a closer that
+  // fails hands over to the next friend. At most 2 extra calls.
   if (isFirstRound && roundResponses.length > 0 && !endsOnQuestion(roundResponses[roundResponses.length - 1].text)) {
     const lastFrom = roundResponses[roundResponses.length - 1].from;
     const spoke = (id: string) => roundResponses.filter((r) => r.from === id).length;
-    const closer = speakerIds.filter((id) => id !== lastFrom).sort((a, b) => spoke(a) - spoke(b))[0];
-    if (closer) {
-      yield { type: "typing", agentId: closer };
-      const userIdx = baseMessages.length - 1;
-      const closing = await callFriend(
-        closer, allMessages(), provider, { index: userIdx, from: "user", text: message, score: 5 }, false, energy,
-        getAttentionWindow(getTraits(closer)), podFriendIds, userName, false, "",
-        filterTopicForCharacter(topicContext, closer, message), isMinimalPrompt, sessionMood, parsedOverrides, collector,
-        { language, allowMode: false, allowMedia, firstRound: true, hook: cue?.hook ?? "ask about the one detail that would change the group's advice" },
+    const closers = speakerIds.filter((id) => id !== lastFrom).sort((a, b) => spoke(a) - spoke(b));
+    const hook = closingHook(cue?.hook, userName);
+    const userIdx = baseMessages.length - 1;
+    let closing: FriendReply | null = null;
+    let closerId: string | null = null;
+    let fallback: { closing: FriendReply; closerId: string } | null = null;
+    let retryId: string | null = null;
+    let typingFor: string | null = null;
+    for (let attempt = 0, ci = 0; attempt < 2 && ci < closers.length; attempt++) {
+      const id = closers[ci];
+      if (typingFor !== id) yield { type: "typing", agentId: id };
+      typingFor = id;
+      const strict = retryId === id;
+      const result: FriendReply | null = await callFriend(
+        id, allMessages(), provider, { index: userIdx, from: "user", text: message, score: 5 }, false, energy,
+        getAttentionWindow(getTraits(id)), podFriendIds, userName, false, "",
+        filterTopicForCharacter(topicContext, id, message), isMinimalPrompt, sessionMood, parsedOverrides, collector,
+        { language, allowMode: false, allowMedia, firstRound: true, hook: strict ? `${hook}. Your whole message must END with that question and a "?"; nothing after it` : hook, gender: userGender() },
       ).catch((err) => {
-        engineLog({ ts: new Date().toISOString(), event: "hook-failed", agent: closer, reason: String(err).slice(0, 200) });
+        engineLog({ ts: new Date().toISOString(), event: "hook-failed", agent: id, reason: String(err).slice(0, 200) });
         return null;
       });
-      if (closing) {
-        roundResponses.push({ ...closing.entry, replyTo: "user" });
-        engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: closer, text: closing.entry.text.slice(0, 80), model: closing.model || "unknown", paid: !!closing.paid, hasMedia: false, mediaSource: null, iteration: iterations + 1, energy: parseFloat(energy.toFixed(3)), hook: true });
-        yield { type: "message", from: closer, text: closing.entry.text, replyTo: "user" };
+      if (result && endsOnQuestion(result.entry.text)) {
+        closing = result;
+        closerId = id;
+        break;
       }
+      engineLog({ ts: new Date().toISOString(), event: "hook-no-question", agent: id, text: result?.entry.text.slice(0, 120) ?? null });
+      if (result) {
+        fallback ??= { closing: result, closerId: id };
+        // Same friend again, told plainly to end on the question.
+        retryId = id;
+      } else {
+        ci++;
+        yield { type: "typing-stop", agentId: id };
+        typingFor = null;
+        if (ci < closers.length && attempt < 1) {
+          yield { type: "typing", agentId: closers[ci] };
+          typingFor = closers[ci];
+        }
+      }
+    }
+    // No question after the retry: a plain closing line still beats silence.
+    if (!closing && fallback) ({ closing, closerId } = fallback);
+    if (closing && closerId) {
+      roundResponses.push({ ...closing.entry, replyTo: "user" });
+      engineLog({ ts: new Date().toISOString(), event: "message-sent", agent: closerId, text: closing.entry.text.slice(0, 80), model: closing.model || "unknown", paid: !!closing.paid, hasMedia: false, mediaSource: null, iteration: iterations + 1, energy: parseFloat(energy.toFixed(3)), hook: true, endsOnQuestion: endsOnQuestion(closing.entry.text) });
+      yield { type: "message", from: closerId, text: closing.entry.text, replyTo: "user" };
+    } else if (typingFor) {
+      yield { type: "typing-stop", agentId: typingFor };
     }
   }
 

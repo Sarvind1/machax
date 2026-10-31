@@ -118,3 +118,13 @@ describe("lightestAnimation", () => {
     expect(lightestAnimation({ md: { gif: { url: "md.gif" } } })).toBe("md.gif");
   });
 });
+
+describe("isKlipyMedia", () => {
+  it("is true only for klipy.com hosts", async () => {
+    const { isKlipyMedia } = await import("./chat-media");
+    expect(isKlipyMedia({ url: "https://static.klipy.com/ii/abc/paisa.webp" })).toBe(true);
+    expect(isKlipyMedia({ url: "https://api.memegen.link/images/drake/a/b.jpg?width=400" })).toBe(false);
+    expect(isKlipyMedia({ url: "/memes/this-is-fine.jpg" })).toBe(false);
+    expect(isKlipyMedia({ url: "https://notklipy.com/x.gif" })).toBe(false);
+  });
+});

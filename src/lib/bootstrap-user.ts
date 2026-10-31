@@ -22,15 +22,18 @@ export async function bootstrapUser(request: Request): Promise<{
   username: string;
   name: string | undefined;
   row: CreditsRow;
+  // Stored gender (src/lib/gender.ts) and the name it was worked out from.
+  gender?: string;
+  genderFor?: string;
 }> {
   const user = await requireUser(request);
   const client = getConvexAdmin() as unknown as AdminMutations;
-  const { username, name } = await client.mutation(internal.users.upsertFromFirebase, {
+  const { username, name, gender, genderFor } = await client.mutation(internal.users.upsertFromFirebase, {
     uid: user.uid,
     email: user.email,
     emailVerified: user.emailVerified,
     name: user.name,
   });
   const row = await client.mutation(internal.credits.ensure, { uid: user.uid, username, googleId: user.googleId });
-  return { user, username, name, row };
+  return { user, username, name, row, gender, genderFor };
 }

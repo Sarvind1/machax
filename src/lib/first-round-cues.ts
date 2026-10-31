@@ -9,10 +9,12 @@
 // is picked on the phone), and the round tops up from the pod.
 //
 // Angles are a direction, not a line to copy: the friend still writes in their
-// own voice.
+// own voice. Write them without he/she for the user ("you", or {user} in a hook,
+// which becomes the user's name): how friends refer to the user comes from the
+// gender module (gender.ts).
 //
-// Sticker templates are ids from MEME_TEMPLATES (chat-media.ts, `stickers`
-// branch). `caption` is the text drawn on a memegen template, one entry per
+// Sticker templates are ids from MEME_TEMPLATES (chat-media.ts). `caption` is
+// the text drawn on a memegen template, one entry per
 // line; GIF templates (rasode, utha-le, paisa-hi-paisa, mast-plan, ...) take no
 // caption, so the friend's own message carries it.
 
@@ -377,7 +379,7 @@ export const CUE_PLANS: CuePlan[] = [
           { id: "lalitha", angle: "practical: what are they actually scared of? fix that, not the time" },
         ],
         media: { by: ["suresh", "dev", "pradeep"], kind: "sticker", template: "always-has-been", caption: ["wait, the curfew lasts till marriage?", "always has been"], search: "clock cartoon", setup: "nothing" },
-        hook: "ask what happens if they come home at 10:30",
+        hook: "ask what happens if {user} comes home at 10:30",
       },
       {
         id: "B",
@@ -385,11 +387,11 @@ export const CUE_PLANS: CuePlan[] = [
         cast: [
           { id: "pradeep", angle: "live location on, home by 11:30. deal" },
           { id: "dev", angle: "deadpan roast" },
-          { id: "tanmay", angle: "it's not about 10pm, it's about them not knowing you're an adult" },
+          { id: "tanmay", angle: "it's not about 10pm, it's about your parents not seeing you as an adult yet" },
           { id: "meera", angle: "chaos: pay rent at home, demand a 1am curfew" },
         ],
         media: { by: ["pradeep", "dev"], kind: "sticker", template: "roll-safe", caption: ["can't break curfew", "if you're home by 10 and leave again at 10:30"], search: "smart cartoon", setup: "nothing" },
-        hook: "ask if they pay anything at home",
+        hook: "ask if {user} pays anything at home",
       },
       {
         id: "C",
@@ -401,7 +403,7 @@ export const CUE_PLANS: CuePlan[] = [
           { id: "lalitha", angle: "what are they worried about" },
         ],
         media: { by: ["dev", "meera"], kind: "gif", template: "rasode", search: "caught cartoon", setup: "text like 'you opening the gate at 10:07:'" },
-        hook: "ask whether siblings get the same rule",
+        hook: "ask whether {user}'s siblings get the same rule",
       },
     ],
   },

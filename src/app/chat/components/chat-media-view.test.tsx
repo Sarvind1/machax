@@ -24,4 +24,18 @@ describe("ChatMediaView", () => {
     expect(screen.queryByText("[sent a GIF]")).toBeNull();
     expect(screen.getByAltText("Drake meme").className).toContain("chat-media--sticker");
   });
+
+  it("shows Powered by KLIPY under a Klipy GIF, not under a memegen meme", () => {
+    const { unmount } = render(<ChatMediaView media={{ kind: "gif", url: "https://static.klipy.com/ii/x/paisa.webp", alt: "paisa" }} />);
+    expect(screen.getByText("Powered by KLIPY")).toBeTruthy();
+    unmount();
+    render(<ChatMediaView media={{ kind: "sticker", url: "https://api.memegen.link/images/drake/a/b.jpg", alt: "Drake meme" }} />);
+    expect(screen.queryByText("Powered by KLIPY")).toBeNull();
+  });
+
+  it("drops the Klipy mark when the GIF fails to load", () => {
+    render(<ChatMediaView media={{ kind: "gif", url: "https://static.klipy.com/ii/x/paisa.webp", alt: "paisa" }} />);
+    fireEvent.error(screen.getByRole("img"));
+    expect(screen.queryByText("Powered by KLIPY")).toBeNull();
+  });
 });
