@@ -56,6 +56,7 @@ import RechargeSheet from "./components/recharge-sheet";
 import { onBack } from "@/lib/back-nav";
 import { isCardStale, lastCardFrom, type LastCard } from "@/lib/vote-card";
 import { planReveal } from "@/lib/reply-pacing";
+import { startRoundLog, type EndReason } from "@/lib/round-log";
 import { VotePanel, VotePill, VoteSheet } from "./components/vote-dock";
 import AppHeader from "./home/app-header";
 import AmbientBanter from "./home/ambient-banter";
@@ -508,6 +509,14 @@ export default function ChatPage() {
       const controller = new AbortController();
       abortRef.current = controller;
       const live = () => roundRef.current === round;
+      // When typing and each reply showed on this screen; sent when the round ends.
+      const log = startRoundLog({
+        kind: opts.cardOnly ? "card" : opts.pickedOption ? "pick" : "message",
+        conversationId: String(convoId),
+        who: settingsUsername ?? undefined,
+        guestId,
+      });
+      let end: EndReason = "completed";
       roundDeliveredRef.current = false;
       // Small talk, distress and picks don't use a typed guest message either.
       roundExampleRef.current = isExamplePrompt(message) || !!opts.pickedOption || !!opts.cardOnly || classifyByRules(message).intent !== "dilemma";
@@ -546,13 +555,16 @@ export default function ChatPage() {
         // Signed out: no token, the server counts it as a guest message.
         const post = () => (guestId ? guestFetch("/api/chat", init) : authedFetch("/api/chat", init));
         let response = await post();
+        log.setStatus(response.status);
         // Cut a round off: the server frees the old round's lock once it has
         // stopped it (a few seconds at most), so retry "busy" for a while.
         const busyDeadline = Date.now() + BUSY_RETRY_MS;
         while (response.status === 409 && opts.interrupting && Date.now() < busyDeadline) {
           await new Promise((r) => setTimeout(r, BUSY_RETRY_STEP_MS));
           if (!live()) return;
+          log.mark("busy-retry");
           response = await post();
+          log.setStatus(response.status);
         }
         if (!live()) return;
 
@@ -643,7 +655,10 @@ export default function ChatPage() {
               // Remove this friend from typing list
               setTypingAgents((prev) => prev.filter((id) => id !== data.from));
               // Already shown if the user sent something while it was queued.
-              if (unshown.delete(data)) setMessages((prev) => [...prev, toMessage(data)]);
+              if (unshown.delete(data)) {
+                setMessages((prev) => [...prev, toMessage(data)]);
+                if (data.from !== "user") log.mark("msg-shown", { a: data.from });
+              }
               const media = mediaOf(data);
               if (media) logEvent("gif_received", { media_type: media.kind });
             }
@@ -652,14 +667,19 @@ export default function ChatPage() {
               setTypingAgents((prev) =>
                 prev.includes(data.typing) ? prev : [...prev, data.typing]
               );
+              log.mark("typing-shown", { a: data.typing });
             }
 
             if (data.helpline) addCard("helpline", data.helpline, convoId);
             if (Array.isArray(data.chips) && data.chips.length > 0) addCard("chips", data.chips, convoId);
 
-            if (data.cardReady) setCardTeaser(true);
+            if (data.cardReady) {
+              setCardTeaser(true);
+              log.mark("card-ready");
+            }
 
             if (data.decision) {
+              log.mark("card");
               setDecision(data.decision);
               setPickedOptionId(null);
               setCardTeaser(false);
@@ -725,6 +745,7 @@ export default function ChatPage() {
         const unshown = new Set<StreamEvent>();
         flushRepliesRef.current = () => {
           const shown = [...unshown].map(toMessage);
+          for (const m of shown) log.mark("msg-shown", { a: m.from, s: "flushed" });
           unshown.clear();
           if (shown.length > 0) setMessages((prev) => [...prev, ...shown]);
           return shown;
@@ -733,6 +754,7 @@ export default function ChatPage() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let gotByte = false;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -741,6 +763,10 @@ export default function ChatPage() {
             return;
           }
           if (done) break;
+          if (!gotByte) {
+            gotByte = true;
+            log.mark("first-byte");
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
@@ -759,8 +785,13 @@ export default function ChatPage() {
               continue; // Skip malformed JSON lines
             }
             let revealAt = 0;
-            if (typeof data.typing === "string") typingSince.set(data.typing, Date.now());
+            if (typeof data.typing === "string") {
+              typingSince.set(data.typing, Date.now());
+              log.mark("typing-in", { a: data.typing });
+            }
+            if (data.done) log.mark("done-in");
             if (data.from && data.text && data.from !== "user") {
+              log.mark("msg-in", { a: data.from, n: String(data.text).length });
               void persist(data);
               unshown.add(data);
               revealAt = planReveal({ now: Date.now(), text: String(data.text), typingSince: typingSince.get(data.from), lastRevealAt });
@@ -774,17 +805,25 @@ export default function ChatPage() {
             });
           }
         }
+        log.mark("stream-end");
         // Let the queued replies finish appearing before the round ends.
         await paced;
       } catch (err) {
         // Aborted because a newer message cut this round off: not an error.
         if (!live() || controller.signal.aborted) return;
+        end = "error";
+        log.mark("error", { s: String(err instanceof Error ? err.message : err).slice(0, 120) });
         if (isSignedOut(err)) {
           await goToLogin();
           return;
         }
         console.error("Chat stream error:", err);
       } finally {
+        if (!live() && end !== "error") {
+          log.mark("cut-off");
+          end = "cut-off";
+        }
+        log.finish(end);
         // Only the current round owns the loading state.
         if (live()) {
           abortRef.current = null;

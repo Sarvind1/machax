@@ -91,3 +91,25 @@ export const recent = internalQuery({
     };
   },
 });
+
+export const recordClientRound = internalMutation({
+  args: {
+    kind: v.string(),
+    conversationId: v.optional(v.string()),
+    who: v.optional(v.string()),
+    platform: v.string(),
+    appVersion: v.string(),
+    startedAt: v.number(),
+    endReason: v.string(),
+    status: v.optional(v.number()),
+    issues: v.array(v.string()),
+    steps: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("clientRounds", {
+      ...args,
+      hasIssues: args.issues.length > 0,
+      createdAt: Date.now(),
+    });
+  },
+});

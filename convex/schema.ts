@@ -123,6 +123,26 @@ export default defineSchema({
   }).index("by_created", ["createdAt"])
     .index("by_conversation", ["conversationId"]),
 
+  // One row per chat round, sent by the phone/browser: when "typing" and each
+  // reply arrived and showed on screen (src/lib/round-log.ts). Rows with issues
+  // (no-reply, burst, empty-card...) are the automatic bug reports.
+  clientRounds: defineTable({
+    kind: v.string(), // message | pick | card
+    conversationId: v.optional(v.string()),
+    who: v.optional(v.string()),
+    platform: v.string(),
+    appVersion: v.string(),
+    startedAt: v.number(),
+    endReason: v.string(),
+    status: v.optional(v.number()),
+    issues: v.array(v.string()),
+    hasIssues: v.boolean(),
+    steps: v.string(), // JSON array of RoundStep
+    createdAt: v.number(),
+  }).index("by_created", ["createdAt"])
+    .index("by_issues", ["hasIssues", "createdAt"])
+    .index("by_conversation", ["conversationId"]),
+
   // Every time a guest is sent to sign-in. source "server" = /api/chat answered
   // 403 login_required; "client" = the app showed the wall itself without asking.
   signInWalls: defineTable({
