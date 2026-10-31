@@ -19,9 +19,13 @@ interface ChatMessageProps {
   mediaThumbnailUrl?: string;
   mediaAltText?: string;
   onReport?: (reason: string) => Promise<void>;
+  /** The chat's first user bubble: the send morph flies into it. */
+  firstUser?: boolean;
+  /** Keep the bubble's space but don't paint it (while the morph is flying). */
+  concealed?: boolean;
 }
 
-export default function ChatMessage({ from, text, isUser, replyTo, replyToText, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, onReport }: ChatMessageProps) {
+export default function ChatMessage({ from, text, isUser, replyTo, replyToText, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, onReport, firstUser, concealed }: ChatMessageProps) {
   // System messages (joins, events)
   if (from === "system") {
     return (
@@ -37,7 +41,13 @@ export default function ChatMessage({ from, text, isUser, replyTo, replyToText, 
     return (
       <div className="chat-bubble-row user">
         <div className="chat-bubble-content">
-          <div className="chat-bubble user">{text}</div>
+          <div
+            className="chat-bubble user"
+            data-first-user-bubble={firstUser ? "" : undefined}
+            style={concealed ? { visibility: "hidden" } : undefined}
+          >
+            {text}
+          </div>
         </div>
       </div>
     );

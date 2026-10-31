@@ -1,0 +1,283 @@
+/* Home screen pieces: ambient banter, the ask card, drifting prompt pills.
+   All class names start with hm-. Motion follows the build-plan motion bar. */
+
+.hm-banter,
+.hm-composer,
+.hm-marquee {
+  --hm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --hm-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  font-family: var(--font-body), system-ui, sans-serif;
+  color: var(--mx-ink);
+}
+
+/* ── Ambient banter ─────────────────────────────────────────────── */
+
+.hm-banter {
+  --hm-step: 68px;
+  position: relative;
+  height: calc(var(--hm-step) * 3);
+  pointer-events: none;
+}
+
+.hm-banter-line {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 0;
+  transform-origin: 0 100%;
+  transition:
+    transform 0.6s cubic-bezier(0.34, 1.3, 0.64, 1),
+    opacity 0.4s var(--hm-ease),
+    filter 0.5s ease;
+}
+.hm-banter-line[data-age="0"] { transform: translateY(0); opacity: 1; }
+.hm-banter-line[data-age="1"] { transform: translateY(calc(var(--hm-step) * -1)); opacity: 1; }
+.hm-banter-line[data-age="2"] { transform: translateY(calc(var(--hm-step) * -2)); opacity: 0.55; }
+.hm-banter-line[data-age="3"] {
+  transform: translateY(calc(var(--hm-step) * -3)) scale(0.94);
+  opacity: 0;
+  filter: blur(6px);
+}
+
+/* Friends go quiet once the user is typing. */
+.hm-banter--quiet .hm-banter-line[data-age="0"] { opacity: 0.5; }
+.hm-banter--quiet .hm-banter-line[data-age="1"],
+.hm-banter--quiet .hm-banter-line[data-age="2"] { opacity: 0.38; }
+
+/* Sent: everyone steps aside to the left (delay set inline, 40ms apart). */
+.hm-banter--parting .hm-banter-line {
+  opacity: 0;
+  transition:
+    transform 0.42s var(--hm-ease),
+    opacity 0.3s var(--hm-ease),
+    filter 0.3s ease;
+}
+.hm-banter--parting .hm-banter-line[data-age="0"] { transform: translate(-170px, 0); }
+.hm-banter--parting .hm-banter-line[data-age="1"] { transform: translate(-170px, calc(var(--hm-step) * -1)); }
+.hm-banter--parting .hm-banter-line[data-age="2"] { transform: translate(-170px, calc(var(--hm-step) * -2)); }
+
+.hm-banter-pop {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  transform-origin: 0 100%;
+  animation: hm-spring-in 0.42s var(--hm-spring) both;
+}
+
+.hm-banter-bubble {
+  max-width: 244px;
+  padding: 8px 13px 9px;
+  background: #fff;
+  border: var(--mx-line-thin);
+  border-radius: 16px 16px 16px 5px;
+  box-shadow: 2px 2px 0 var(--mx-ink);
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+@keyframes hm-spring-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Ask card ───────────────────────────────────────────────────── */
+
+.hm-composer {
+  position: relative;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 15px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff;
+  border: var(--mx-line);
+  border-radius: 26px;
+  box-shadow: 4px 4px 0 var(--mx-ink);
+  transition: transform 0.14s var(--hm-ease), box-shadow 0.3s ease;
+}
+.hm-composer:has(.hm-composer-send:active:not(:disabled)) { transform: scale(0.97); }
+
+.hm-composer-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--mx-ink-soft);
+}
+
+.hm-composer-field {
+  position: relative;
+  padding-right: 58px; /* room for the send button */
+}
+
+.hm-composer-input,
+.hm-composer-hint {
+  font-family: inherit;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+
+.hm-composer-input {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--mx-ink);
+  caret-color: var(--mx-ink);
+}
+.hm-composer-input::placeholder { color: transparent; }
+.hm-composer-input:disabled { opacity: 0.6; }
+
+.hm-composer-hint {
+  position: absolute;
+  inset: 0 58px 0 0;
+  color: var(--mx-ink-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.hm-caret {
+  display: inline-block;
+  width: 2px;
+  height: 22px;
+  margin-left: 2px;
+  vertical-align: -4px;
+  background: var(--mx-ink);
+  animation: hm-caret-blink 1s steps(1) infinite;
+}
+@keyframes hm-caret-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.hm-composer-send {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--mx-haldi);
+  color: var(--mx-ink);
+  border: var(--mx-line);
+  box-shadow: 2px 2px 0 var(--mx-ink);
+  cursor: pointer;
+  transition: transform 0.2s var(--hm-ease), opacity 0.2s ease;
+}
+.hm-composer-send:active:not(:disabled) { transform: scale(0.82); }
+.hm-composer-send:disabled { opacity: 0.55; cursor: default; }
+.hm-composer-send:focus-visible { outline: 3px solid var(--mx-bottle); outline-offset: 2px; }
+
+/* ── Drifting prompt pills ──────────────────────────────────────── */
+
+.hm-marquee {
+  --hm-marquee-duration: 48s;
+  overflow: hidden;
+  padding: 8px 0 10px;
+  transition: opacity 0.22s var(--hm-ease), transform 0.3s var(--hm-ease);
+  touch-action: pan-y;
+}
+
+.hm-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: hm-drift var(--hm-marquee-duration) linear infinite;
+}
+
+.hm-marquee:hover .hm-marquee-track,
+.hm-marquee:focus-within .hm-marquee-track,
+.hm-marquee--held .hm-marquee-track,
+.hm-marquee--hidden .hm-marquee-track {
+  animation-play-state: paused;
+}
+
+.hm-marquee--hidden {
+  opacity: 0;
+  transform: translateY(28px);
+  pointer-events: none;
+}
+
+@keyframes hm-drift {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.hm-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 44px;
+  margin-right: 10px; /* margin, not gap, so -50% lands exactly on the copy */
+  padding: 0 16px;
+  box-sizing: border-box;
+  background: #fff;
+  color: var(--mx-ink);
+  border: var(--mx-line-thin);
+  border-radius: 999px;
+  box-shadow: 2px 2px 0 var(--mx-ink);
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s var(--hm-ease), background-color 0.2s ease;
+}
+.hm-chip--mint { background: var(--mx-mint); }
+.hm-chip:hover,
+.hm-chip:focus-visible {
+  transform: translateY(-3px);
+  background: var(--mx-haldi);
+}
+.hm-chip:focus-visible { outline: 3px solid var(--mx-bottle); outline-offset: 2px; }
+
+/* ── Reduced motion: fades only, pills become a plain scroller ─── */
+
+@media (prefers-reduced-motion: reduce) {
+  .hm-banter-line,
+  .hm-banter--parting .hm-banter-line,
+  .hm-composer,
+  .hm-composer-send,
+  .hm-marquee,
+  .hm-chip {
+    transition: opacity 0.25s ease !important;
+  }
+  /* parting = plain fade in place */
+  .hm-banter--parting .hm-banter-line[data-age="0"] { transform: none; }
+  .hm-banter--parting .hm-banter-line[data-age="1"] { transform: translateY(calc(var(--hm-step) * -1)); }
+  .hm-banter--parting .hm-banter-line[data-age="2"] { transform: translateY(calc(var(--hm-step) * -2)); }
+  .hm-banter-pop { animation: hm-fade-in 0.25s ease both; }
+  .hm-caret { animation: none; }
+  .hm-composer:has(.hm-composer-send:active:not(:disabled)),
+  .hm-composer-send:active:not(:disabled),
+  .hm-chip:hover,
+  .hm-chip:focus-visible,
+  .hm-marquee--hidden { transform: none; }
+
+  .hm-marquee {
+    overflow-x: auto;
+    scrollbar-width: none;
+    touch-action: auto;
+  }
+  .hm-marquee::-webkit-scrollbar { display: none; }
+  .hm-marquee-track { animation: none; padding: 0 6px 0 16px; }
+  .hm-marquee-dup { display: none; }
+}
+
+@keyframes hm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

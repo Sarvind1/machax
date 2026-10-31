@@ -37,7 +37,8 @@ function useSafeQuery<T>(query: any, args?: any): T | null {
 }
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ChatMessage as ChatMessageType, Decision } from "@/lib/types";
-import { FRIENDS, FRIENDS_BY_ID, STARTERS, selectPod, type Friend } from "@/lib/friends";
+import { FRIENDS, FRIENDS_BY_ID, STARTERS, type Friend } from "@/lib/friends";
+import { GROUPS, GROUPS_BY_KEY, compactCreditLabel, pickGroup, podForGroup, type GroupKey } from "@/lib/groups";
 
 type ChatMessageWithReply = ChatMessageType & {
   replyTo?: string;
@@ -52,18 +53,21 @@ import ChatComposer from "./components/chat-composer";
 import { HelplineCard, StarterChips, cardFrom, isCardMessage, type CardKind, type HelplineInfo } from "./components/chat-cards";
 import { pickShareLines } from "./components/share-card";
 import { classifyByRules } from "@/lib/intent";
-import FriendPill from "./components/friend-pill";
 import TypingIndicator from "./components/typing-indicator";
-import CreditPill from "./components/credit-pill";
 import { useStickToBottom } from "./use-stick-to-bottom";
 import RechargeSheet from "./components/recharge-sheet";
-import BackArrow from "../back-button";
-import FriendAvatar from "@/components/friend-avatar";
-import FaceStack from "@/components/face-stack";
 import { onBack } from "@/lib/back-nav";
 import { isCardStale, lastCardFrom, type LastCard } from "@/lib/vote-card";
 import { planReveal } from "@/lib/reply-pacing";
 import { VotePanel, VotePill, VoteSheet } from "./components/vote-dock";
+import AppHeader from "./home/app-header";
+import AmbientBanter from "./home/ambient-banter";
+import HomeComposer from "./home/home-composer";
+import GroupLabel from "./home/group-label";
+import PromptMarquee from "./home/prompt-marquee";
+import PastChatsSheet from "./home/past-chats-sheet";
+import AccountSheet from "./home/account-sheet";
+import SendMorph from "./home/send-morph";
 import "./chat.css";
 
 type ConversationId = Id<"conversations">;
@@ -114,11 +118,41 @@ const TOAST_MS = 3000;
 const BUSY_RETRY_MS = 15_000;
 const BUSY_RETRY_STEP_MS = 750;
 
-// Shown in place of the credit pill while signed out.
-function guestPillLabel(guest: GuestState): string {
-  const left = Math.max(0, GUEST_TYPED_LIMIT - guest.typedUsed);
-  if (left === 0) return "sign in to keep going";
-  return `${left} free ${left === 1 ? "message" : "messages"} left`;
+// Short pill labels for the starter questions; a tap fills the full text.
+const PROMPT_LABELS: Record<string, string> = {
+  "My friend owes me 15k and keeps posting Goa stories": "friend owes me 15k",
+  "Mom set up a rishta meeting this Sunday. Do I go?": "rishta meeting on sunday",
+  "Boss texts me on Sunday nights. Reply or ignore?": "boss texts me on sundays",
+  "My ex liked my story at 2am. Should I reply?": "my ex liked my story at 2am",
+  "Got a 30% hike offer but the new team seems toxic": "30% hike, toxic team",
+  "Friends want a Bali trip. I have 40k in savings": "bali trip on 40k savings?",
+  "She left me on seen for 2 days. Do I double text?": "left on seen for 2 days",
+  "Parents want me home by 10pm. I'm 24": "home by 10pm at 24?",
+};
+const PROMPTS = STARTERS.map((s) => ({
+  label: PROMPT_LABELS[s.text] ?? s.text.toLowerCase(),
+  text: s.text,
+}));
+
+// Plain words for the account sheet: "12 messages left".
+function accountCreditsLabel(credits: CreditSummary | null, guest: GuestState | null): string | null {
+  if (guest) {
+    const left = Math.max(0, GUEST_TYPED_LIMIT - guest.typedUsed);
+    return `${left} free ${left === 1 ? "message" : "messages"} left`;
+  }
+  if (!credits) return null;
+  const n = Math.max(0, credits.messagesLeft);
+  return `${n} ${n === 1 ? "message" : "messages"} left`;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return parts.slice(0, 2).map((p) => p[0]!.toUpperCase()).join("");
+}
+
+// Older chats only stored a tag; guess the group back from it when it matches.
+function groupFromTag(tag: string | undefined): GroupKey | null {
+  return GROUPS.find((g) => g.tags[0] === tag)?.key ?? null;
 }
 
 export default function ChatPage() {
@@ -129,8 +163,9 @@ export default function ChatPage() {
   const [guest, setGuest] = useState<GuestState | null>(null);
   const [credits, setCredits] = useState<CreditSummary | null>(null);
   const [rechargeOpen, setRechargeOpen] = useState(false);
-  // Phones: the sidebar (past chats, sign out) opens as a drawer from the ☰ button.
-  const [menuOpen, setMenuOpen] = useState(false);
+  // Bottom sheets from the header: past chats (clock) and account (initials).
+  const [pastOpen, setPastOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [buying, setBuying] = useState(false);
   const [buyError, setBuyError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -190,6 +225,18 @@ export default function ChatPage() {
   const [voteSheetOpen, setVoteSheetOpen] = useState(false);
   const [pod, setPod] = useState<Friend[]>([]);
   const [input, setInput] = useState("");
+  // Home: the group the user picked by hand (null = guess from the text).
+  const [groupPick, setGroupPick] = useState<GroupKey | null>(null);
+  // Open chat: the group it was asked to (null when unknown, e.g. old chats).
+  const [chatGroup, setChatGroup] = useState<GroupKey | null>(null);
+  const [composerFocused, setComposerFocused] = useState(false);
+  // First send: the ask card flies into the first bubble. Set only after the
+  // guest wall and credit checks pass.
+  const [morph, setMorph] = useState<{ from: DOMRect; text: string } | null>(null);
+  // Between the first send and the conversation being created.
+  const [creating, setCreating] = useState(false);
+  const homeCardRef = useRef<HTMLFormElement>(null);
+  const creatingRef = useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   // Bumped per round so the safety timeout below restarts when a round is cut off.
   const [roundSeq, setRoundSeq] = useState(0);
@@ -764,7 +811,7 @@ export default function ChatPage() {
   // Sends `raw` (the composer text, or a tapped chip).
   const submitText = useCallback(async (raw: string) => {
     const text = raw.trim();
-    if (!text) return;
+    if (!text || creatingRef.current) return;
     // Sent while friends are still replying: cut that round off; the new round
     // gets everything said so far plus this message, so friends react to it.
     const interrupting = isLoading;
@@ -821,33 +868,48 @@ export default function ChatPage() {
     isStreamingRef.current = true;
 
     if (!activeConversation) {
-      // First message — create conversation
-      const tag = STARTERS.find((s) => s.text === text)?.tag ?? "life";
+      // First message — create conversation. The group (picked by hand, or
+      // guessed from the text) chooses the friends, unless the user saved
+      // their own pod in /configure.
+      const groupKey: GroupKey = groupPick ?? pickGroup(text);
+      const tag = GROUPS_BY_KEY[groupKey].tags[0] ?? "life";
+      const maxPod = Math.min(userSettings?.podSize || MAX_POD_SIZE, MAX_POD_SIZE);
 
-      let podIds: string[];
+      let podIds = podForGroup(groupKey, maxPod);
       if (userSettings?.characterOverrides) {
         try {
-          const overrides = JSON.parse(userSettings.characterOverrides);
+          const overrides = JSON.parse(userSettings.characterOverrides) as Record<string, { active?: boolean }>;
           const activeIds = Object.entries(overrides)
-            .filter(([, v]: [string, any]) => (v as any).active !== false)
+            .filter(([, v]) => v?.active !== false)
             .map(([id]) => id);
-
-          if (activeIds.length > 0) {
-            const maxPod = Math.min(userSettings.podSize || MAX_POD_SIZE, MAX_POD_SIZE);
-            podIds = activeIds.slice(0, maxPod);
-          } else {
-            const maxPod = Math.min(userSettings.podSize || MAX_POD_SIZE, MAX_POD_SIZE);
-            podIds = selectPod([tag], maxPod).map(f => f.id);
-          }
+          if (activeIds.length > 0) podIds = activeIds.slice(0, maxPod);
         } catch {
-          podIds = selectPod([tag], Math.min(userSettings?.podSize || MAX_POD_SIZE, MAX_POD_SIZE)).map(f => f.id);
+          // bad saved settings: keep the group's pod
         }
-      } else {
-        podIds = selectPod([tag], Math.min(userSettings?.podSize || MAX_POD_SIZE, MAX_POD_SIZE)).map(f => f.id);
       }
 
       const selectedPod = podIds.map(id => FRIENDS_BY_ID[id]).filter(Boolean);
       setPod(selectedPod);
+      setChatGroup(groupKey);
+      setGroupPick(null);
+
+      // Show the chat right away with the user's bubble; the ask card flies
+      // into it while the conversation is created.
+      const userMsg: ChatMessageType = {
+        id: `user-${Date.now()}`,
+        conversationId: "",
+        from: "user",
+        text,
+        timestamp: Date.now(),
+      };
+      const card = homeCardRef.current;
+      if (card) setMorph({ from: card.getBoundingClientRect(), text });
+      setComposerFocused(false);
+      setMessages([userMsg]);
+      creatingRef.current = true;
+      setCreating(true);
+      // "new chat" / back while creating bumps roundRef: then drop this chat.
+      const startRound = roundRef.current;
 
       try {
         const convoId = await createConversation({
@@ -857,19 +919,16 @@ export default function ChatPage() {
           sessionMood: JSON.stringify({ modes: sessionModes, pacing: sessionPacing, energy: sessionEnergy }),
           username: settingsUsername || undefined,
         });
+        creatingRef.current = false;
+        setCreating(false);
+        if (roundRef.current !== startRound) {
+          isStreamingRef.current = false;
+          return;
+        }
 
         setActiveConversation(convoId);
-        logEvent("dilemma_posted", { pod_size: podIds.length, topic: tag });
+        logEvent("dilemma_posted", { pod_size: podIds.length, topic: tag, group: groupKey });
         logFirstDilemmaPosted();
-
-        const userMsg: ChatMessageType = {
-          id: `user-${Date.now()}`,
-          conversationId: convoId as string,
-          from: "user",
-          text,
-          timestamp: Date.now(),
-        };
-        setMessages([userMsg]);
 
         await streamChat(text, convoId, podIds, [], {
           onAccepted: async () => {
@@ -883,6 +942,17 @@ export default function ChatPage() {
       } catch (err) {
         console.error("Failed to create conversation:", err);
         isStreamingRef.current = false;
+        // Not created: back to home with the text still in the box.
+        if (creatingRef.current) {
+          creatingRef.current = false;
+          setCreating(false);
+          setMorph(null);
+          setMessages([]);
+          setPod([]);
+          setChatGroup(null);
+          setInput((current) => current || text);
+          setToast("couldn't start the chat. try again");
+        }
       }
     } else {
       // Subsequent message
@@ -923,13 +993,9 @@ export default function ChatPage() {
         setTypingAgents([]);
       }
     }
-  }, [isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, credits, guest, promptSignIn]);
+  }, [isLoading, activeConversation, pod, messages, createConversation, sendMessage, streamChat, sessionModes, sessionPacing, sessionEnergy, userSettings, settingsUsername, credits, guest, promptSignIn, groupPick]);
 
   const handleSubmit = useCallback(() => submitText(input), [submitText, input]);
-
-  const handleStarterClick = (starterText: string) => {
-    setInput(starterText);
-  };
 
   const handleNewChat = () => {
     // Leaving mid-round: stop that round so its replies don't land in the new chat.
@@ -950,11 +1016,16 @@ export default function ChatPage() {
     setLurkingAgents([]);
     setIsWindingDown(false);
     setActiveAgentIds(new Set());
+    setMorph(null);
+    creatingRef.current = false;
+    setCreating(false);
+    setChatGroup(null);
+    setGroupPick(null);
   };
 
   // Android back inside chat: close an open sheet or panel first, then leave the
   // open conversation for the chat home. On the home screen back closes the app.
-  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false, voteSheetOpen: false, menuOpen: false });
+  const backStateRef = useRef({ inChat: false, rechargeOpen: false, moodOpen: false, voteSheetOpen: false, pastOpen: false, accountOpen: false });
   const handleNewChatRef = useRef(handleNewChat);
   useEffect(() => {
     backStateRef.current = {
@@ -962,7 +1033,8 @@ export default function ChatPage() {
       rechargeOpen,
       moodOpen,
       voteSheetOpen,
-      menuOpen,
+      pastOpen,
+      accountOpen,
     };
     handleNewChatRef.current = handleNewChat;
   });
@@ -970,7 +1042,8 @@ export default function ChatPage() {
     () =>
       onBack(() => {
         const st = backStateRef.current;
-        if (st.menuOpen) setMenuOpen(false);
+        if (st.pastOpen) setPastOpen(false);
+        else if (st.accountOpen) setAccountOpen(false);
         else if (st.rechargeOpen) setRechargeOpen(false);
         else if (st.voteSheetOpen) setVoteSheetOpen(false);
         else if (st.moodOpen) setMoodOpen(false);
@@ -981,8 +1054,10 @@ export default function ChatPage() {
     [],
   );
 
-  const handleLoadConversation = (convoId: ConversationId, convo: { podFriendIds: string[] }) => {
+  const handleLoadConversation = (convoId: ConversationId, convo: { podFriendIds: string[]; tag?: string }) => {
+    setMorph(null);
     setActiveConversation(convoId);
+    setChatGroup(groupFromTag(convo.tag));
     setPod(convo.podFriendIds.map((id) => FRIENDS_BY_ID[id]).filter(Boolean));
     setDecision(null);
     setCardTeaser(false);
@@ -1153,18 +1228,75 @@ export default function ChatPage() {
     }
   };
 
-  const guestPill = guest && (
-    <button
-      type="button"
-      className={`credit-pill${guest.typedUsed >= GUEST_TYPED_LIMIT ? " credit-pill--low" : ""}`}
-      onClick={() => promptSignIn(input.trim(), activeConversation, pod.map((f) => f.id))}
-      title="sign in"
-    >
-      {guestPillLabel(guest)}
-    </button>
+  const podIds = pod.map((f) => f.id);
+  const signIn = () => promptSignIn(input.trim(), activeConversation, podIds);
+  // Header balance: "12 left". Guests see their free messages; a tap signs in.
+  const headerCredits = guest
+    ? compactCreditLabel(GUEST_TYPED_LIMIT - guest.typedUsed)
+    : credits
+      ? compactCreditLabel(credits.messagesLeft)
+      : null;
+  const onHeaderTopUp = guest ? signIn : openRecharge;
+  const initials = guest ? "" : initialsOf(userName);
+
+  const moodPanel = moodOpen && (
+    <div className="chat-mood-panel" ref={moodPanelRef}>
+      <div className="chat-mood-section">
+        <div className="chat-mood-label">modes</div>
+        <div className="chat-mood-pills">
+          {MODES.map(mode => (
+            <button
+              key={mode.id}
+              type="button"
+              className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
+              onClick={() => toggleMode(mode.id)}
+              title={mode.desc}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="chat-mood-section">
+        <div className="chat-mood-label">pacing</div>
+        <div className="chat-mood-segmented">
+          {PACING_OPTIONS.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
+              onClick={() => { setSessionPacing(opt); logEvent("mood_changed", { mood_type: "pacing", mood: opt }); }}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="chat-mood-section">
+        <div className="chat-mood-label">energy</div>
+        <div className="chat-mood-segmented">
+          {ENERGY_OPTIONS.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
+              onClick={() => { setSessionEnergy(opt); logEvent("mood_changed", { mood_type: "energy", mood: opt }); }}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <button type="button" className="chat-mood-done" onClick={() => setMoodOpen(false)}>
+        done
+      </button>
+    </div>
   );
 
-  // Shared by the landing and chat views.
+  // Shared by the home and chat views.
   const overlays = (
     <>
       {toast && <div className="chat-toast" role="status">{toast}</div>}
@@ -1176,325 +1308,156 @@ export default function ChatPage() {
         busy={buying}
         error={buyError}
       />
-    </>
-  );
-
-  // One sidebar for both views. Phones hide it until the ☰ button opens it as a drawer.
-  const renderSidebar = (showPod: boolean) => (
-    <>
-      {menuOpen && <div className="chat-sidebar-backdrop" onClick={() => setMenuOpen(false)} />}
-      <aside className={`chat-sidebar${menuOpen ? " chat-sidebar--open" : ""}`}>
-        <a href="/" className="chat-sidebar-logo">
-          macha<em>X</em>
-        </a>
-
-        {showPod && pod.length > 0 && (
-          <>
-            <div className="chat-sidebar-section">your pod</div>
-            <div className="chat-pod-list">
-              {pod.map((f) => {
-                const isActive = activeAgentIds.has(f.id);
-                const isLurking = lurkingAgents.includes(f.id);
-                return (
-                  <div key={f.id} className={`friend-pill-presence ${isActive ? 'active' : isLurking ? 'lurking' : 'joined'}`}>
-                    <span className="presence-dot-small" />
-                    <FriendAvatar id={f.id} size={24} />
-                    <span>{f.name.toLowerCase()}</span>
-                  </div>
-                );
-              })}
-              {lurkingAgents
-                .filter(id => !pod.some(f => f.id === id))
-                .map(id => {
-                  const f = FRIENDS_BY_ID[id];
-                  if (!f) return null;
-                  return (
-                    <div key={id} className="friend-pill-presence lurking">
-                      <span className="presence-dot-small" />
-                      <FriendAvatar id={f.id} size={24} style={{ opacity: 0.5 }} />
-                      <span>{f.name.toLowerCase()}</span>
-                      <span className="lurker-label">reading</span>
-                    </div>
-                  );
-                })}
-            </div>
-          </>
-        )}
-
-        <div className="chat-sidebar-section">recent</div>
-        {conversations.length > 0 ? (
-          <div className="chat-history-list">
-            {conversations.map((c) => (
-              <div
-                key={c._id}
-                className={`chat-history-item ${c._id === activeConversation ? "active" : ""}`}
-                onClick={() => { handleLoadConversation(c._id, c); setMenuOpen(false); }}
-              >
-                {c.title}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="chat-history-empty">no chats yet</div>
-        )}
-
-        <button className="chat-new-btn" onClick={() => { handleNewChat(); setMenuOpen(false); }}>
-          + new chat
-        </button>
-
-        <a href="/configure" style={{
-          display: "block", padding: "10px 16px", fontSize: 12,
-          color: "var(--ink-faint)", fontFamily: "var(--font-mono)",
-          textDecoration: "none", letterSpacing: "0.06em",
-        }}>
-          ⚙ configure pod
-        </a>
-        <div className="chat-sidebar-legal">
-          <a href="/privacy">privacy</a>
-          {!guest && <a href="/delete-account">delete account</a>}
-        </div>
-        {guest ? (
-          <button
-            className="chat-sidebar-account"
-            onClick={() => { setMenuOpen(false); promptSignIn(input.trim(), activeConversation, pod.map((f) => f.id)); }}
-          >
-            sign in
-          </button>
-        ) : (
-          <button className="chat-sidebar-account" onClick={goToLogin}>
-            sign out
-          </button>
-        )}
-      </aside>
+      <PastChatsSheet
+        open={pastOpen}
+        conversations={conversations}
+        activeId={activeConversation}
+        onPick={(id, convo) => {
+          setPastOpen(false);
+          handleLoadConversation(id as ConversationId, convo);
+        }}
+        onNew={() => {
+          setPastOpen(false);
+          handleNewChat();
+        }}
+        onClose={() => setPastOpen(false)}
+      />
+      <AccountSheet
+        open={accountOpen}
+        userName={guest ? null : userName}
+        isGuest={!!guest}
+        creditsLabel={accountCreditsLabel(credits, guest)}
+        onTopUp={() => {
+          setAccountOpen(false);
+          openRecharge();
+        }}
+        onSignIn={() => {
+          setAccountOpen(false);
+          signIn();
+        }}
+        onSignOut={() => {
+          setAccountOpen(false);
+          void goToLogin();
+        }}
+        onEditPod={() => {
+          setAccountOpen(false);
+          router.push("/configure");
+        }}
+        onClose={() => setAccountOpen(false)}
+      />
     </>
   );
 
   if (!isAuthed) {
     return (
-      <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#F4F1E8",
-        color: "#5A554A",
-        fontFamily: "var(--font-body), system-ui, sans-serif",
-      }}>
+      <div className="chat-page chat-page--loading">
         <p>loading...</p>
       </div>
     );
   }
 
-  // Landing state
-  if (!activeConversation && messages.length === 0) {
-    return (
-      <div className="chat-page">
-        {renderSidebar(false)}
+  const isHome = !activeConversation && messages.length === 0;
+  // The home layer stays on top for the morph so the banter can part.
+  const showHome = isHome || morph !== null;
+  const leaving = !isHome;
+  const homeGroup: GroupKey = groupPick ?? pickGroup(input);
+  const firstUserIdx = messages.findIndex((m) => m.from === "user");
 
-        {/* Landing center */}
-        <div className="chat-landing">
-          <button className="chat-menu-btn" onClick={() => setMenuOpen(true)} aria-label="menu: past chats and account">
-            ☰
-          </button>
-          <div className="chat-landing-credit">
-            {guest ? guestPill : <CreditPill credits={credits} onClick={openRecharge} />}
-          </div>
-          {pod.length > 0 && <FaceStack ids={pod.map((f) => f.id)} size={48} max={5} className="chat-landing-faces" />}
-          <h1 className="chat-landing-title">what&apos;s the drama?</h1>
-          <p className="chat-landing-sub">
-            your AI friends roast it. you make the call.
-          </p>
+  const homeLayer = (
+    <div key="home" className={`chat-home${leaving ? " chat-home--leaving" : ""}`} aria-hidden={leaving || undefined}>
+      <AppHeader
+        variant="home"
+        creditsLabel={headerCredits}
+        onTopUp={onHeaderTopUp}
+        onOpenPastChats={() => setPastOpen(true)}
+        onOpenAccount={() => setAccountOpen(true)}
+        initials={initials}
+      />
 
-          <div className="chat-mood-landing">
-            <button
-              ref={moodTriggerRef}
-              className="chat-mood-trigger"
-              onClick={() => setMoodOpen(!moodOpen)}
-              title="Session mood"
-            >
-              <span className="chat-mood-dot" /> set the mood
-            </button>
-            {sessionModes.length > 0 && (
-              <div className="chat-mood-active-pills">
-                {sessionModes.map(m => (
-                  <span key={m} className="chat-mood-active-pill">{m.replace("-", " ")}</span>
-                ))}
-              </div>
-            )}
-
-            {moodOpen && (
-              <div className="chat-mood-panel" ref={moodPanelRef}>
-                <div className="chat-mood-section">
-                  <div className="chat-mood-label">modes</div>
-                  <div className="chat-mood-pills">
-                    {MODES.map(mode => (
-                      <button
-                        key={mode.id}
-                        className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
-                        onClick={() => toggleMode(mode.id)}
-                        title={mode.desc}
-                      >
-                        {mode.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="chat-mood-section">
-                  <div className="chat-mood-label">pacing</div>
-                  <div className="chat-mood-segmented">
-                    {PACING_OPTIONS.map(opt => (
-                      <button
-                        key={opt}
-                        className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
-                        onClick={() => { setSessionPacing(opt); logEvent("mood_changed", { mood_type: "pacing", mood: opt }); }}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="chat-mood-section">
-                  <div className="chat-mood-label">energy</div>
-                  <div className="chat-mood-segmented">
-                    {ENERGY_OPTIONS.map(opt => (
-                      <button
-                        key={opt}
-                        className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
-                        onClick={() => { setSessionEnergy(opt); logEvent("mood_changed", { mood_type: "energy", mood: opt }); }}
-                      >
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <button className="chat-mood-done" onClick={() => setMoodOpen(false)}>
-                  done
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="chat-landing-composer">
-            <ChatComposer
-              value={input}
-              onChange={setInput}
-              onSubmit={handleSubmit}
-              disabled={false}
-              placeholder="spill it..."
-            />
-          </div>
-
-          <div className="chat-landing-chips">
-            {STARTERS.slice(0, 3).map((s) => (
-              <button
-                key={s.text}
-                className="chat-landing-chip"
-                onClick={() => handleStarterClick(s.text)}
-              >
-                <span>{s.chip}</span>
-                {s.text}
-              </button>
-            ))}
-          </div>
-
-        </div>
-        {overlays}
+      <div className="chat-home-live">
+        <span className="chat-home-live-dot" aria-hidden="true" />
+        <span>your friends are talking</span>
       </div>
-    );
-  }
 
-  // Chat state
-  return (
-    <div className="chat-page">
-      {renderSidebar(true)}
+      <div className="chat-home-stage">
+        <AmbientBanter typing={input.length > 0} parting={leaving} />
+      </div>
 
-      {/* Center */}
-      <div className="chat-center">
-        <div className="chat-header">
-          <button className="chat-menu-btn chat-menu-btn--header" onClick={() => setMenuOpen(true)} aria-label="menu: past chats and account">
-            ☰
-          </button>
-          <BackArrow onClick={() => handleNewChat()} />
-          {pod.length > 0 && <FaceStack ids={pod.map((f) => f.id)} size={32} max={3} />}
-          <div className="chat-header-meta">
-            <span className="chat-header-title">{activeTitle ?? "the group chat"}</span>
-            {pod.length > 0 && (
-              <span className="chat-header-names">
-                {pod.map((f) => f.name.toLowerCase()).join(", ")}
-              </span>
-            )}
-          </div>
-          {guest ? guestPill : <CreditPill credits={credits} onClick={openRecharge} />}
-          <button
-            ref={moodTriggerRef}
-            className="chat-mood-trigger"
-            onClick={() => setMoodOpen(!moodOpen)}
-            title="set the mood"
-          >
-            mood
-          </button>
-
-          {moodOpen && (
-            <div className="chat-mood-panel" ref={moodPanelRef}>
-              <div className="chat-mood-section">
-                <div className="chat-mood-label">modes</div>
-                <div className="chat-mood-pills">
-                  {MODES.map(mode => (
-                    <button
-                      key={mode.id}
-                      className={`chat-mood-pill ${sessionModes.includes(mode.id) ? "chat-mood-pill--active" : ""}`}
-                      onClick={() => toggleMode(mode.id)}
-                      title={mode.desc}
-                    >
-                      {mode.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="chat-mood-section">
-                <div className="chat-mood-label">pacing</div>
-                <div className="chat-mood-segmented">
-                  {PACING_OPTIONS.map(opt => (
-                    <button
-                      key={opt}
-                      className={`chat-mood-segment ${sessionPacing === opt ? "chat-mood-segment--active" : ""}`}
-                      onClick={() => setSessionPacing(opt)}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="chat-mood-section">
-                <div className="chat-mood-label">energy</div>
-                <div className="chat-mood-segmented">
-                  {ENERGY_OPTIONS.map(opt => (
-                    <button
-                      key={opt}
-                      className={`chat-mood-segment ${sessionEnergy === opt ? "chat-mood-segment--active" : ""}`}
-                      onClick={() => setSessionEnergy(opt)}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button className="chat-mood-done" onClick={() => setMoodOpen(false)}>
-                done
-              </button>
-            </div>
+      <div className="chat-home-ask">
+        <div className="chat-home-group">
+          {input.trim() && (
+            <GroupLabel
+              groupKey={homeGroup}
+              onChange={(key) => {
+                setGroupPick(key);
+                logEvent("group_changed", { group: key, where: "home" });
+              }}
+            />
           )}
         </div>
+        <HomeComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSubmit}
+          disabled={leaving}
+          cardRef={homeCardRef}
+          onFocus={() => setComposerFocused(true)}
+          onBlur={() => setComposerFocused(false)}
+        />
+      </div>
 
-        <VotePill {...voteDock} onOpen={openVoteSheet} />
+      <div className={`chat-home-prompts${composerFocused && !leaving ? " chat-home-prompts--away" : ""}`}>
+        <PromptMarquee prompts={PROMPTS} onPick={setInput} hidden={composerFocused || leaving} />
+      </div>
+    </div>
+  );
 
-        <div className="chat-messages" ref={chatScrollRef}>
+  const chatLayer = (
+    <div key="chat" className="chat-center">
+      <div className="chat-head">
+        <AppHeader
+          variant="chat"
+          creditsLabel={headerCredits}
+          onTopUp={onHeaderTopUp}
+          onOpenPastChats={() => setPastOpen(true)}
+          onOpenAccount={() => setAccountOpen(true)}
+          initials={initials}
+          title={activeTitle ?? messages.find((m) => m.from === "user")?.text.slice(0, 60) ?? "the group chat"}
+          podIds={podIds}
+          onBack={handleNewChat}
+          extra={
+            <button
+              ref={moodTriggerRef}
+              type="button"
+              className="chat-mood-trigger"
+              onClick={() => setMoodOpen(!moodOpen)}
+              aria-expanded={moodOpen}
+            >
+              mood
+            </button>
+          }
+        />
+        {moodPanel}
+      </div>
+
+      {chatGroup && (
+        <div className="chat-group-row">
+          <GroupLabel
+            groupKey={chatGroup}
+            onChange={(key) => {
+              setChatGroup(key);
+              // Next messages go to the new group's friends.
+              const maxPod = Math.min(userSettings?.podSize || MAX_POD_SIZE, MAX_POD_SIZE);
+              setPod(podForGroup(key, maxPod).map((id) => FRIENDS_BY_ID[id]).filter(Boolean));
+              logEvent("group_changed", { group: key, where: "chat" });
+            }}
+          />
+        </div>
+      )}
+
+      <VotePill {...voteDock} onOpen={openVoteSheet} />
+
+      <div className="chat-messages" ref={chatScrollRef}>
           {messages.map((m, idx) => {
             if (isCardMessage(m.from)) {
               let payload: unknown;
@@ -1514,6 +1477,7 @@ export default function ChatPage() {
               // Vote cards live in the pill / side panel now, not in the stream.
               return null;
             }
+            const isFirstUser = idx === firstUserIdx;
             const replyMsg = m.replyTo ? [...messages].slice(0, idx).reverse().find(prev => prev.from === m.replyTo) : undefined;
             return (
             <ChatMessage
@@ -1527,6 +1491,8 @@ export default function ChatPage() {
               mediaUrl={m.mediaUrl}
               mediaThumbnailUrl={m.mediaThumbnailUrl}
               mediaAltText={m.mediaAltText}
+              firstUser={isFirstUser}
+              concealed={isFirstUser && morph !== null}
               onReport={async (reason) => {
                 await createReport({
                   username: settingsUsername ?? undefined,
@@ -1554,22 +1520,30 @@ export default function ChatPage() {
           )}
 
           <div ref={messagesEndRef} />
-        </div>
-
-        <div className="chat-composer-wrapper">
-          <ChatComposer
-            value={input}
-            onChange={setInput}
-            onSubmit={handleSubmit}
-            disabled={false}
-          />
-        </div>
       </div>
 
-      <VotePanel {...voteDock} onRequest={() => void requestCard()} />
-      <VoteSheet {...voteDock} open={voteSheetOpen} onClose={() => setVoteSheetOpen(false)} onRequest={() => void requestCard()} />
+      <div className="chat-composer-wrapper">
+        <ChatComposer
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSubmit}
+          disabled={creating}
+          placeholder="reply to your friends…"
+        />
+      </div>
+    </div>
+  );
 
+  return (
+    <div className="chat-page">
+      {showHome && homeLayer}
+      {!isHome && chatLayer}
+      {!isHome && <VotePanel {...voteDock} onRequest={() => void requestCard()} />}
+      {!isHome && (
+        <VoteSheet {...voteDock} open={voteSheetOpen} onClose={() => setVoteSheetOpen(false)} onRequest={() => void requestCard()} />
+      )}
       {overlays}
+      {morph && <SendMorph from={morph.from} text={morph.text} onDone={() => setMorph(null)} />}
     </div>
   );
 }
