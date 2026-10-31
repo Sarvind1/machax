@@ -1,8 +1,7 @@
-// media-service.ts — reaction stickers for friend replies.
-// Only Klipy stickers whose title marks them as a cartoon, animal or emoji are
-// used. Klipy has no content rating filter, and its GIFs, the local meme images
-// and Imgflip memes are mostly photos of real people (once a child), so those
-// sources are not used for replies any more.
+// media-service.ts — cascading multi-source media resolution
+// Tier 1: Klipy (GIFs + stickers) with relevance check
+// Tier 2: Self-hosted memes (from /public/memes/memes-index.json)
+// Tier 3: Imgflip automeme (last resort)
 
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
@@ -137,7 +136,6 @@ export async function searchKlipy(query: string): Promise<MediaResult | null> {
       const scored: { item: any; overlap: number }[] = [];
 
       for (const item of items) {
-        if (!isSafeStickerTitle(item.title || item.slug || "")) continue;
         const titleWords = normalizeWords(item.title || item.slug || "");
         const overlap = wordOverlap(queryWords, titleWords);
         if (overlap >= 2) {
@@ -171,19 +169,14 @@ export async function searchKlipy(query: string): Promise<MediaResult | null> {
     }
   }
 
-  // Stickers only: GIFs are mostly clips of real people.
-  return fetchKlipy("stickers");
-}
+  // Search GIFs and stickers in parallel
+  const [gifResult, stickerResult] = await Promise.all([
+    fetchKlipy("gifs"),
+    fetchKlipy("stickers"),
+  ]);
 
-// A sticker is used only if its title says it's a drawing, an animal or an
-// emoji, and nothing in it points at a real person.
-const SAFE_STICKER_WORDS =
-  /\b(cartoon|animated|anime|kawaii|chibi|doodle|drawing|illustration|emoji|emoticon|smiley|cat|cats|kitty|kitten|dog|doggo|puppy|pup|bear|panda|bunny|rabbit|penguin|duck|frog|pepe|hamster|monkey|fox|owl|chick|pig|cow|mochi|peach|goma|blob|text|word|lettering|pixel|robot|alien|ghost|potato|avocado)\b/i;
-const UNSAFE_STICKER_WORDS =
-  /\b(man|men|woman|women|guy|girl|boy|kid|kids|child|children|baby|toddler|teen|person|people|human|face of|selfie|actor|actress|celebrity|ishowspeed|speed|streamer|youtuber|rapper|singer|player|footballer|president|minister|sexy|hot|nsfw|bikini|kiss|blood|gun)\b/i;
-
-export function isSafeStickerTitle(title: string): boolean {
-  return SAFE_STICKER_WORDS.test(title) && !UNSAFE_STICKER_WORDS.test(title);
+  // Return the best match (prefer the one with more overlap, or GIF if tied)
+  return gifResult || stickerResult;
 }
 
 // ── Tier 2: Self-hosted memes ──────────────────────────────────────────
@@ -356,6 +349,58 @@ async function resolveMediaChain(vibeText: string, conversationTopic: string = "
     }
     console.log(`[media] REJECTED ${klipy2.source} q2: "${klipy2.altText}" (validation failed)`);
     writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "rejected", query: "q2", altText: klipy2.altText, reason: "validation-failed" });
+  }
+
+  console.log(`[media] MISS klipy, trying local...`);
+
+  // Tier 2: Local memes (synchronous, fast)
+  const meme1 = searchLocalMemes(q1);
+  if (meme1) {
+    const validated = await validateMediaRelevance(conversationTopic, vibeText, meme1.altText);
+    if (validated) {
+      console.log(`[media] HIT local-meme q1: "${meme1.altText}"`);
+      writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "local-meme", query: "q1", altText: meme1.altText, url: meme1.url.slice(0, 80) });
+      return meme1;
+    }
+    console.log(`[media] REJECTED local-meme q1: "${meme1.altText}" (validation failed)`);
+    writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "rejected", query: "q1", altText: meme1.altText, reason: "validation-failed" });
+  }
+
+  const meme2 = searchLocalMemes(q2);
+  if (meme2) {
+    const validated = await validateMediaRelevance(conversationTopic, vibeText, meme2.altText);
+    if (validated) {
+      console.log(`[media] HIT local-meme q2: "${meme2.altText}"`);
+      writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "local-meme", query: "q2", altText: meme2.altText, url: meme2.url.slice(0, 80) });
+      return meme2;
+    }
+    console.log(`[media] REJECTED local-meme q2: "${meme2.altText}" (validation failed)`);
+    writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "rejected", query: "q2", altText: meme2.altText, reason: "validation-failed" });
+  }
+
+  // Tier 3: Imgflip (last resort)
+  const imgflip1 = await searchImgflip(q1);
+  if (imgflip1) {
+    const validated = await validateMediaRelevance(conversationTopic, vibeText, imgflip1.altText);
+    if (validated) {
+      console.log(`[media] HIT imgflip q1: "${imgflip1.altText}"`);
+      writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "imgflip", query: "q1", altText: imgflip1.altText, url: imgflip1.url.slice(0, 80) });
+      return imgflip1;
+    }
+    console.log(`[media] REJECTED imgflip q1: "${imgflip1.altText}" (validation failed)`);
+    writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "rejected", query: "q1", altText: imgflip1.altText, reason: "validation-failed" });
+  }
+
+  const imgflip2 = await searchImgflip(q2);
+  if (imgflip2) {
+    const validated = await validateMediaRelevance(conversationTopic, vibeText, imgflip2.altText);
+    if (validated) {
+      console.log(`[media] HIT imgflip q2: "${imgflip2.altText}"`);
+      writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "imgflip", query: "q2", altText: imgflip2.altText, url: imgflip2.url.slice(0, 80) });
+      return imgflip2;
+    }
+    console.log(`[media] REJECTED imgflip q2: "${imgflip2.altText}" (validation failed)`);
+    writeMediaLog({ timestamp: new Date().toISOString(), vibeText, q1, q2, result: "rejected", query: "q2", altText: imgflip2.altText, reason: "validation-failed" });
   }
 
   console.log(`[media] ALL MISSED for "${vibeText}"`);

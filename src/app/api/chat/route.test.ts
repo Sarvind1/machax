@@ -6,6 +6,7 @@ import type { EngineEvent } from "@/lib/engine-types";
 const bootstrapUser = vi.fn();
 const mutation = vi.fn();
 const orchestrateChat = vi.fn();
+const detectUserGender = vi.fn(async (..._a: unknown[]) => "neutral");
 // after() needs a Next request scope; collect the callbacks and run them by hand.
 const afterCallbacks: (() => unknown)[] = [];
 
@@ -37,6 +38,8 @@ vi.mock("@/lib/orchestrator", async () => {
   const { classifyByRules } = await vi.importActual<typeof import("@/lib/intent")>("@/lib/intent");
   return {
     orchestrateChat: (...a: unknown[]) => orchestrateChat(...a),
+    // No model call in tests: every user reads as "neutral".
+    detectUserGender: (...a: unknown[]) => detectUserGender(...a),
     // Rules only (no model call in tests).
     sortGuestMessage: async (message: string) => {
       const intent = classifyByRules(message).intent;
@@ -629,8 +632,6 @@ describe("POST /api/chat as a guest (no token)", () => {
     expect(callsTo("credits:beginMessage")).toHaveLength(0);
     // the body's userName is only a display name for guests
     expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ userName: "spoofed" });
-    // guests never get reaction stickers
-    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ allowMedia: false });
     expect(begin[1]).toMatchObject({ supersede: false });
   });
 
@@ -883,11 +884,10 @@ describe("POST /api/chat debug trace and round takeover", () => {
     expect(ev.some((e) => "trace" in e)).toBe(true);
   });
 
-  it("an interrupting message takes the lock over, and signed-in users may get stickers", async () => {
+  it("an interrupting message takes the lock over", async () => {
     convex({});
     orchestrateChat.mockImplementation(async function* () {});
     await events(await POST(req({ ...body, interrupting: true })));
     expect(callsTo("credits:beginMessage")[0][1]).toMatchObject({ supersede: true });
-    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ allowMedia: true });
   });
 });

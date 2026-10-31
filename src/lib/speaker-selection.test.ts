@@ -145,7 +145,7 @@ describe("selectSpeakers", () => {
     expect(result.reasons["diya"]).toBe("mention");
   });
 
-  it("floor: zero candidates above threshold returns the single best", () => {
+  it("floor: zero candidates above threshold still returns two speakers", () => {
     // All talkativeness=0.1, tags don't match userMessage → all pRespond very low
     // Use a seeded RNG that always rolls HIGH (> pRespond) so no one qualifies via soft
     const friends = ["x", "y", "z"].map((id) =>
@@ -163,8 +163,16 @@ describe("selectSpeakers", () => {
       rng: highRng,
     });
 
-    // Floor must ensure at least 1 speaker
-    expect(result.chosen.length).toBe(1);
+    // Floor tops up to 2: one speaker alone can't reply twice in a row, so the round died after 1 message
+    expect(result.chosen.length).toBe(2);
+  });
+
+  it("floor: minSpeakers 3 tops up to three, never above cap", () => {
+    const friends = ["x", "y", "z", "w"].map((id) => makeFriend(id, `Char_${id}`, 0.1, ["obscure-topic"]));
+    const friendsById = Object.fromEntries(friends.map((f) => [f.id, f]));
+    const base = { podFriendIds: friends.map((f) => f.id), userMessage: "no keywords here", friendsById, rng: () => 0.99 };
+    expect(selectSpeakers({ ...base, minSpeakers: 3 }).chosen.length).toBe(3);
+    expect(selectSpeakers({ ...base, minSpeakers: 3, cap: 2 }).chosen.length).toBe(2);
   });
 
   it("word-boundary mention does not match substring — 'dev' name vs 'developed'", () => {
@@ -194,8 +202,8 @@ describe("selectSpeakers", () => {
 
     // "developed" must NOT trigger word-boundary match for "Dev"
     expect(result.reasons["dev"]).not.toBe("mention");
-    // dev should be skipped (floor picks 'other' as it has higher pRespond)
+    // dev has talkativeness 0, so the floor never tops up with it
     expect(result.reasons["dev"]).toBe("skipped");
-    expect(result.chosen).not.toContain("dev");
+    expect(result.chosen).toEqual(["other"]);
   });
 });

@@ -21,7 +21,8 @@ export type EngineEvent =
   | { type: "provider"; label: string }
   | { type: "typing"; agentId: string }
   | { type: "typing-stop"; agentId: string }
-  | { type: "message"; from: string; text: string; replyTo?: string; mediaType?: "gif" | "sticker" | "meme"; mediaUrl?: string; mediaThumbnailUrl?: string; mediaAltText?: string }
+  // media: a GIF or sticker the friend dropped (see chat-media.ts).
+  | { type: "message"; from: string; text: string; replyTo?: string; media?: import("./chat-media").ChatMedia; mediaPlan?: import("./first-round-cues").CueMedia }
   | { type: "joined"; agentId: string }
   | { type: "lurking"; agentId: string }
   | { type: "presence"; agentId: string; state: PresenceState }

@@ -1,6 +1,8 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const userGender = v.union(v.literal("male"), v.literal("female"), v.literal("neutral"));
+
 export default defineSchema({
   waitlist: defineTable({
     email: v.string(),
@@ -25,6 +27,13 @@ export default defineSchema({
     mediaUrl: v.optional(v.string()),
     mediaThumbnailUrl: v.optional(v.string()),
     mediaAltText: v.optional(v.string()),
+    // A GIF or sticker a friend dropped: { kind, url, alt }. The flat media*
+    // fields above are the older shape, kept for old rows and old app builds.
+    media: v.optional(v.object({
+      kind: v.union(v.literal("gif"), v.literal("sticker")),
+      url: v.string(),
+      alt: v.string(),
+    })),
     replyTo: v.optional(v.string()),
     timestamp: v.number(),
   }).index("by_conversation", ["conversationId", "timestamp"]),
@@ -38,6 +47,10 @@ export default defineSchema({
     city: v.optional(v.string()),
     age: v.optional(v.number()),
     firebaseUid: v.optional(v.string()),
+    // How friends refer to this user (src/lib/gender.ts), and the name it was
+    // worked out from; a new name means detecting again.
+    gender: v.optional(userGender),
+    genderFor: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_username", ["username"])
     .index("by_email", ["email"])
@@ -209,6 +222,9 @@ export default defineSchema({
     supersededRef: v.optional(v.string()),
     // Username of the account that signed in from this guest id, if any.
     claimedBy: v.optional(v.string()),
+    // Same as users.gender / users.genderFor, for a guest.
+    gender: v.optional(userGender),
+    genderFor: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_key", ["key"]),

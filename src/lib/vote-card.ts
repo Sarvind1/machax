@@ -117,14 +117,14 @@ export function parseSynthesisReply(text: string): SynthesisReply {
 }
 
 /**
- * What to do with a synthesis reply. The model may only skip when there was
- * an earlier card; the first dilemma in a chat always gets one.
+ * What to do with a synthesis reply. The model may skip when there's no real
+ * choice in the message, or the choice is the earlier card's again.
  */
 export function cardVerdict(
   reply: SynthesisReply,
   last: LastCard | undefined,
 ): "show" | "skip" | "repeat" | "thin" {
-  if (reply.skip) return last ? "skip" : "thin";
+  if (reply.skip) return "skip";
   if (reply.decision.options.length < 2) return "thin";
   if (isRepeatCard(reply.decision, last)) return "repeat";
   return "show";

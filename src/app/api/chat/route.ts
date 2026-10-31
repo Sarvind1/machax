@@ -5,8 +5,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 import { after } from "next/server";
+import { legacyFieldsOf } from "@/lib/chat-media";
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server";
-import { orchestrateChat, sortGuestMessage } from "@/lib/orchestrator";
+import { detectUserGender, orchestrateChat, sortGuestMessage } from "@/lib/orchestrator";
+import { storedGenderFor, type UserGender } from "@/lib/gender";
 import type { EngineEvent } from "@/lib/engine-types";
 import { internal } from "../../../../convex/_generated/api";
 import { corsHeaders, handleCorsOptions } from "@/lib/cors";
@@ -72,10 +74,8 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
         from: event.from,
         text: event.text,
         ...(event.replyTo ? { replyTo: event.replyTo } : {}),
-        ...(event.mediaType ? { mediaType: event.mediaType } : {}),
-        ...(event.mediaUrl ? { mediaUrl: event.mediaUrl } : {}),
-        ...(event.mediaThumbnailUrl ? { mediaThumbnailUrl: event.mediaThumbnailUrl } : {}),
-        ...(event.mediaAltText ? { mediaAltText: event.mediaAltText } : {}),
+        // `media` for current builds; flat copies for app builds from before it.
+        ...(event.media ? { media: event.media, ...legacyFieldsOf(event.media) } : {}),
       };
     case "joined":
       return { joined: event.agentId };
@@ -387,6 +387,9 @@ export async function POST(request: Request) {
       );
     }
     let promptName: string;
+    // Stored gender for this user/guest (undefined = detect it this round), and where to save a new one.
+    let knownGender: UserGender | undefined;
+    let saveGender: (gender: UserGender) => Promise<unknown>;
 
     if (account) {
       const { user, username, name, row } = account;
@@ -423,6 +426,8 @@ export async function POST(request: Request) {
         };
       };
       promptName = name ?? username;
+      knownGender = storedGenderFor(promptName, account);
+      saveGender = (gender) => convex.mutation(internal.users.setGender, { username, gender, genderFor: promptName });
     } else {
       promptName = guestName(userName);
       const { key, ipHash } = await guestIdentity(request, guestId, promptName);
@@ -461,6 +466,8 @@ export async function POST(request: Request) {
         );
       }
       const { windowStart } = begin;
+      knownGender = storedGenderFor(promptName, begin);
+      saveGender = (gender) => convex.mutation(internal.guests.setGender, { key, gender, genderFor: promptName });
       settle = async (delivered, intent) => {
         // The engine's verdict wins; the gate's guess covers a round cut off before it.
         const settledKind: GuestKind = intent === "dilemma" ? undefined : intent ?? kind;
@@ -478,6 +485,20 @@ export async function POST(request: Request) {
       };
     }
 
+    // Gender (src/lib/gender.ts): once per user/guest, again only when the name changes.
+    // The round doesn't wait: friends use "neutral" until the detection lands.
+    let currentGender: UserGender = knownGender ?? "neutral";
+    // Opening the card (cardOnly) has no friend replies, so nothing to detect for.
+    const genderDone: Promise<unknown> = knownGender || cardOnly === true
+      ? Promise.resolve()
+      : detectUserGender(promptName, message, collector)
+          .then((gender) => {
+            currentGender = gender;
+            runInRound(roundLog, () => engineLog({ event: "user-gender-detected", gender }));
+            return saveGender(gender);
+          })
+          .catch((err) => console.error("gender detect/save failed:", err));
+
     const startedAt = Date.now();
     const roundWho = who ?? "unknown";
     const generator = withRoundLog(orchestrateChat({
@@ -494,8 +515,7 @@ export async function POST(request: Request) {
       lastCard: parseLastCard((body as { lastCard?: unknown }).lastCard),
       lazyCard: lazyCard === true,
       cardOnly: cardOnly === true,
-      // Guests get no reaction stickers.
-      allowMedia: !!account,
+      getUserGender: () => currentGender,
     }), roundLog);
 
     // One trace per round (debate, small talk, distress, pick), finished or cut off.
@@ -544,7 +564,11 @@ export async function POST(request: Request) {
     const { stream, settleOnce } = iteratorToStream(generator, { settle, sendTrace, onRoundEnd, logError, logStopTimeout });
     // Keeps the function alive until the message is settled, even when the client
     // aborts and the platform would otherwise end the invocation with the response.
-    after(() => settleOnce("timeout"));
+    // The gender save rides along, so it isn't cut off when the response ends.
+    after(async () => {
+      const [tail] = await Promise.all([settleOnce("timeout"), genderDone]);
+      return tail;
+    });
     // The client went away (e.g. it cut this round off by sending a new message):
     // stop the round now, so its queued replies are dropped and the lock frees fast.
     request.signal?.addEventListener("abort", () => void settleOnce("client-left"), { once: true });

@@ -11,9 +11,14 @@ export const send = mutation({
     mediaUrl: v.optional(v.string()),
     mediaThumbnailUrl: v.optional(v.string()),
     mediaAltText: v.optional(v.string()),
+    media: v.optional(v.object({
+      kind: v.union(v.literal("gif"), v.literal("sticker")),
+      url: v.string(),
+      alt: v.string(),
+    })),
     replyTo: v.optional(v.string()),
   },
-  handler: async (ctx, { conversationId, from, text, username, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, replyTo }) => {
+  handler: async (ctx, { conversationId, from, text, username, mediaType, mediaUrl, mediaThumbnailUrl, mediaAltText, media, replyTo }) => {
     const conversation = await ctx.db.get(conversationId);
     if (!conversation || (conversation.username && conversation.username !== username)) {
       throw new Error("Not authorized");
@@ -26,6 +31,7 @@ export const send = mutation({
       ...(mediaUrl ? { mediaUrl } : {}),
       ...(mediaThumbnailUrl ? { mediaThumbnailUrl } : {}),
       ...(mediaAltText ? { mediaAltText } : {}),
+      ...(media ? { media } : {}),
       ...(replyTo ? { replyTo } : {}),
       timestamp: Date.now(),
     });

@@ -1138,3 +1138,35 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
+/* GIFs and stickers inside a friend's bubble (ChatMediaView) */
+.chat-media {
+  display: block;
+  max-width: min(240px, 100%);
+  max-height: 280px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+}
+.chat-media.is-spaced { margin-top: 6px; }
+.chat-media.is-loading {
+  min-width: 160px;
+  min-height: 120px;
+  background: rgba(0, 0, 0, 0.06);
+}
+.chat-media--sticker { max-width: min(200px, 100%); }
+.chat-media-fallback {
+  display: block;
+  font-size: 12px;
+  opacity: 0.6;
+}
+/* Klipy attribution under their GIFs/stickers */
+.chat-media-credit {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  opacity: 0.5;
+}

@@ -14,6 +14,8 @@
 //
 // PURE: no I/O, no async, no Convex, no SSE, no LLM calls. Trivially testable.
 
+import { clip } from "./text-glitch";
+
 /** Structurally compatible with orchestrator's ChatEntry. Defined locally to
  *  avoid a circular import. Orchestrator must keep these shapes in sync. */
 export type ChatEntry = { from: string; text: string; replyTo?: string | null };
@@ -89,7 +91,7 @@ export function summarizeHidden(
   const rep = hiddenMessages.reduce((a, b) =>
     b.text.length > a.text.length ? b : a,
   );
-  const snippet = rep.text.slice(0, 60).trim();
+  const snippet = clip(rep.text, 60).trim();
 
   const count = hiddenMessages.length;
   const sendersClause = sendersStr ? ` from ${sendersStr}` : "";
@@ -97,7 +99,7 @@ export function summarizeHidden(
   if (rep.text.length > 60) line += "...";
 
   // Hard cap to 140 chars
-  if (line.length > 140) line = line.slice(0, 137) + "...";
+  if (line.length > 140) line = clip(line, 137) + "...";
   return line;
 }
 

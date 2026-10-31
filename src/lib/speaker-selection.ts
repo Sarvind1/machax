@@ -7,8 +7,9 @@
 //   - Mentions (hard trigger) bypass the cap — all mentioned chars are included.
 //   - Soft trigger (talkativeness × topicFit) fills remaining slots up to cap.
 //   - If mentions already saturate cap, soft list is dropped to zero.
-//   - FLOOR: if no character qualifies at all, pick the single highest-pRespond
-//     candidate so the chat never silently dies.
+//   - FLOOR: top up to `minSpeakers` (default 2, never above cap) from the
+//     highest-pRespond candidates. One speaker can't reply twice in a row, so a
+//     single-speaker round always ended after one message.
 //
 // No React, Convex, SSE, or Next.js imports — pure TS.
 
@@ -16,6 +17,7 @@ import { computeTopicAffinity } from "./friends";
 import type { Friend } from "./friends";
 
 export const MAX_RESPONDERS_PER_TURN = 3;
+export const MIN_RESPONDERS_PER_TURN = 2;
 export const DEFAULT_TALKATIVENESS = 0.7;
 
 export interface SpeakerSelectionInput {
@@ -26,6 +28,8 @@ export interface SpeakerSelectionInput {
   rng?: () => number;
   /** max characters per turn; default MAX_RESPONDERS_PER_TURN (3) */
   cap?: number;
+  /** fewest characters per turn when the pod has them; default MIN_RESPONDERS_PER_TURN (2) */
+  minSpeakers?: number;
 }
 
 export interface SpeakerSelectionResult {
@@ -56,7 +60,7 @@ function escapeRegExp(s: string): string {
  *  2. SOFT trigger — talkativeness × topicFit; roll rng() < pRespond to qualify.
  *  3. CAP — fill remaining slots (cap − mentioned.length) with highest-pRespond soft
  *     candidates. If mentions already saturate cap, soft list drops to zero.
- *  4. FLOOR — if chosen is still empty, pick the single best candidate.
+ *  4. FLOOR — top up to min(minSpeakers, cap) with the best remaining candidates.
  */
 export function selectSpeakers(input: SpeakerSelectionInput): SpeakerSelectionResult {
   const {
@@ -65,6 +69,7 @@ export function selectSpeakers(input: SpeakerSelectionInput): SpeakerSelectionRe
     friendsById,
     rng = Math.random,
     cap = MAX_RESPONDERS_PER_TURN,
+    minSpeakers = MIN_RESPONDERS_PER_TURN,
   } = input;
 
   const reasons: SpeakerSelectionResult["reasons"] = {};
@@ -109,10 +114,16 @@ export function selectSpeakers(input: SpeakerSelectionInput): SpeakerSelectionRe
 
   const chosen = [...mentioned, ...softChosen];
 
-  // FLOOR — if nothing qualified, pick single highest-pRespond overall
-  if (chosen.length === 0) {
-    const best = [...softCandidates].sort((a, b) => b.pRespond - a.pRespond)[0];
-    if (best) chosen.push(best.id);
+  // FLOOR — top up to min(minSpeakers, cap) with the best candidates left: highest
+  // pRespond first, then (off-topic friends) the chattiest. Talkativeness 0 never speaks.
+  const floor = Math.min(minSpeakers, cap);
+  const talk = (id: string) => friendsById[id]?.traits.talkativeness ?? DEFAULT_TALKATIVENESS;
+  const topUp = softCandidates
+    .filter((c) => talk(c.id) > 0 && !chosen.includes(c.id))
+    .sort((a, b) => b.pRespond - a.pRespond || talk(b.id) - talk(a.id));
+  for (const c of topUp) {
+    if (chosen.length >= floor) break;
+    chosen.push(c.id);
   }
 
   // Assign reasons

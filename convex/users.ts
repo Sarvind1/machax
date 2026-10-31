@@ -1,6 +1,7 @@
 import { internalMutation, query, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
+import { userGender } from "./schema";
 
 function baseUsername(uid: string, email?: string) {
   const local = (email ?? "").split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "");
@@ -23,7 +24,7 @@ export const upsertFromFirebase = internalMutation({
       .withIndex("by_firebaseUid", (q) => q.eq("firebaseUid", uid))
       .first();
     if (byUid) {
-      return { username: byUid.username, name: byUid.name ?? name, created: false };
+      return { username: byUid.username, name: byUid.name ?? name, created: false, gender: byUid.gender, genderFor: byUid.genderFor };
     }
 
     if (email && emailVerified === true) {
@@ -36,7 +37,7 @@ export const upsertFromFirebase = internalMutation({
         // A row already owned by a different Firebase account is never re-linked.
         if (byEmail && !byEmail.firebaseUid) {
           await ctx.db.patch(byEmail._id, { firebaseUid: uid });
-          return { username: byEmail.username, name: byEmail.name ?? name, created: false };
+          return { username: byEmail.username, name: byEmail.name ?? name, created: false, gender: byEmail.gender, genderFor: byEmail.genderFor };
         }
       }
     }
@@ -60,6 +61,18 @@ export const upsertFromFirebase = internalMutation({
       createdAt: Date.now(),
     });
     return { username, name, created: true };
+  },
+});
+
+// Stores how friends refer to this user (src/lib/gender.ts) and the name it was worked out from.
+export const setGender = internalMutation({
+  args: { username: v.string(), gender: userGender, genderFor: v.string() },
+  handler: async (ctx, { username, gender, genderFor }) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_username", (q) => q.eq("username", username))
+      .first();
+    if (user) await ctx.db.patch(user._id, { gender, genderFor });
   },
 });
 
