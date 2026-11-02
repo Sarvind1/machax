@@ -23,6 +23,12 @@ describe("corsHeaders", () => {
     expect(allowOrigin(origin)).toBe("");
   });
 
+  it("sends Timing-Allow-Origin only for an allowed origin, echoing it", () => {
+    const h = (origin: string) => corsHeaders(new Request("http://localhost/api/x", { headers: { origin } })) as Record<string, string>;
+    expect(h("capacitor://localhost")["Timing-Allow-Origin"]).toBe("capacitor://localhost");
+    expect(h("https://evil.com")["Timing-Allow-Origin"]).toBeUndefined();
+  });
+
   it("refuses a request with no origin", () => {
     expect(allowOrigin()).toBe("");
   });
@@ -33,6 +39,7 @@ describe("handleCorsOptions", () => {
     const res = handleCorsOptions(new Request("http://localhost/api/x", { method: "OPTIONS", headers: { origin: "capacitor://localhost" } }));
     expect(res?.status).toBe(204);
     expect(res?.headers.get("access-control-allow-origin")).toBe("capacitor://localhost");
+    expect(res?.headers.get("access-control-max-age")).toBe("7200");
     expect(handleCorsOptions(new Request("http://localhost/api/x", { method: "POST" }))).toBeNull();
   });
 });
