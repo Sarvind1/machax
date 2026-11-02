@@ -308,6 +308,14 @@
   color: var(--mx-ink-soft);
 }
 
+/* Waiting long for the server to take a message (slow network). */
+.chat-still-sending {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
 /* ===== TYPING INDICATOR (component) ===== */
 .typing-indicator {
   display: flex;

@@ -572,6 +572,9 @@ export async function POST(request: Request) {
     // The client went away (e.g. it cut this round off by sending a new message):
     // stop the round now, so its queued replies are dropped and the lock frees fast.
     request.signal?.addEventListener("abort", () => void settleOnce("client-left"), { once: true });
+    // Aborted while this route was still starting (e.g. the phone gave up on
+    // the headers and resent): the event above has already fired, so stop now.
+    if (request.signal?.aborted) void settleOnce("client-left");
 
     return new Response(stream, {
       headers: {

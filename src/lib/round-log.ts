@@ -13,6 +13,8 @@ export type RoundStep = {
   e:
     | "response" // HTTP status in n
     | "busy-retry"
+    | "resend" // no headers after n ms: aborted and sent again (interrupting)
+    | "net" // network timings of one /api/chat request (s: "resend" = the resent one, "none" = no entry found)
     | "first-byte"
     | "typing-in" // server said friend `a` is typing
     | "typing-shown" // the indicator for `a` is on screen
@@ -29,11 +31,101 @@ export type RoundStep = {
   a?: string;
   n?: number;
   s?: string;
+  net?: NetTimings;
 };
+
+/**
+ * Where the wait before the response headers went, in ms, from the browser's
+ * PerformanceResourceTiming. dur is always there; the rest only when the server
+ * allows it (Timing-Allow-Origin) and the request got that far.
+ * pre = time before the request went out that isn't DNS/connect/TLS: the CORS
+ * preflight, a queued or dead reused connection.
+ */
+export type NetTimings = {
+  dur: number;
+  dns?: number;
+  tcp?: number;
+  tls?: number;
+  pre?: number;
+  wait?: number; // request sent -> response headers
+  hdr?: number; // fetch start -> response headers
+};
+
+type TimingEntry = Pick<
+  PerformanceResourceTiming,
+  | "name"
+  | "startTime"
+  | "duration"
+  | "domainLookupStart"
+  | "domainLookupEnd"
+  | "connectStart"
+  | "connectEnd"
+  | "secureConnectionStart"
+  | "requestStart"
+  | "responseStart"
+>;
+
+export function netTimingsOf(e: TimingEntry): NetTimings {
+  const r = (n: number) => Math.max(0, Math.round(n));
+  const out: NetTimings = { dur: r(e.duration) };
+  if (e.requestStart <= 0) return out; // timings hidden (no Timing-Allow-Origin) or never sent
+  const dns = r(e.domainLookupEnd - e.domainLookupStart);
+  const tlsStart = e.secureConnectionStart > 0 ? e.secureConnectionStart : e.connectEnd;
+  const tcp = r(tlsStart - e.connectStart);
+  const tls = e.secureConnectionStart > 0 ? r(e.connectEnd - e.secureConnectionStart) : 0;
+  out.dns = dns;
+  out.tcp = tcp;
+  out.tls = tls;
+  out.pre = r(e.requestStart - e.startTime - dns - tcp - tls);
+  if (e.responseStart > 0) {
+    out.wait = r(e.responseStart - e.requestStart);
+    out.hdr = r(e.responseStart - e.startTime);
+  }
+  return out;
+}
+
+/** The /api/chat entry for a request started at `from` (performance clock), before `to`. */
+export function pickChatEntry<T extends TimingEntry>(entries: T[], from: number, to = Infinity): T | undefined {
+  return entries.find((e) => e.name.includes("/api/chat") && e.startTime >= from - 1 && e.startTime < to);
+}
+
+// The browser's resource buffer stops at 250 entries; a long session fills it.
+// An observer still gets every entry, so the newest chat ones are kept here too.
+const seenChatEntries: PerformanceResourceTiming[] = [];
+let observing = false;
+function observeChatEntries() {
+  if (observing || typeof PerformanceObserver === "undefined") return;
+  observing = true;
+  try {
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries() as PerformanceResourceTiming[]) {
+        if (!e.name.includes("/api/chat")) continue;
+        seenChatEntries.push(e);
+        if (seenChatEntries.length > 20) seenChatEntries.shift();
+      }
+    }).observe({ type: "resource", buffered: true });
+  } catch {
+    // Timings are a nice-to-have.
+  }
+}
+
+function chatEntries(): PerformanceResourceTiming[] {
+  let buffered: PerformanceResourceTiming[] = [];
+  try {
+    buffered = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+  } catch {
+    // no performance API
+  }
+  const all = [...buffered.filter((e) => e.name.includes("/api/chat")), ...seenChatEntries];
+  const byStart = new Map(all.map((e) => [e.startTime, e]));
+  return [...byStart.values()].sort((a, b) => a.startTime - b.startTime);
+}
 
 export type EndReason = "completed" | "cut-off" | "rejected" | "error";
 
 const MAX_STEPS = 300;
+// The resource entry of a just-finished fetch can land a moment after it ends.
+const NET_SETTLE_MS = 150;
 const SLOW_FIRST_MS = 10_000;
 const BURST_MS = 500;
 
@@ -45,6 +137,8 @@ export function findIssues(kind: RoundKind, end: EndReason, steps: RoundStep[], 
   const shown = steps.filter((s) => s.e === "msg-shown");
 
   if (end === "error") issues.push("error");
+  // Counted on every round, walls included: how often the first send stalled.
+  if (count("resend") > 0) issues.push("resent");
   if (status !== undefined && status >= 500) issues.push(`http-${status}`);
   if (end === "rejected") return issues;
 
@@ -95,6 +189,9 @@ function getAppVersion(): Promise<string> {
 export function startRoundLog(meta: { kind: RoundKind; conversationId: string; who?: string; guestId?: string | null }) {
   const startedAt = Date.now();
   const steps: RoundStep[] = [];
+  observeChatEntries();
+  // performance.now() when each /api/chat request of this round was started.
+  const attempts: { at: number; resend: boolean }[] = [];
   let status: number | undefined;
   let finished = false;
   const mark = (e: RoundStep["e"], extra: Omit<RoundStep, "t" | "e"> = {}) => {
@@ -105,6 +202,11 @@ export function startRoundLog(meta: { kind: RoundKind; conversationId: string; w
 
   return {
     mark,
+    /** Call right before each /api/chat request; its network timings are added at the end. */
+    attempt(resend: boolean, waitedMs?: number) {
+      if (resend) mark("resend", waitedMs !== undefined ? { n: waitedMs } : {});
+      if (typeof performance !== "undefined") attempts.push({ at: performance.now(), resend });
+    },
     setStatus(n: number) {
       status = n;
       mark("response", { n });
@@ -116,8 +218,17 @@ export function startRoundLog(meta: { kind: RoundKind; conversationId: string; w
       // Walls (sign-in, credits, busy) end the round early on purpose.
       if (status !== undefined && (status < 200 || status >= 300)) end = status >= 500 ? "error" : "rejected";
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisibility);
-      const issues = findIssues(meta.kind, end, steps, status);
       void (async () => {
+        if (attempts.length > 0) {
+          await new Promise((r) => setTimeout(r, NET_SETTLE_MS));
+          const entries = chatEntries();
+          attempts.forEach((a, i) => {
+            const entry = pickChatEntry(entries, a.at, attempts[i + 1]?.at);
+            const s = [a.resend ? "resend" : "", entry ? "" : "none"].filter(Boolean).join("-") || undefined;
+            mark("net", { ...(s ? { s } : {}), ...(entry ? { net: netTimingsOf(entry) } : {}) });
+          });
+        }
+        const issues = findIssues(meta.kind, end, steps, status);
         try {
           await fetch(`${API_BASE}/api/client-log`, {
             method: "POST",

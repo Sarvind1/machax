@@ -57,6 +57,7 @@ import { onBack } from "@/lib/back-nav";
 import { isCardStale, lastCardFrom, type LastCard } from "@/lib/vote-card";
 import { planReveal } from "@/lib/reply-pacing";
 import { startRoundLog, type EndReason } from "@/lib/round-log";
+import { SLOW_HINT_MS, fetchWithResend } from "@/lib/chat-send";
 import { VotePanel, VotePill, VoteSheet } from "./components/vote-dock";
 import AppHeader from "./home/app-header";
 import AmbientBanter from "./home/ambient-banter";
@@ -239,6 +240,8 @@ export default function ChatPage() {
   // Bumped per round so the safety timeout below restarts when a round is cut off.
   const [roundSeq, setRoundSeq] = useState(0);
   const [typingAgents, setTypingAgents] = useState<string[]>([]);
+  // The current round has waited over SLOW_HINT_MS for the server to answer.
+  const [stillSending, setStillSending] = useState(false);
   const [joinedAgents, setJoinedAgents] = useState<string[]>([]);
   const [lurkingAgents, setLurkingAgents] = useState<string[]>([]);
   const [isWindingDown, setIsWindingDown] = useState(false);
@@ -499,8 +502,10 @@ export default function ChatPage() {
         lastCard?: LastCard;
         // Only make the vote card for the chat so far (the user opened the teaser).
         cardOnly?: boolean;
-        // Runs once the server takes the round (saves the user's message), so a
-        // message sent back to the text box is never also stored as sent.
+        // Saves the user's message. Runs once the server takes the round, or when
+        // the round fails or is cut off before that (the bubble stays and is in
+        // the next round's history, so it must be saved too). Never runs when the
+        // text goes back to the box, so it is never also stored as sent.
         onAccepted?: () => Promise<void>;
       } = {}
     ) => {
@@ -517,55 +522,87 @@ export default function ChatPage() {
         guestId,
       });
       let end: EndReason = "completed";
+      // Has the user's message been saved, or handed back to the text box?
+      let accepted = false;
+      let givenBack = false;
+      const accept = async () => {
+        if (accepted) return;
+        accepted = true;
+        await opts.onAccepted?.();
+      };
+      // A quiet "still sending" while the headers take long (only this round's).
+      const slowTimer = opts.cardOnly ? undefined : setTimeout(() => live() && setStillSending(true), SLOW_HINT_MS);
+      const stopSlowHint = () => {
+        clearTimeout(slowTimer);
+        if (live()) setStillSending(false);
+      };
       roundDeliveredRef.current = false;
       // Small talk, distress and picks don't use a typed guest message either.
       roundExampleRef.current = isExamplePrompt(message) || !!opts.pickedOption || !!opts.cardOnly || classifyByRules(message).intent !== "dilemma";
       setRoundSeq(round);
+      setStillSending(false);
       setIsLoading(true);
       isStreamingRef.current = true;
       try {
-        const init: RequestInit = {
-          signal: controller.signal,
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...(guestId ? { guestId } : {}),
-            ...(opts.pickedOption ? { pickedOption: opts.pickedOption } : {}),
-            ...(opts.lastCard ? { lastCard: opts.lastCard } : {}),
-            // Old app builds send neither and still get the card inline.
-            ...(opts.cardOnly ? { cardOnly: true } : { lazyCard: true }),
-            // Cut the running round off: the server hands this message the lock right away.
-            ...(opts.interrupting ? { interrupting: true } : {}),
-            conversationId: convoId,
-            message,
-            // The server rejects bigger pods and keeps only the last history entries.
-            podFriendIds: podIds.slice(0, MAX_POD_SIZE),
-            history: history.slice(-MAX_HISTORY_ENTRIES),
-            userName,
-            sessionMood: {
-              modes: sessionModes,
-              pacing: sessionPacing,
-              energy: sessionEnergy,
-            },
-            characterOverrides: userSettings?.characterOverrides || null,
-            conversationDepth: userSettings?.conversationDepth || "normal",
-            userEngagementFrequency: userSettings?.userEngagementFrequency ?? 0.4,
-          }),
+        const payload = {
+          ...(guestId ? { guestId } : {}),
+          ...(opts.pickedOption ? { pickedOption: opts.pickedOption } : {}),
+          ...(opts.lastCard ? { lastCard: opts.lastCard } : {}),
+          // Old app builds send neither and still get the card inline.
+          ...(opts.cardOnly ? { cardOnly: true } : { lazyCard: true }),
+          // Cut the running round off: the server hands this message the lock right away.
+          ...(opts.interrupting ? { interrupting: true } : {}),
+          conversationId: convoId,
+          message,
+          // The server rejects bigger pods and keeps only the last history entries.
+          podFriendIds: podIds.slice(0, MAX_POD_SIZE),
+          history: history.slice(-MAX_HISTORY_ENTRIES),
+          userName,
+          sessionMood: {
+            modes: sessionModes,
+            pacing: sessionPacing,
+            energy: sessionEnergy,
+          },
+          characterOverrides: userSettings?.characterOverrides || null,
+          conversationDepth: userSettings?.conversationDepth || "normal",
+          userEngagementFrequency: userSettings?.userEngagementFrequency ?? 0.4,
         };
-        // Signed out: no token, the server counts it as a guest message.
-        const post = () => (guestId ? guestFetch("/api/chat", init) : authedFetch("/api/chat", init));
+        // No headers after a few seconds: abort and send once more, as
+        // interrupting, so the server hands it the first try's lock if that
+        // one got through (see chat-send.ts). One resend per round at most.
+        let resendLeft = true;
+        let resent = false;
+        const post = async () => {
+          const sent = await fetchWithResend(
+            (resend, signal) => {
+              const init: RequestInit = {
+                signal,
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(resend ? { ...payload, interrupting: true } : payload),
+              };
+              // Signed out: no token, the server counts it as a guest message.
+              return guestId ? guestFetch("/api/chat", init) : authedFetch("/api/chat", init);
+            },
+            { signal: controller.signal, allowResend: resendLeft, onAttempt: (resend, waited) => log.attempt(resend, waited) },
+          );
+          if (sent.resent) resent = true;
+          resendLeft = false;
+          return sent.response;
+        };
         let response = await post();
         log.setStatus(response.status);
         // Cut a round off: the server frees the old round's lock once it has
         // stopped it (a few seconds at most), so retry "busy" for a while.
         const busyDeadline = Date.now() + BUSY_RETRY_MS;
-        while (response.status === 409 && opts.interrupting && Date.now() < busyDeadline) {
+        while (response.status === 409 && (opts.interrupting || resent) && Date.now() < busyDeadline) {
           await new Promise((r) => setTimeout(r, BUSY_RETRY_STEP_MS));
           if (!live()) return;
           log.mark("busy-retry");
           response = await post();
           log.setStatus(response.status);
         }
+        stopSlowHint();
         if (!live()) return;
 
         // Not sent after all: the text goes back to the box, so drop its (unsaved)
@@ -577,6 +614,7 @@ export default function ChatPage() {
             return last && last.from === "user" && last.text === message ? prev.slice(0, -1) : prev;
           });
         const takeBack = () => {
+          givenBack = true;
           if (opts.onAccepted) dropBubble();
         };
         if (response.status === 403 && guestId) {
@@ -584,6 +622,7 @@ export default function ChatPage() {
           // unanswered message and ask for sign-in, keeping the text.
           const body = (await response.json().catch(() => null)) as { guest?: GuestUsage } | null;
           if (body?.guest) setGuest(saveGuestUsage(body.guest));
+          givenBack = true;
           dropBubble();
           promptSignIn(opts.cardOnly ? "" : message, convoId, podIds);
           return;
@@ -613,7 +652,7 @@ export default function ChatPage() {
           return;
         }
         // Sent (even if the server then failed): keep it as a sent message.
-        await opts.onAccepted?.();
+        await accept();
         if (!response.ok || !response.body) {
           throw new Error("Chat API request failed");
         }
@@ -819,11 +858,19 @@ export default function ChatPage() {
         }
         console.error("Chat stream error:", err);
       } finally {
+        stopSlowHint();
         if (!live() && end !== "error") {
           log.mark("cut-off");
           end = "cut-off";
         }
         log.finish(end);
+        // Failed or cut off before the server took it: the message stays on
+        // screen (and in the next round's history), so save it as sent. Awaited
+        // when live, so the Convex sync after this round already has it.
+        if (!accepted && !givenBack && opts.onAccepted) {
+          if (live()) await accept().catch(() => {});
+          else void accept().catch(() => {});
+        }
         // Only the current round owns the loading state.
         if (live()) {
           abortRef.current = null;
@@ -1039,6 +1086,7 @@ export default function ChatPage() {
     setPod([]);
     setInput("");
     setTypingAgents([]);
+    setStillSending(false);
     setIsLoading(false);
     setJoinedAgents([]);
     setLurkingAgents([]);
@@ -1530,6 +1578,17 @@ export default function ChatPage() {
             />
             );
           })}
+
+          {stillSending && typingAgents.length === 0 && (
+            <div className="chat-winding-down chat-still-sending" role="status">
+              still sending
+              <span className="typing-dots" aria-hidden="true">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </span>
+            </div>
+          )}
 
           {typingAgents.length > 0 && (
             <TypingIndicator
