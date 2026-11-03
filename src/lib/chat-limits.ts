@@ -21,7 +21,8 @@ export const MAX_OVERRIDE_CHARS = 1_000;
 export const ANTHROPIC_IDLE_MS = 45_000;
 export const SETTLE_RETURN_TIMEOUT_MS = 5_000;
 
-export type ChatHistoryEntry = { from: string; text: string };
+/** replyTo: who the message answered ("user" or a friend id). */
+export type ChatHistoryEntry = { from: string; text: string; replyTo?: string };
 
 export type ChatInput = {
   message: string;
@@ -66,9 +67,13 @@ export function validateChatInput(body: unknown): ChatInputResult {
         return fail("history entries need a string from and text");
       }
       if (entry.from.length > MAX_HISTORY_FROM_CHARS) return fail("history entry has an invalid from");
+      const { replyTo } = entry;
+      if (replyTo !== undefined && replyTo !== null && (typeof replyTo !== "string" || replyTo.length > MAX_HISTORY_FROM_CHARS)) {
+        return fail("history entry has an invalid replyTo");
+      }
       const text = entry.text.slice(0, MAX_HISTORY_ENTRY_CHARS);
       total += text.length;
-      kept.push({ from: entry.from, text });
+      kept.push({ from: entry.from, text, ...(replyTo ? { replyTo } : {}) });
     }
     if (total > MAX_HISTORY_TOTAL_CHARS) return fail(`history is over ${MAX_HISTORY_TOTAL_CHARS} characters`);
   }

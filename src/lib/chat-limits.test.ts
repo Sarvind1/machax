@@ -46,6 +46,13 @@ describe("validateChatInput", () => {
     expect(validateChatInput({ ...good, characterOverrides: "" })).toMatchObject({ ok: true });
   });
 
+  it("keeps who each history message replied to, and rejects a bad replyTo", () => {
+    const r = validateChatInput({ ...good, history: [{ from: "user", text: "yo" }, { from: ids[0], text: "hey", replyTo: "user" }] });
+    expect(r).toMatchObject({ ok: true, value: { history: [{ from: "user", text: "yo" }, { from: ids[0], text: "hey", replyTo: "user" }] } });
+    expect(reasonFor({ ...good, history: [{ from: ids[0], text: "hey", replyTo: 5 }] })).toBe("history entry has an invalid replyTo");
+    expect(reasonFor({ ...good, history: [{ from: ids[0], text: "hey", replyTo: "x".repeat(65) }] })).toBe("history entry has an invalid replyTo");
+  });
+
   it("keeps only the last history entries and checks only those", () => {
     const old = { from: "user", text: "x".repeat(MAX_HISTORY_ENTRY_CHARS + 1) }; // dropped before checks
     const recent = Array.from({ length: MAX_HISTORY_ENTRIES }, (_, i) => ({ from: ids[0], text: `m${i}` }));

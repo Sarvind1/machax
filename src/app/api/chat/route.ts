@@ -18,7 +18,7 @@ import { CostCollector } from "@/lib/cost-collector";
 import { summarize } from "@/lib/credits";
 import { authErrorResponse } from "@/lib/server-auth";
 import { SETTLE_RETURN_TIMEOUT_MS, validateChatInput } from "@/lib/chat-limits";
-import { GUEST_ID_RE, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
+import { GUEST_ID_RE, GUEST_USERNAME_PREFIX, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
 import { parseAdminUids } from "@/lib/admin-uids";
 import { parseLastCard } from "@/lib/vote-card";
 import { engineLog, newRoundLog, runInRound, withRoundLog } from "@/lib/engine-log";
@@ -97,6 +97,9 @@ function translateEvent(event: EngineEvent): Record<string, unknown> {
       return { helpline: event.helpline };
     case "chips":
       return { chips: event.chips };
+    // Stored server-side (see iteratorToStream); not sent to the client.
+    case "story":
+      return {};
     case "trace":
       return { trace: event.data };
     case "done":
@@ -139,6 +142,8 @@ function iteratorToStream(
     logError: (err: unknown) => void;
     // Notes in the round's log that the generator did not stop in time.
     logStopTimeout: () => void;
+    // Stores a refreshed "story so far" with the conversation. Must not throw.
+    onStory: (summary: string) => Promise<void>;
   },
 ): { stream: ReadableStream<Uint8Array>; settleOnce: (reason?: EndReason) => Promise<TailEvent | null> } {
   let settling: Promise<TailEvent | null> | null = null;
@@ -239,6 +244,11 @@ function iteratorToStream(
         }
         // Kept for the round's trace, saved server-side when the round ends.
         if (value.type === "trace" && value.data) engineTrace = value.data;
+        if (value.type === "story") {
+          await opts.onStory(value.summary);
+          controller.enqueue(KEEPALIVE_LINE);
+          return;
+        }
         if (value.type === "trace" && !opts.sendTrace) {
           // Enqueue something (an SSE comment, which clients skip) so the stream keeps pulling.
           controller.enqueue(KEEPALIVE_LINE);
@@ -499,12 +509,37 @@ export async function POST(request: Request) {
           })
           .catch((err) => console.error("gender detect/save failed:", err));
 
+    // The chat's "story so far", kept with the conversation (owner checked by username).
+    const owner = account ? account.username : typeof guestId === "string" && GUEST_ID_RE.test(guestId) ? `${GUEST_USERNAME_PREFIX}${guestId}` : undefined;
+    let story: { summary?: string; userTurns?: number } | undefined;
+    if (convId && owner && cardOnly !== true) {
+      try {
+        const begun = await convex.mutation(internal.conversations.beginStoryTurn, {
+          conversationId: convId,
+          username: owner,
+          startTurns: history.filter((m) => m.from === "user").length + 1,
+        });
+        if (begun) story = { userTurns: begun.userTurns, ...(begun.storySummary ? { summary: begun.storySummary } : {}) };
+      } catch (err) {
+        console.error("story turn failed:", err);
+      }
+    }
+    const onStory = async (summary: string) => {
+      if (!convId || !owner) return;
+      try {
+        await convex.mutation(internal.conversations.saveStorySummary, { conversationId: convId, username: owner, summary });
+      } catch (err) {
+        console.error("story save failed:", err);
+      }
+    };
+
     const startedAt = Date.now();
     const roundWho = who ?? "unknown";
     const generator = withRoundLog(orchestrateChat({
       message,
       podFriendIds,
       history,
+      story,
       userName: promptName,
       sessionMood,
       characterOverrides,
@@ -561,7 +596,7 @@ export async function POST(request: Request) {
     const sendTrace =
       process.env.NODE_ENV !== "production" ||
       (!!account && parseAdminUids(process.env.NEXT_PUBLIC_ADMIN_UIDS).includes(account.user.uid));
-    const { stream, settleOnce } = iteratorToStream(generator, { settle, sendTrace, onRoundEnd, logError, logStopTimeout });
+    const { stream, settleOnce } = iteratorToStream(generator, { settle, sendTrace, onRoundEnd, logError, logStopTimeout, onStory });
     // Keeps the function alive until the message is settled, even when the client
     // aborts and the platform would otherwise end the invocation with the response.
     // The gender save rides along, so it isn't cut off when the response ends.

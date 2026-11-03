@@ -24,15 +24,6 @@ export interface Friend {
   catchphrases?: string[];
 }
 
-export interface ConversationMode {
-  id: string;
-  name: string;
-  lengthModifier: "shorter" | "same" | "longer";
-  promptOverlay: string;
-}
-
-export type ResponseLength = "micro" | "short" | "medium" | "long" | "rant";
-
 // ── 100 characters ──────────────────────────────────────────────────────
 
 export const FRIENDS: Friend[] = [
@@ -1975,37 +1966,6 @@ export const STARTERS = [
   { tag: "life", text: "Parents want me home by 10pm. I'm 24", chip: "\uD83C\uDFE0" },
 ];
 
-// ── Conversation Modes ────────────────────────────────────────────────
-
-export const MODES: ConversationMode[] = [
-  { id: "late-night", name: "Late Night Ramble", lengthModifier: "longer", promptOverlay: "write like it's 2am and your guard is down. go wherever the thought takes you." },
-  { id: "hot-take", name: "Quick Hot Take", lengthModifier: "shorter", promptOverlay: "give your fastest, most committed read in one sentence. no thinking out loud." },
-  { id: "deep-dive", name: "Deep Dive", lengthModifier: "longer", promptOverlay: "go deeper than usual. pull a thread. take your time." },
-  { id: "devils-advocate", name: "Devil's Advocate", lengthModifier: "same", promptOverlay: "take the opposite position from what you'd normally take. defend it with real reasoning." },
-  { id: "emotional-support", name: "Emotional Support", lengthModifier: "same", promptOverlay: "prioritize feeling heard over giving advice. no solutions. just presence." },
-  { id: "roast", name: "Roast Mode", lengthModifier: "shorter", promptOverlay: "roast the situation, not the person. make it funny and true." },
-  { id: "conspiracy", name: "Conspiracy Theory", lengthModifier: "longer", promptOverlay: "find the hidden angle. what's actually going on beneath the surface. connect dots." },
-  { id: "existential", name: "Existential Crisis", lengthModifier: "same", promptOverlay: "zoom out all the way. make it about the bigger thing." },
-  { id: "hype", name: "Hype Mode", lengthModifier: "shorter", promptOverlay: "maximum hype. everything is great. no qualifiers." },
-  { id: "drunk-uncle", name: "Drunk Uncle Wisdom", lengthModifier: "longer", promptOverlay: "say the thing you'd say at 11pm at a wedding — rambling but real, slightly embarrassing, occasionally wise." },
-  { id: "motivational", name: "Motivational Poster", lengthModifier: "shorter", promptOverlay: "say it like it belongs on a poster. one powerful sentence." },
-  { id: "oversharing", name: "Oversharing", lengthModifier: "longer", promptOverlay: "share more than the situation probably warrants. go personal. bring in your own story." },
-  { id: "debate-club", name: "Debate Club", lengthModifier: "longer", promptOverlay: "make an argument with a clear position, reasoning, and a response to the obvious counterpoint." },
-  { id: "silent-breaker", name: "Silent Treatment Breaker", lengthModifier: "shorter", promptOverlay: "skip the context. say the one thing nobody in the conversation has said yet." },
-];
-
-// ── Response length logic ─────────────────────────────────────────────
-
-const LENGTH_WEIGHTS: Record<ResponseLength, number> = {
-  micro: 25,
-  short: 40,
-  medium: 25,
-  long: 8,
-  rant: 2,
-};
-
-const LENGTH_ORDER: ResponseLength[] = ["micro", "short", "medium", "long", "rant"];
-
 /**
  * Floor returned by computeTopicAffinity when the user message contains no
  * recognized keywords. Exported so scoreStanceRelevance (and any other caller
@@ -2049,63 +2009,6 @@ export function computeTopicAffinity(friendTags: string[], userMessage: string):
   return Math.min(1.0, overlap / Math.max(matchedTags.size, 1));
 }
 
-export function pickResponseLength(
-  defaultLength: Friend["defaultLength"],
-  mode?: ConversationMode,
-  affinity?: number,
-): ResponseLength {
-  // Start with base weights
-  const weights = { ...LENGTH_WEIGHTS };
-
-  // Boost the character's default length bucket
-  weights[defaultLength] *= 3;
-
-  // Apply mode modifier
-  if (mode) {
-    if (mode.lengthModifier === "shorter") {
-      weights.micro *= 2;
-      weights.short *= 1.5;
-      weights.long *= 0.5;
-      weights.rant *= 0.3;
-    } else if (mode.lengthModifier === "longer") {
-      weights.micro *= 0.3;
-      weights.short *= 0.5;
-      weights.long *= 2;
-      weights.rant *= 2;
-    }
-  }
-
-  // Topic affinity modulation — characters who care about the topic go longer
-  if (affinity !== undefined) {
-    if (affinity > 0.6) {
-      weights.long *= 3;
-      weights.rant *= 2;
-    } else if (affinity < 0.3) {
-      weights.micro *= 3;
-      weights.short *= 2;
-    }
-  }
-
-  // Weighted random selection
-  const total = Object.values(weights).reduce((a, b) => a + b, 0);
-  let r = Math.random() * total;
-  for (const len of LENGTH_ORDER) {
-    r -= weights[len];
-    if (r <= 0) return len;
-  }
-  return "medium";
-}
-
-export function lengthToInstruction(length: ResponseLength): string {
-  switch (length) {
-    case "micro": return "1-3 words max. A reaction: 'lol', 'nah', '💀', 'valid'. Nothing more.";
-    case "short": return "One quick text. 5-8 words max.";
-    case "medium": return "1 sentence. 10-15 words. A real take.";
-    case "long": return "1-2 sentences. You have something to say about this. 15-30 words.";
-    case "rant": return "Go off. 2-4 sentences. You feel strongly about this. Share a story or strong opinion.";
-  }
-}
-
 // ── Pod selection with diversity ──────────────────────────────────────
 
 const CORE_CHARACTERS = new Set([
@@ -2139,8 +2042,6 @@ export function selectPod(tags: string[], count = 7): Friend[] {
   return pod;
 }
 
-// ── Random mode selection ─────────────────────────────────────────────
-
 // The friend most likely to be soft with someone who is hurting: most
 // agreeable, with a bonus for a feelings tag. Used for distress replies.
 export function pickGentlestFriend(podFriendIds: string[]): string | null {
@@ -2152,23 +2053,4 @@ export function pickGentlestFriend(podFriendIds: string[]): string | null {
     if (!best || score > best.score) best = { id, score };
   }
   return best?.id ?? null;
-}
-
-export function pickRandomMode(agreementBias?: number): ConversationMode | null {
-  if (Math.random() < 0.6) return null; // 40% chance of mode (reduced from 60%)
-
-  let eligible = MODES;
-
-  if (agreementBias != null && agreementBias < -0.2) {
-    // Contrarian agents don't get supportive modes
-    const excluded = new Set(["hype", "emotional-support", "motivational"]);
-    eligible = eligible.filter((m) => !excluded.has(m.id));
-  } else if (agreementBias != null && agreementBias > 0.3) {
-    // Agreeable agents don't get aggressive modes
-    const excluded = new Set(["roast"]);
-    eligible = eligible.filter((m) => !excluded.has(m.id));
-  }
-
-  if (eligible.length === 0) return null;
-  return eligible[Math.floor(Math.random() * eligible.length)];
 }

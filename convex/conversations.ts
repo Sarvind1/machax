@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const create = mutation({
@@ -41,5 +41,31 @@ export const get = query({
     if (!conversation) return null;
     if (conversation.username !== username) return null;
     return conversation;
+  },
+});
+
+// The chat route, once per user message: counts the message and returns the
+// stored "story so far". null when the chat isn't this user's (or isn't found).
+// startTurns seeds the count for chats from before it was kept.
+export const beginStoryTurn = internalMutation({
+  args: { conversationId: v.string(), username: v.string(), startTurns: v.number() },
+  handler: async (ctx, { conversationId, username, startTurns }) => {
+    const id = ctx.db.normalizeId("conversations", conversationId);
+    const conversation = id ? await ctx.db.get(id) : null;
+    if (!id || !conversation || (conversation.username && conversation.username !== username)) return null;
+    const userTurns = conversation.userTurns === undefined ? startTurns : conversation.userTurns + 1;
+    await ctx.db.patch(id, { userTurns });
+    return { userTurns, storySummary: conversation.storySummary ?? null };
+  },
+});
+
+// Saves a refreshed "story so far" for the chat.
+export const saveStorySummary = internalMutation({
+  args: { conversationId: v.string(), username: v.string(), summary: v.string() },
+  handler: async (ctx, { conversationId, username, summary }) => {
+    const id = ctx.db.normalizeId("conversations", conversationId);
+    const conversation = id ? await ctx.db.get(id) : null;
+    if (!id || !conversation || (conversation.username && conversation.username !== username)) return;
+    await ctx.db.patch(id, { storySummary: summary });
   },
 });

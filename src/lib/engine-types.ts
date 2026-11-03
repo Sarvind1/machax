@@ -36,6 +36,8 @@ export type EngineEvent =
   | { type: "helpline"; helpline: { name: string; numbers: string[]; note: string } }
   // Example prompts offered under a small-talk reply.
   | { type: "chips"; chips: string[] }
+  // A refreshed "story so far" for this chat; the chat route stores it with the conversation.
+  | { type: "story"; summary: string }
   | { type: "trace"; data: ConversationTrace }
   | { type: "done" };
 
@@ -49,7 +51,8 @@ export const SPEED_DELAYS: Record<AgentTraits["responseSpeed"], [number, number]
   thoughtful: [10000, 25000],
 };
 
-// Speed → default attention window (messages)
+// Speed → default attention window (messages). Shown on the configure page only:
+// every friend now reads the whole recent chat (orchestrator.ts RECENT_CHAT_MESSAGES).
 export const ATTENTION_WINDOWS: Record<AgentTraits["responseSpeed"], number> = {
   impulsive: 5,
   normal: 8,

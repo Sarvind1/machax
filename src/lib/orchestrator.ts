@@ -8,9 +8,6 @@ import { tmpdir } from "os";
 import { join } from "path";
 import {
   FRIENDS_BY_ID,
-  pickRandomMode,
-  pickResponseLength,
-  lengthToInstruction,
   computeTopicAffinity,
   NEUTRAL_TOPIC_AFFINITY,
   STARTERS,
@@ -28,13 +25,12 @@ import type {
   ConversationPhase,
   PresenceState,
 } from "./engine-types";
-import { SPEED_DELAYS, ATTENTION_WINDOWS } from "./engine-types";
+import { SPEED_DELAYS } from "./engine-types";
 import { resolveMedia } from "./media-service";
 import { getMedia, memeMediaEnabled, memeMenuForPrompt } from "./get-media";
 import type { ChatMedia } from "./chat-media";
 import { selectSpeakers, DEFAULT_TALKATIVENESS } from "./speaker-selection";
 import { resolveCue, mediaMomentInstruction, type CueMedia, type ResolvedCue } from "./first-round-cues";
-import { buildCharacterMemory } from "./private-memory";
 import { GENDER_JSON_SCHEMA, GENDER_MODEL, GENDER_SYSTEM, GENDER_TIMEOUT_MS, detectGender, genderInstruction, genderPrompt, type UserGender } from "./gender";
 import { clip, dropBrokenChars, fixMixedScript, hasMixedScript } from "./text-glitch";
 import type { CostCollector } from "./cost-collector";
@@ -45,9 +41,8 @@ import { engineLog } from "./engine-log";
 
 const execAsync = promisify(exec);
 
-// Fix 2 (260519-kq3): replyTo on ChatEntry lets per-character memory filter
-// resolve "messages where X was the replyTo target" from history. Must stay
-// structurally compatible with the ChatEntry type in src/lib/private-memory.ts.
+// replyTo: who the message answered ("user" or a friend id), shown to every
+// friend in the recent chat so who-replied-to-whom survives across rounds.
 type ChatEntry = { from: string; text: string; replyTo?: string | null };
 
 // ── Kept infrastructure ──────────────────────────────────────────────
@@ -59,33 +54,6 @@ function formatTranscript(messages: ChatEntry[], userName: string = "friend"): s
       return `[${label}] ${m.text}`;
     })
     .join("\n");
-}
-
-/** Windowed transcript — only the last N messages visible to this agent.
- *  ALWAYS includes all user messages regardless of window size,
- *  so agents never lose the user's questions/context.
- *
- *  TODO: remove once private-memory replaces all callers. As of Fix 2
- *  (260519-kq3) the per-character prompt path uses buildCharacterMemory()
- *  instead. Kept in place because other callers may still reference it. */
-function formatWindowedTranscript(
-  allMessages: ChatEntry[],
-  windowSize: number,
-  userName: string = "friend",
-): string {
-  if (windowSize >= allMessages.length) {
-    return formatTranscript(allMessages, userName);
-  }
-  // Keep all user messages + last N agent messages
-  const userMessages = allMessages.filter(m => m.from === "user");
-  const recentWindow = allMessages.slice(-windowSize);
-  // Merge: user messages that got cut off + the recent window
-  const cutoffUserMsgs = userMessages.filter(
-    um => !recentWindow.some(rm => rm === um)
-  );
-  // Reconstruct in chronological order
-  const visible = [...cutoffUserMsgs, ...recentWindow];
-  return formatTranscript(visible, userName);
 }
 
 // ── Claude CLI call (async — supports parallel execution) ──
@@ -631,12 +599,6 @@ function getTraits(friendId: string): AgentTraits {
   };
 }
 
-/** Resolve attention window — use explicit trait or derive from speed */
-function getAttentionWindow(traits: AgentTraits): number {
-  if (traits.attentionWindow != null) return traits.attentionWindow;
-  return ATTENTION_WINDOWS[traits.responseSpeed];
-}
-
 // ── Delay drawing ────────────────────────────────────────────────────
 
 function drawDelay(speed: AgentTraits["responseSpeed"]): number {
@@ -988,16 +950,6 @@ export function endsOnQuestion(text: string): boolean {
   return /\?[\s\p{Extended_Pictographic}\u200d\ufe0f]*$/u.test(text.trim());
 }
 
-// The first round decides whether a new user stays: specific, funny, and not
-// five friends all asking "what happened?".
-export function firstRoundRules(userName: string, isHook: boolean): string {
-  return `FIRST ROUND: ${userName} just walked into the group with this. Make them want to keep talking.
-- Riff on a concrete detail from their message (a number, a name, a time, a place), not a generic take that fits any problem.
-- Funny first, useful second. Roast the situation, never ${userName}. Indian Gen-Z group-chat voice: UPI, Swiggy, chai, mom's WhatsApp forwards, Bangalore rent, aunties, Insta close friends are fair game when they fit; don't force them.
-- ${isHook ? "You're the one who asks the question this round." : `Don't ask ${userName} a question in this message; another friend will. Give a take, a joke, a plan, or a reaction.`}
-- No stock openers: "literally did this", "did this exact thing", "the real question is", "you already know", "what's actually bothering you".`;
-}
-
 /** The closer's question for this round. A cue's hook can name the user as {user}. */
 export function closingHook(cueHook: string | undefined, userName: string): string {
   return (cueHook ?? "ask about the one detail that would change the group's advice").replace(/\{user\}/g, userName);
@@ -1011,166 +963,114 @@ const FIRST_ROUND_MIN_SPEAKERS = 3;
 const FIRST_ROUND_MAX_MESSAGES = 6;
 const FIRST_BATCH_EFFORT: AnthropicEffort = (process.env.FIRST_BATCH_EFFORT as AnthropicEffort) || "low";
 
-// ── Prompt builder ──────────────────────────────────────────────────
+// ── Friend prompt ───────────────────────────────────────────────────
+// Every friend hears the whole room (BMAD party-mode style): whose chat this
+// is, a short "story so far", the recent chat with who replied to whom, and one
+// instruction. Character comes from the friend's system prompt; only the form
+// (length) is constrained here.
 
-function buildPrompt(
-  friendName: string,
-  friendRole: string,
-  transcript: string,
-  replyToName: string | null,
-  replyToText: string | null,
-  lengthInstruction: string,
-  modeInstruction: string,
-  isLateJoiner: boolean,
-  isClosingOut: boolean,
-  energy: number,
-  participantNames: string[],
-  agreementBias: number,
-  userName: string = "friend",
-  alreadySaidBlock: string = "",
-  latestUserMsg: string | null = null,
-  hasTopicChanged: boolean = false,
-  contextHint: string = "",
-  shouldAskUser: boolean = false,
-  topicContext: string = "",
-  isMinimalPrompt: boolean = false,
-  traitHints: string = "",
-  sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
-  language: string = "",
-): string {
-  const baseIdentity = `You are ${friendName} (${friendRole}) in a friends group chat on WhatsApp.${contextHint ? ` Your angle this time (say it your own way, don't copy these words): ${contextHint}.` : ""}`;
+/** How many of the newest messages every friend reads before replying. */
+export const RECENT_CHAT_MESSAGES = 20;
 
-  let contextBlock: string;
-  if (isLateJoiner) {
-    contextBlock = `You just opened the group chat and saw this conversation that's already going:\n\n${transcript}\n\nYou're catching up and jumping in.`;
-  } else if (replyToName && replyToText) {
-    contextBlock = `Here's the conversation:\n\n${transcript}\n\nYou're responding to what ${replyToName} just said: "${replyToText}"`;
-  } else {
-    contextBlock = `Someone just sent this:\n\n${transcript}`;
-  }
+/** A friend with nothing to add replies with just this and is skipped. */
+export const STAY_QUIET = "PASS";
 
-  let energyBlock = "";
-  if (isClosingOut) {
-    energyBlock = `\nThe conversation is winding down. Keep it super brief — "anyway lol", "okay but just do X", "alright i'm out", a quick final take, or a reaction emoji. Don't start a new thread.`;
-  } else if (energy < 0.5) {
-    energyBlock = `\nThe conversation is losing steam. Keep it short, don't introduce new topics.`;
-  }
+const FRIEND_MAX_TOKENS = 160;
 
-  const participantBlock = `People in this chat: ${participantNames.join(', ')}, and ${userName}. You don't need to address ${userName} by name — they can see the chat.`;
-
-  // Trait hints are now computed in callFriend and passed in.
-  // Keep a minimal fallback for agreementBias if traitHints wasn't provided.
-  let stanceHint = "";
-  if (!traitHints && agreementBias < -0.2) {
-    stanceHint = "\nYou don't have to agree with anyone. If something sounds off, say so directly.";
-  }
-
-  // Dynamic few-shot examples matched to the chosen response length
-  let fewShotExample = "";
-  switch (true) {
-    case lengthInstruction.includes("1-3 words"):
-      fewShotExample = `Examples of this style: "lol", "nah", "valid", "💀", "bruh"`;
-      break;
-    case lengthInstruction.includes("5-8 words"):
-      fewShotExample = `Examples: "depends if you're paying or parents are", "if your battery sucks just upgrade"`;
-      break;
-    case lengthInstruction.includes("10-15 words"):
-      fewShotExample = `Examples: "honestly i'd just wait for the next model, this one barely changes anything"`;
-      break;
-    case lengthInstruction.includes("15-30 words"):
-      fewShotExample = `Example: "okay but here's the thing — i switched last year and the camera is better but everything else is the same. save your money unless camera is your thing"`;
-      break;
-    case lengthInstruction.includes("2-4 sentences"):
-      fewShotExample = `Example: "nah listen. my cousin quit with no offer, spent three months 'building his personal brand' on linkedin. get your interviews lined up FIRST. trust me on this one."`;
-      break;
-    default:
-      fewShotExample = `Examples: "depends if you're paying or parents are", "nah", "if your battery sucks just upgrade"`;
-  }
-
-  // If the user has sent multiple messages and the topic may have shifted, front-load the latest message
-  let topicChangeBlock = "";
-  if (hasTopicChanged && latestUserMsg) {
-    topicChangeBlock = `\n⚠️ ${userName}'s LATEST message is: "${latestUserMsg}"\nThe conversation has moved on. Respond to this latest message, not earlier topics.\n`;
-  }
-
-  const factsBlock = topicContext
-    ? `\nFACTS (use this knowledge naturally, don't quote it verbatim): ${topicContext}\n`
-    : "";
-
-  let sessionMoodBlock = "";
-  if (sessionMood) {
-    const parts: string[] = [];
-
-    if (sessionMood.modes?.includes("late-night")) {
-      parts.push("The vibe is late-night — soft, vulnerable, honest. 2am energy.");
-    }
-    if (sessionMood.modes?.includes("hot-take")) {
-      parts.push("Hot takes mode — be spicy, oversimplified, provocative. Have fun with it.");
-    }
-    if (sessionMood.modes?.includes("deep-dive")) {
-      parts.push("Deep dive mode — pick one angle and go deep. Unpack it fully.");
-    }
-    if (sessionMood.modes?.includes("devils-advocate")) {
-      parts.push("Devil's advocate mode — push back intentionally. Challenge the premise.");
-    }
-    if (sessionMood.modes?.includes("emotional")) {
-      parts.push("Emotional support mode — mostly listen. Validate. Be gentle.");
-    }
-    if (sessionMood.modes?.includes("roast")) {
-      parts.push("Roast mode — tease the user lovingly. Be funny, not mean.");
-    }
-    if (sessionMood.modes?.includes("hype")) {
-      parts.push("Hype mode — be a cheerleader. Everything is amazing. Gas them up.");
-    }
-    if (sessionMood.modes?.includes("debate-club")) {
-      parts.push("Debate club mode — structured back-and-forth. Take a clear position.");
-    }
-
-    if (sessionMood.energy === "low") {
-      parts.push("Energy is low today. Keep it chill, mellow, no pressure.");
-    } else if (sessionMood.energy === "up") {
-      parts.push("Energy is UP. Be lively, enthusiastic, high energy.");
-    }
-
-    if (parts.length > 0) {
-      sessionMoodBlock = "\n" + parts.join(" ");
-    }
-  }
-
-  return `${baseIdentity}${topicChangeBlock} ${contextBlock}
-${factsBlock}${languageBlock(language, userName)}
-If someone asks about something you genuinely don't know about, say so naturally — "no idea", "never heard of it", "what's that". Don't fake knowledge.
-
-NEVER say: "Absolutely", "That's a great question", "I'd be happy to", "It's important to note", "delve", "I couldn't agree more", "Certainly", "Indeed", "Furthermore", "I think there's something to be said for", "an endless cycle", "unsustainable", "low-cost high-reward", "it's worth noting", "circle back", "deliverable", "stakeholder", "align", "bandwidth", "synergy", "leverage", "action item", "touch base". Never hedge. Never explain your reasoning. No formal phrases. No philosophical statements. No business jargon. Talk like you're 22 and texting your friend.
-
-${participantBlock}
-The user's name is ${userName} but do NOT use their name in every message. In a real group chat, you rarely say someone's name — just talk naturally. Use their name at most once in the entire conversation, and only if you're directly asking them something important.
-
-You can reply to anyone in the chat — not just ${userName}. React to what other people said. Disagree with someone. Build on their point. Tease them. But remember ${userName} started this conversation — make sure they feel included, not like they're watching strangers argue.
-${fewShotExample}
-
-${lengthInstruction}
-${modeInstruction}
-
-Type like a 22-year-old texting. No capitals. No periods. Abbreviations. "lmao", "bro what", "nah", "that's so dumb" are all valid. Tease people. Roast bad takes.
-
-Give direct opinions, not questions. When you disagree, say it flat — "that's cap", "hard disagree", "nah." Don't hedge.
-
-It's fine to just react: "lmao", "valid", "nah", "true", "💀". Not every message needs a point.
-
-${alreadySaidBlock}
-${shouldAskUser ? `\nIMPORTANT: The group has been talking but nobody asked ${userName} to elaborate. Ask them a specific follow-up question about their situation — like "wait why?" or "what happened?" or "what's actually bothering you about it?" Keep it short and natural.` : ""}
-${isMinimalPrompt ? `\n${userName} sent a very short message. React naturally — ask what's up, tease them, make a joke, or just vibe. Don't overthink a short message.` : ""}
-${energyBlock}
-${sessionMoodBlock}
-DO NOT be a therapist. DO NOT give structured advice. DO NOT lecture. Be YOUR character. Be messy. Be real.${traitHints ? `\n${traitHints}` : stanceHint}
-NEVER reference specific past events, conversations, or memories that aren't in the transcript above. You have personality and opinions but you don't invent shared history.
-Your reply must be a COMPLETE thought. Never a fragment. Do NOT use quotes around your response. Do NOT prefix with your name.
-CRITICAL: Do NOT repeat or rephrase what someone else already said. Add a NEW perspective, joke, reaction, or opinion.
-${outputRules(userName)}`;
+function displayName(id: string, userName: string): string {
+  return id === "user" ? userName : FRIENDS_BY_ID[id]?.name ?? id;
 }
 
-// ── Call a friend with v3 engine context ────────────────────────────
+/** The newest messages as "[Name, replying to Name] text" lines. */
+export function formatRecentChat(messages: ChatEntry[], userName: string): string {
+  return messages
+    .slice(-RECENT_CHAT_MESSAGES)
+    .map((m) => {
+      const to = m.replyTo && m.replyTo !== m.from ? `, replying to ${displayName(m.replyTo, userName)}` : "";
+      return `[${displayName(m.from, userName)}${to}] ${m.text}`;
+    })
+    .join("\n");
+}
+
+export function buildFriendPrompt(p: {
+  friendName: string;
+  /** The other friends in this chat. */
+  otherNames: string[];
+  userName: string;
+  messages: ChatEntry[];
+  storySummary?: string;
+  language: string;
+  /** End the round on this question (the first round's closer). */
+  hook?: string;
+  /** A planned first-round cast's angle for this friend. */
+  angle?: string;
+  /** Director research about a named thing (a show, an app). */
+  facts?: string;
+  /** Nobody has asked the user anything yet this round. */
+  askUser?: boolean;
+}): string {
+  const { friendName, otherNames, userName, messages, storySummary, language, hook, angle, facts, askUser } = p;
+  const latest = [...messages].reverse().find((m) => m.from === "user")?.text ?? "";
+  const friends = otherNames.length ? `you, ${otherNames.join(", ")}` : "you";
+  const parts = [`This is ${userName}'s chat. It's ${userName}'s problem and ${userName}'s story; you are ${userName}'s friends (${friends}).`];
+  if (storySummary) parts.push(`Story so far:\n${storySummary}`);
+  parts.push(`Recent chat:\n${formatRecentChat(messages, userName)}`);
+  if (facts) parts.push(`Background (use it naturally, don't quote it): ${facts}`);
+  const grounding = "Use only facts from the chat; don't invent shared history.";
+  const instruction = hook
+    ? `You're ${friendName}, the last to reply for now. React to the chat in a few words if you like, then ${hook}. One short, specific question ${userName} will want to answer, not "how do you feel" or "what's bothering you". End your message with "?". ${grounding}`
+    : `You're ${friendName}. React to ${userName}'s latest message ("${clip(latest, 200)}") in 1-3 lines, or stay quiet by replying with just ${STAY_QUIET}. ${grounding}` +
+      (angle ? ` Your angle (say it your own way): ${angle}.` : "") +
+      (askUser ? ` Ask ${userName} one specific question about their situation.` : "");
+  parts.push(instruction);
+  return `${parts.join("\n\n")}\n${languageBlock(language, userName)}\n${outputRules(userName)}`;
+}
+
+// ── Story so far ────────────────────────────────────────────────────
+// A 2-3 line summary of the key facts, made by the cheap model and stored with
+// the conversation. Refreshed on user messages 2, 4, 6...; reused in between.
+
+/** None before the user's 2nd message; refreshed on their 2nd, 4th, 6th... */
+export function storySummaryDue(userMessageCount: number): boolean {
+  return userMessageCount >= 2 && userMessageCount % 2 === 0;
+}
+
+export function buildStorySummaryPrompt(messages: ChatEntry[], userName: string, previous?: string): string {
+  return `Here is a group chat. ${userName} brought their situation to their friends.
+
+${previous ? `Earlier summary (may be out of date):\n${previous}\n\n` : ""}Chat:
+${formatTranscript(messages.map((m) => ({ ...m, from: m.from === "user" ? "user" : displayName(m.from, userName) })), userName)}
+
+Write the story so far in 2-3 short lines: who's who (names and how they relate to ${userName}), what happened, and what ${userName} wants now. When ${userName} corrects or adds a detail, their latest words win; friends' guesses are not facts. Plain English, no advice, no opinions. Output only the lines.`;
+}
+
+async function summarizeStory(
+  messages: ChatEntry[],
+  userName: string,
+  previous: string | undefined,
+  provider: ProviderConfig,
+  collector?: CostCollector,
+): Promise<string | null> {
+  try {
+    const { text } = await callModel(
+      "You summarize group chats in a few plain lines.",
+      buildStorySummaryPrompt(messages.slice(-40), userName, previous),
+      { ...provider, model: provider.synthesisModel },
+      200,
+      undefined,
+      collector,
+    );
+    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3);
+    const summary = clip(lines.join("\n"), 500).trim();
+    engineLog({ ts: new Date().toISOString(), event: "story-summary", chars: summary.length });
+    return summary || null;
+  } catch (err) {
+    engineLog({ ts: new Date().toISOString(), event: "story-summary-failed", error: String(err).slice(0, 200) });
+    return null;
+  }
+}
+
+// ── Call a friend ───────────────────────────────────────────────────
 
 type FriendReply = { entry: ChatEntry; replyTo: string | null; media?: ChatMedia; mediaPlan?: CueMedia; model?: string; paid?: boolean };
 
@@ -1179,236 +1079,47 @@ async function callFriend(
   allMessages: ChatEntry[],
   provider: ProviderConfig,
   replyTarget: ScoredMessage | null,
-  isLateJoiner: boolean,
-  energy: number,
-  attentionWindow: number,
   podFriendIds: string[],
   userName: string = "friend",
-  shouldAskUser: boolean = false,
-  contextHint: string = "",
-  topicContext: string = "",
-  isMinimalPrompt: boolean = false,
-  sessionMood?: { modes?: string[]; pacing?: string; energy?: string },
   overrides: Record<string, any> = {},
   collector?: CostCollector,
-  // language: the user's language (from classifyMessage). allowMode: false on the
-  // first replies of a turn, so they stay in the friend's own voice. effort: Sonnet thinking effort.
+  // language: the user's language (from classifyMessage). effort: Sonnet thinking effort.
   // allowMedia: false = never send a sticker (guests).
-  // firstRound: the user's first message in this chat (see FIRST_ROUND_RULES).
   // mediaMoment: this reply carries the cue's planned sticker. forceMediaOffer: offer
   // a sticker regardless of the friend's mediaSendProbability. hook: end on a question.
   // gender: how to refer to the user (gender.ts); missing = "neutral".
-  extra: { language?: string; allowMode?: boolean; effort?: AnthropicEffort; allowMedia?: boolean; firstRound?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string; gender?: UserGender } = {},
+  // storySummary: the chat's "story so far". angle: a planned cast's angle (first reply).
+  // facts: director research. askUser: nobody has asked the user anything yet.
+  extra: { language?: string; effort?: AnthropicEffort; allowMedia?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string; gender?: UserGender; storySummary?: string; angle?: string; facts?: string; askUser?: boolean } = {},
 ): Promise<FriendReply | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend) return null;
 
-  // Merge user's character overrides with static traits
-  const userOverride = overrides[friendId];
-  const effectiveTraits: AgentTraits = userOverride
-    ? {
-        ...friend.traits,
-        ...(userOverride.agreementBias !== undefined && { agreementBias: userOverride.agreementBias }),
-        ...(userOverride.responseSpeed && { responseSpeed: userOverride.responseSpeed }),
-        ...(userOverride.lurkerChance !== undefined && { lurkerChance: userOverride.lurkerChance }),
-        ...(userOverride.verbosityRange && { verbosityRange: userOverride.verbosityRange }),
-        ...(userOverride.tangentProbability !== undefined && { tangentProbability: userOverride.tangentProbability }),
-        ...(userOverride.attentionWindow !== undefined && { attentionWindow: userOverride.attentionWindow }),
-        ...(userOverride.confidenceLevel !== undefined && { confidenceLevel: userOverride.confidenceLevel }),
-        ...(userOverride.interruptProbability !== undefined && { interruptProbability: userOverride.interruptProbability }),
-        ...(userOverride.mediaSendProbability !== undefined && { mediaSendProbability: userOverride.mediaSendProbability }),
-      }
-    : friend.traits;
+  // Character overrides only change the sticker rate here; the other dials feed scoring.
+  const mediaSendProbability = overrides[friendId]?.mediaSendProbability ?? friend.traits.mediaSendProbability ?? 0;
+  const replyToId = replyTarget?.from ?? null;
+  const latestUserMsg = allMessages.filter((m) => m.from === "user").pop()?.text ?? null;
 
-  // Per-character private memory (Fix 2, 260519-kq3) — replaces full-transcript
-  // fanout. Visible-set = own + replyTo + mention + user messages. Everything
-  // else is compressed into a one-line summary prepended at the TOP of the
-  // prompt below (U-shape attention). attentionWindow is now a final cap on
-  // visible-set size — preserves the long-conversation knob.
-  const memory = buildCharacterMemory({
-    allMessages,
-    characterId: friendId,
-    characterName: friend.name,
+  let prompt = buildFriendPrompt({
+    friendName: friend.name,
+    otherNames: podFriendIds.filter((id) => id !== friendId).map((id) => FRIENDS_BY_ID[id]?.name).filter((n): n is string => !!n),
     userName,
-    cap: attentionWindow,
+    messages: allMessages,
+    storySummary: extra.storySummary,
+    language: extra.language ?? "",
+    hook: extra.hook,
+    angle: extra.angle,
+    facts: extra.facts,
+    askUser: extra.askUser,
   });
-  const transcript = memory.visibleTranscript;
-
-  // Resolve reply target
-  let replyToName: string | null = null;
-  let replyToText: string | null = null;
-  let replyToId: string | null = null;
-  if (replyTarget) {
-    const replyFriend = FRIENDS_BY_ID[replyTarget.from];
-    replyToName = replyTarget.from === "user" ? userName : (replyFriend?.name ?? replyTarget.from);
-    replyToText = replyTarget.text;
-    replyToId = replyTarget.from;
-  }
-
-  // Tangent probability — chance of going off-topic instead of replying to the scored message
-  const tangentProb = effectiveTraits.tangentProbability ?? 0.05;
-  if (Math.random() < tangentProb) {
-    replyToName = null;
-    replyToText = null;
-    // Keep replyToId so we still track the reply chain, but prompt will be unanchored
-  }
-
-  // Build participant names (excluding current agent)
-  const participantNames = podFriendIds
-    .filter((id) => id !== friendId)
-    .map((id) => FRIENDS_BY_ID[id]?.name)
-    .filter((n): n is string => !!n);
-
-  // Pick mode and length
-  const mode = extra.allowMode === false ? null : pickRandomMode(effectiveTraits.agreementBias);
-  const isClosingOut = energy < 0.2;
-  const affinity = computeTopicAffinity(friend.tags, allMessages[0]?.text || "");
-  let length;
-  if (isClosingOut) {
-    length = Math.random() < 0.5 ? ("micro" as const) : ("short" as const);
-  } else if (energy < 0.35) {
-    length = Math.random() < 0.25 ? ("short" as const) : ("medium" as const);
-  } else {
-    length = pickResponseLength(friend.defaultLength, mode ?? undefined, affinity);
-  }
-  const lengthInstruction = lengthToInstruction(length);
-  const modeInstruction = mode
-    ? `[MODE: ${mode.name}] ${mode.promptOverlay}`
-    : "";
-
-  // Build "already said" context so this agent doesn't repeat others
-  const agentMessages = allMessages.filter((m) => m.from !== "user" && m.from !== friendId);
-  let alreadySaidBlock = "";
-  if (agentMessages.length >= 2) {
-    const keyPhrases = agentMessages
-      .map((m) => clip(m.text, 60).replace(/"/g, ""))
-      .join('", "');
-    alreadySaidBlock = `Others already said: "${keyPhrases}". DON'T repeat these. If everyone agrees on something, disagree or bring a totally different angle. Real friend groups argue — don't pile on.`;
-  } else if (agentMessages.length === 1) {
-    alreadySaidBlock = `Someone already said: "${clip(agentMessages[0].text, 60).replace(/"/g, "")}". Say something DIFFERENT — agree or disagree, but add a new angle.`;
-  }
-
-  // What THIS agent already said in the conversation (including history) — prevent self-repetition across rounds
-  const myPreviousMessages = allMessages
-    .filter((m) => m.from === friendId)
-    .map((m) => m.text);
-  if (myPreviousMessages.length > 0) {
-    alreadySaidBlock += `\n\nYou already said these things earlier in this conversation:\n${myPreviousMessages.map((m) => `- "${m}"`).join("\n")}\nDo NOT repeat or rephrase any of these. Say something COMPLETELY different. If you have nothing new to add, just react briefly ("lol", "valid", "💀").`;
-    const worn = wornOutLine(wornOutPhrases(myPreviousMessages, friend.catchphrases));
-    if (worn) alreadySaidBlock += `\n${worn}`;
-  }
-
-  // Detect topic change — if user has sent multiple messages, the latest one is what matters
-  const userMessages = allMessages.filter((m) => m.from === "user");
-  const latestUserMsg = userMessages.length > 0 ? userMessages[userMessages.length - 1].text : null;
-  const hasTopicChanged = userMessages.length > 1;
-
-  // ── Build trait-based behavior hints ──
-  // These inject the character's dial settings into the prompt so the model
-  // actually reflects the personality traits in its output, not just scoring.
-  const traitHintParts: string[] = [];
-
-  // Agreement/stance
-  if (effectiveTraits.agreementBias < -0.5) {
-    traitHintParts.push("You strongly disagree with most takes. Challenge the premise. Push back hard. 'nah that's wrong' energy.");
-  } else if (effectiveTraits.agreementBias < -0.2) {
-    traitHintParts.push("Play devil's advocate. Question assumptions. Don't just go along with the group.");
-  } else if (effectiveTraits.agreementBias > 0.5) {
-    traitHintParts.push("You're supportive and validating. Build on what others said. 'yes and...' energy. Hype them up.");
-  } else if (effectiveTraits.agreementBias > 0.2) {
-    traitHintParts.push("You tend to agree and add to the conversation. Find common ground.");
-  }
-
-  // Chattiness / lurker behavior
-  const lurkerChance = effectiveTraits.lurkerChance ?? 0;
-  if (lurkerChance > 0.4) {
-    traitHintParts.push("You only speak when you have something worth saying. Brief when you do.");
-  } else if (lurkerChance < 0.1) {
-    traitHintParts.push("You always have something to say. You jump into every thread.");
-  }
-
-  // Tangent tendency
-  const tangentProb2 = effectiveTraits.tangentProbability ?? 0;
-  if (tangentProb2 > 0.25) {
-    traitHintParts.push("You sometimes go completely off-topic. Tangents are your thing.");
-  }
-
-  // Confidence
-  const confidence = effectiveTraits.confidenceLevel ?? 0.5;
-  if (confidence > 0.8) {
-    traitHintParts.push("You state opinions as facts. No hedging, no 'maybe'.");
-  } else if (confidence < 0.3) {
-    traitHintParts.push("You're unsure. Qualify your takes with 'idk' or 'maybe'.");
-  }
-
-  // Verbosity — reinforce length beyond just the token limit
-  const [, traitMaxWords] = effectiveTraits.verbosityRange ?? [5, 30];
-  if (traitMaxWords <= 10) {
-    traitHintParts.push("Keep it VERY short. 1-5 words max. You're a person of few words.");
-  } else if (traitMaxWords <= 20) {
-    traitHintParts.push("Keep it brief. One sentence max.");
-  } else if ((effectiveTraits.verbosityRange?.[0] ?? 5) >= 15) {
-    traitHintParts.push("You tend to elaborate. 2-3 sentences when you have something to say.");
-  }
-
-  const traitHintsBlock = traitHintParts.length > 0 ? traitHintParts.join(" ") : "";
-
-  let prompt = buildPrompt(
-    friend.name,
-    friend.role,
-    transcript,
-    replyToName,
-    replyToText,
-    lengthInstruction,
-    modeInstruction,
-    isLateJoiner,
-    isClosingOut,
-    energy,
-    participantNames,
-    effectiveTraits.agreementBias,
-    userName,
-    alreadySaidBlock,
-    latestUserMsg,
-    hasTopicChanged,
-    contextHint,
-    shouldAskUser,
-    topicContext,
-    isMinimalPrompt,
-    traitHintsBlock,
-    sessionMood,
-    extra.language ?? "",
-  );
-
-  // Fix 3 (260519-x71) — character voice anchor at TOP of prompt (U-shape
-  // attention zone). Must be prepended BEFORE the Fix 2 memory prepend so
-  // the final top-down order is: [memory] → [voice] → base prompt.
-  const voiceBlock = buildVoiceAnchorBlock(friend, latestUserMsg ?? "");
-  if (voiceBlock.length > 0) {
-    prompt = voiceBlock + "\n\n" + prompt;
-  }
-
-  // Fix 2 (260519-kq3) — per-character memory summary at TOP of prompt
-  // (U-shape attention zone). When this character missed messages outside
-  // their visible-set, prepend a one-line perspective summary so the model
-  // knows what it doesn't know rather than fabricating from a full transcript.
-  if (memory.summary) {
-    prompt = `[Your private memory of what you missed: ${memory.summary}]\n\n` + prompt;
-  }
-
-  if (extra.firstRound) {
-    prompt += `\n\n${firstRoundRules(userName, !!extra.hook)}`;
-  }
   prompt += `\n\n${genderInstruction(extra.gender ?? "neutral", userName)}`;
-  if (extra.hook) {
-    prompt += `\n\nEND THE ROUND: you're the last to reply for now. React to the chat in a few words if you like, then ${extra.hook}. One short, specific question ${userName} will want to answer, not "how do you feel" or "what's bothering you". End your message with "?".`;
-  }
   if (extra.mediaMoment) {
     prompt += `\n\n${mediaMomentInstruction(extra.mediaMoment)}`;
   }
 
   // ── GIF prompt injection (conditional) ──
   const allowMedia = extra.allowMedia !== false;
-  const shouldOfferGif = allowMedia && !extra.mediaMoment && (extra.forceMediaOffer || Math.random() < (effectiveTraits.mediaSendProbability ?? 0));
+  const shouldOfferGif = allowMedia && !extra.mediaMoment && (extra.forceMediaOffer || Math.random() < mediaSendProbability);
   if (shouldOfferGif) {
     prompt += `\n\nReact with a visual this time! Write [REACT: 2-4 words describing your reaction to THIS specific moment] — describe what you're actually feeling right now, don't use generic reactions. You can write text before or after the tag, or just send it alone.`;
     if (memeMediaEnabled()) {
@@ -1416,33 +1127,7 @@ async function callFriend(
     }
   }
 
-  // Fix 3 (260519-x71) — duplicate mesExample at END of prompt (U-shape's
-  // bottom anchor). Only mesExample repeats, not antiPatterns/stances —
-  // examples are the strongest style signal. Guard on non-empty array.
-  if (friend.mesExample && friend.mesExample.length > 0) {
-    prompt += `\n\n[How you talk: ${friend.mesExample.join(" | ")}]`;
-  }
-
-  let maxTokens =
-    length === "micro"
-      ? 60
-      : length === "short"
-        ? 100
-        : length === "long"
-          ? 200
-          : length === "rant"
-            ? 300
-            : 120; // medium default
-
-  // Modulate maxTokens by character's verbosityRange (soft clamp — never go below 60)
-  if (effectiveTraits.verbosityRange) {
-    const [, maxWords] = effectiveTraits.verbosityRange;
-    const charMax = Math.round(maxWords * 1.5);
-    // Only clamp DOWN, and never below 60 tokens (enough for a full sentence)
-    if (charMax < maxTokens) {
-      maxTokens = Math.max(60, charMax);
-    }
-  }
+  const maxTokens = FRIEND_MAX_TOKENS;
 
   try {
     let { text, model: usedModel, paid } = await callModel(
@@ -1455,6 +1140,11 @@ async function callFriend(
       extra.effort,
     );
     text = cleanResponse(text, friend.name);
+    // Nothing to add: this friend stays quiet.
+    if (text.replace(/[^a-z]/gi, "").toUpperCase() === STAY_QUIET) {
+      engineLog({ ts: new Date().toISOString(), event: "stayed-quiet", agent: friendId });
+      return null;
+    }
 
     // ── Extract GIF / meme marker and resolve ──
     let media: ChatMedia | undefined;
@@ -1935,10 +1625,14 @@ function deflectTurn(
 
 // ── Main v3 engine ──────────────────────────────────────────────────
 
-export async function* orchestrateChat(params: {
+type OrchestrateParams = {
   message: string;
   podFriendIds: string[];
-  history: { from: string; text: string }[];
+  history: ChatEntry[];
+  // The chat's stored "story so far" and how many user messages it has had,
+  // counting this one (the chat route keeps both with the conversation).
+  // Without a count, the user messages in history are counted.
+  story?: { summary?: string; userTurns?: number };
   userName?: string;
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string };
   characterOverrides?: string; // JSON string from Convex
@@ -1961,7 +1655,26 @@ export async function* orchestrateChat(params: {
   // How to refer to the user (gender.ts). Read before each reply, so a detection
   // still running when the round starts lands on later replies; "neutral" until then.
   getUserGender?: () => UserGender;
-}): AsyncGenerator<EngineEvent> {
+};
+
+// Runs a round. On the user's 2nd, 4th, 6th... message the "story so far" is
+// refreshed alongside it (friends read the fresh one once it's ready), and the
+// new summary is yielded last for the chat route to store.
+export async function* orchestrateChat(params: OrchestrateParams): AsyncGenerator<EngineEvent> {
+  const { history, message, story, cardOnly, collector, userName = "friend" } = params;
+  const userTurns = story?.userTurns ?? history.filter((m) => m.from === "user").length + 1;
+  const provider = getActiveProvider();
+  const refresh =
+    provider && !cardOnly && storySummaryDue(userTurns)
+      ? summarizeStory([...history, { from: "user", text: message }], userName, story?.summary, provider, collector)
+      : null;
+  const storySummary = async () => (refresh ? (await refresh) ?? story?.summary : story?.summary);
+  yield* runRound(params, storySummary);
+  const fresh = refresh ? await refresh : null;
+  if (fresh) yield { type: "story", summary: fresh };
+}
+
+async function* runRound(params: OrchestrateParams, storySummary: () => Promise<string | undefined>): AsyncGenerator<EngineEvent> {
   const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true, lastCard, lazyCard, cardOnly, cueTake } = params;
   const userGender = (): UserGender => params.getUserGender?.() ?? "neutral";
 
@@ -2096,10 +1809,8 @@ export async function* orchestrateChat(params: {
     new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000)),
   ]);
 
-  // ── Minimal-prompt hint ──
-  // For very short/vague inputs ("bored", "idk", "hi"), give agents a hint
-  // so they have something to work with instead of discarding their responses
-  const isMinimalPrompt = message.trim().split(/\s+/).length <= 2;
+  // Every friend reads the story so far (a fresh one is awaited here).
+  const story = await storySummary();
 
   // All messages: history + user's new message + round responses
   const baseMessages: ChatEntry[] = [
@@ -2341,8 +2052,6 @@ export async function* orchestrateChat(params: {
     // ── Call models (parallel within batch) ──
     const results = await Promise.allSettled(
       batch.map(({ agent, target }, batchIdx) => {
-        const attentionWindow = getAttentionWindow(agent.traits);
-        const isLateJoiner = agent.responseCount === 0 && roundResponses.length >= 2;
         // Only the first agent in batch gets the "ask user" nudge (first round: the closing hook asks instead)
         const shouldAskUser = needsUserEngagement && batchIdx === 0 && !isFirstRound;
         const firstSay = agent.responseCount === 0;
@@ -2351,35 +2060,19 @@ export async function* orchestrateChat(params: {
         const forceMediaOffer = firstSay && agent.id === mediaOfferFor;
         if (forceMediaOffer) mediaOfferFor = null;
 
-        return callFriend(
-          agent.id,
-          msgs,
-          provider,
-          target,
-          isLateJoiner,
-          energy,
-          attentionWindow,
-          podFriendIds,
-          userName,
-          shouldAskUser,
-          cue && firstSay ? cue.angles[agent.id] ?? "" : "", // a planned cast's angle, first reply only
-          filterTopicForCharacter(topicContext, agent.id, message),
-          isMinimalPrompt,
-          sessionMood,
-          parsedOverrides,
-          collector,
-          {
-            language,
-            // The first replies of a turn stay in each friend's own voice and arrive faster.
-            allowMode: roundResponses.length > 0 && !isFirstRound,
-            effort: roundResponses.length === 0 ? FIRST_BATCH_EFFORT : undefined,
-            allowMedia,
-            firstRound: isFirstRound,
-            mediaMoment,
-            forceMediaOffer,
-            gender: userGender(),
-          },
-        );
+        return callFriend(agent.id, msgs, provider, target, podFriendIds, userName, parsedOverrides, collector, {
+          language,
+          // The first replies of a turn arrive faster.
+          effort: roundResponses.length === 0 ? FIRST_BATCH_EFFORT : undefined,
+          allowMedia,
+          mediaMoment,
+          forceMediaOffer,
+          gender: userGender(),
+          storySummary: story,
+          angle: cue && firstSay ? cue.angles[agent.id] : undefined, // a planned cast's angle, first reply only
+          facts: filterTopicForCharacter(topicContext, agent.id, message) || undefined,
+          askUser: shouldAskUser,
+        });
       }),
     );
 
@@ -2560,10 +2253,11 @@ export async function* orchestrateChat(params: {
       typingFor = id;
       const strict = retryId === id;
       const result: FriendReply | null = await callFriend(
-        id, allMessages(), provider, { index: userIdx, from: "user", text: message, score: 5 }, false, energy,
-        getAttentionWindow(getTraits(id)), podFriendIds, userName, false, "",
-        filterTopicForCharacter(topicContext, id, message), isMinimalPrompt, sessionMood, parsedOverrides, collector,
-        { language, allowMode: false, allowMedia, firstRound: true, hook: strict ? `${hook}. Your whole message must END with that question and a "?"; nothing after it` : hook, gender: userGender() },
+        id, allMessages(), provider, { index: userIdx, from: "user", text: message, score: 5 }, podFriendIds, userName, parsedOverrides, collector,
+        {
+          language, allowMedia, storySummary: story, facts: filterTopicForCharacter(topicContext, id, message) || undefined, gender: userGender(),
+          hook: strict ? `${hook}. Your whole message must END with that question and a "?"; nothing after it` : hook,
+        },
       ).catch((err) => {
         engineLog({ ts: new Date().toISOString(), event: "hook-failed", agent: id, reason: String(err).slice(0, 200) });
         return null;

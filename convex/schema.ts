@@ -16,6 +16,11 @@ export default defineSchema({
     sessionMood: v.optional(v.string()),
     username: v.optional(v.string()),
     createdAt: v.number(),
+    // "Story so far": a 2-3 line summary every friend reads before replying,
+    // refreshed on user messages 2, 4, 6... (orchestrator.ts storySummaryDue).
+    storySummary: v.optional(v.string()),
+    // User messages sent in this chat so far, counted by the chat route.
+    userTurns: v.optional(v.number()),
   }).index("by_created", ["createdAt"])
     .index("by_username", ["username", "createdAt"]),
 

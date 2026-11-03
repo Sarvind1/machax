@@ -9,7 +9,7 @@ import { PaymentError, buyTopupWeb } from "@/lib/razorpay-checkout";
 import { NativePurchaseError, buyTopupNative, configurePurchases, waitForCredit } from "@/lib/purchases-native";
 import { signOut } from "@/lib/firebase";
 import type { CreditSummary } from "@/lib/credits";
-import { MAX_HISTORY_ENTRIES, MAX_POD_SIZE } from "@/lib/chat-limits";
+import { MAX_HISTORY_ENTRIES, MAX_POD_SIZE, type ChatHistoryEntry } from "@/lib/chat-limits";
 import { logEvent } from "@/lib/analytics";
 import { logAchievementUnlocked, logFirstDilemmaPosted } from "@/lib/meta-events";
 import { GUEST_TYPED_LIMIT, isExamplePrompt, type GuestUsage } from "@/lib/guest-limits";
@@ -44,6 +44,11 @@ import { GROUPS, GROUPS_BY_KEY, compactCreditLabel, pickGroup, podForGroup, type
 type ChatMessageWithReply = ChatMessageType & {
   replyTo?: string;
 };
+
+// A message as the server's history wants it: who said it, and who it answered.
+function historyEntry(m: ChatMessageWithReply): ChatHistoryEntry {
+  return { from: m.from, text: m.text, ...(m.replyTo ? { replyTo: m.replyTo } : {}) };
+}
 
 import ChatMessage from "./components/chat-message";
 import ChatComposer from "./components/chat-composer";
@@ -494,7 +499,7 @@ export default function ChatPage() {
       message: string,
       convoId: ConversationId,
       podIds: string[],
-      history: { from: string; text: string }[],
+      history: ChatHistoryEntry[],
       opts: {
         interrupting?: boolean;
         pickedOption?: { label: string; voices: string[] };
@@ -1041,7 +1046,7 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, userMsg]);
       const convoId = activeConversation;
 
-      const history = [...messages, ...flushed].filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
+      const history = [...messages, ...flushed].filter((m) => !isCardMessage(m.from)).map(historyEntry);
 
       try {
         await streamChat(
@@ -1154,7 +1159,7 @@ export default function ChatPage() {
         lastUser.text,
         activeConversation,
         pod.map((f) => f.id),
-        lines.map((m) => ({ from: m.from, text: m.text })),
+        lines.map(historyEntry),
         { cardOnly: true, lastCard: lastCardFrom(messages) },
       );
     } finally {
@@ -1196,7 +1201,7 @@ export default function ChatPage() {
     setVoteSheetOpen(false);
     const flushed = flushRepliesRef.current?.() ?? [];
     const text = `going with: ${option.label}`;
-    const history = [...messages, ...flushed].filter((m) => !isCardMessage(m.from)).map((m) => ({ from: m.from, text: m.text }));
+    const history = [...messages, ...flushed].filter((m) => !isCardMessage(m.from)).map(historyEntry);
     isStreamingRef.current = true;
     setMessages((prev) => [
       ...prev,

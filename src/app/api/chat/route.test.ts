@@ -87,6 +87,7 @@ const req = (b: unknown = body, raw?: string) =>
 function convex(opts: {
   begin?: unknown;
   settle?: (args: { costMicros: number }) => unknown;
+  story?: unknown;
 }) {
   mutation.mockImplementation(async (ref: unknown, args: { costMicros: number }) => {
     const name = getFunctionName(ref as never);
@@ -100,6 +101,8 @@ function convex(opts: {
       };
     }
     if (name === "traces:save") return null;
+    if (name === "conversations:beginStoryTurn") return opts.story ?? { userTurns: 1, storySummary: null };
+    if (name === "conversations:saveStorySummary") return null;
     if (name.startsWith("chatLog:")) return null;
     throw new Error(`unexpected mutation ${name}`);
   });
@@ -226,6 +229,29 @@ describe("POST /api/chat", () => {
     // identity comes from the token, not the body
     expect(orchestrateChat).toHaveBeenCalledTimes(1);
     expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ userName: "Alice" });
+  });
+
+  it("hands the engine the stored story and saves a refreshed one without sending it", async () => {
+    convex({ story: { userTurns: 4, storySummary: "Arjun owes Rhea 15k." } });
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "message", from: "a", text: "yo" } satisfies EngineEvent;
+      yield { type: "story", summary: "Arjun owes Rhea 15k and ignores her texts." } satisfies EngineEvent;
+    });
+
+    const res = await POST(req({ ...body, history: [{ from: "user", text: "a" }, { from: "a", text: "b", replyTo: "user" }] }));
+    const ev = await events(res);
+
+    expect(ev.some((e) => "summary" in e)).toBe(false);
+    expect(callsTo("conversations:beginStoryTurn")[0][1]).toEqual({ conversationId: "c1", username: "alice", startTurns: 2 });
+    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({
+      story: { userTurns: 4, summary: "Arjun owes Rhea 15k." },
+      history: [{ from: "user", text: "a" }, { from: "a", text: "b", replyTo: "user" }],
+    });
+    expect(callsTo("conversations:saveStorySummary")[0][1]).toEqual({
+      conversationId: "c1",
+      username: "alice",
+      summary: "Arjun owes Rhea 15k and ignores her texts.",
+    });
   });
 
   it("settles once and still ends with done when the generator throws mid-stream", async () => {
@@ -610,6 +636,7 @@ describe("POST /api/chat as a guest (no token)", () => {
         return args.delivered ? usage(args.example ? 0 : 1, 1) : usage(0, 0);
       }
       if (name === "traces:save") return null;
+      if (name.startsWith("conversations:")) return null;
       if (name.startsWith("chatLog:")) return null;
       throw new Error(`unexpected mutation ${name}`);
     });
