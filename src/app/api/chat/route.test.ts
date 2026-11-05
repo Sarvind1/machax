@@ -254,6 +254,25 @@ describe("POST /api/chat", () => {
     });
   });
 
+  it("hands the engine the stored vibe and saves a refreshed one", async () => {
+    const vibe = { mode: "hangout", language: "Spanish", notes: { a: "be warm" } };
+    convex({ story: { userTurns: 4, storySummary: "Daniela wants friends.", storyVibe: JSON.stringify(vibe) } });
+    orchestrateChat.mockImplementation(async function* () {
+      yield { type: "story", summary: "Daniela wants friends.", vibe: { notes: { a: "ask about church" } } } satisfies EngineEvent;
+    });
+
+    const res = await POST(req({ ...body, history: [{ from: "user", text: "a" }] }));
+    await events(res);
+
+    expect(orchestrateChat.mock.calls[0][0]).toMatchObject({ story: { userTurns: 4, summary: "Daniela wants friends.", vibe } });
+    expect(callsTo("conversations:saveStorySummary")[0][1]).toEqual({
+      conversationId: "c1",
+      username: "alice",
+      summary: "Daniela wants friends.",
+      vibe: JSON.stringify({ notes: { a: "ask about church" } }),
+    });
+  });
+
   it("settles once and still ends with done when the generator throws mid-stream", async () => {
     convex({});
     orchestrateChat.mockImplementation(async function* (p: { collector: CostCollector }) {

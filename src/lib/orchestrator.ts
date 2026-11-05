@@ -929,7 +929,7 @@ export function languageBlock(language: string, userName: string): string {
   } else if (lang.startsWith("english")) {
     extra = " Plain English only: no Hindi or Hinglish words (no \"yaar\", \"bhai\", \"hai\", \"kya\"), even if your usual style mixes them in.";
   } else {
-    extra = " Use that script. Casual, everyday words, not formal or textbook language. English slang mixed in is fine.";
+    extra = ` Use that script. Casual, everyday words, not formal or textbook language. English slang mixed in is fine. Do this even if earlier messages in the chat were in English: ${userName} can't follow them.`;
   }
   return `\nLANGUAGE: ${userName} wrote in ${language}. Reply in ${language}.${extra}\n`;
 }
@@ -1008,8 +1008,12 @@ export function buildFriendPrompt(p: {
   facts?: string;
   /** Nobody has asked the user anything yet this round. */
   askUser?: boolean;
+  /** What the user seems to want right now (from the story summary call). */
+  mode?: VibeMode;
+  /** This friend's note from the story summary call. */
+  note?: string;
 }): string {
-  const { friendName, otherNames, userName, messages, storySummary, language, hook, angle, facts, askUser } = p;
+  const { friendName, otherNames, userName, messages, storySummary, language, hook, angle, facts, askUser, mode, note } = p;
   const latest = [...messages].reverse().find((m) => m.from === "user")?.text ?? "";
   const friends = otherNames.length ? `you, ${otherNames.join(", ")}` : "you";
   const parts = [`This is ${userName}'s chat. It's ${userName}'s problem and ${userName}'s story; you are ${userName}'s friends (${friends}).`];
@@ -1023,6 +1027,8 @@ export function buildFriendPrompt(p: {
       (angle ? ` Your angle (say it your own way): ${angle}.` : "") +
       (askUser ? ` Ask ${userName} one specific question about their situation.` : "");
   parts.push(instruction);
+  const vibe = [mode ? `${userName} seems to want to ${VIBE_MODES[mode]} right now.` : "", note ? `For you: ${note}.` : ""].filter(Boolean).join(" ");
+  if (vibe) parts.push(`Vibe check (a nudge; your character wins if they clash): ${vibe}`);
   return `${parts.join("\n\n")}\n${languageBlock(language, userName)}\n${outputRules(userName)}`;
 }
 
@@ -1035,35 +1041,103 @@ export function storySummaryDue(userMessageCount: number): boolean {
   return userMessageCount >= 2 && userMessageCount % 2 === 0;
 }
 
-export function buildStorySummaryPrompt(messages: ChatEntry[], userName: string, previous?: string): string {
+// The same call also reads the room: what the user wants right now, the language
+// they write in, and a short note per friend so the group doesn't all take one tone.
+
+/** What the user seems to want right now, and how a friend's prompt says it. */
+export const VIBE_MODES = {
+  hangout: "just hang out and chat",
+  vent: "vent and be heard",
+  advice: "get real advice",
+  banter: "joke around",
+  play: "play a game or a bit",
+} as const;
+export type VibeMode = keyof typeof VIBE_MODES;
+export type Vibe = { mode?: VibeMode; language?: string; notes: Record<string, string> };
+
+export function buildStorySummaryPrompt(
+  messages: ChatEntry[],
+  userName: string,
+  previous?: string,
+  friends?: { id: string; name: string; role: string }[],
+): string {
+  const story = `the story so far in 2-3 short lines: who's who (names and how they relate to ${userName}), what happened, and what ${userName} wants now. When ${userName} corrects or adds a detail, their latest words win; friends' guesses are not facts. Plain English, no advice, no opinions.`;
+  const ask = friends?.length
+    ? `Return ONLY one line of JSON:
+{"story":"...","mode":"${Object.keys(VIBE_MODES).join("|")}","language":"the language and script ${userName} writes in","notes":{${friends.map((f) => `"${f.id}":"..."`).join(",")}}}
+
+story: ${story}
+mode: what ${userName} wants from the group right now. Not every chat is a problem to solve: someone who just says hi or wants friends wants to hang out.
+notes: one instruction per friend (under 15 words) on how they should come at ${userName} next, in their own character. Write it about them, not as their line: "be warm, ask what she did today", not "hey how was your day?". Friends in this chat: ${friends.map((f) => `${f.id} (${f.name}, ${f.role})`).join("; ")}.
+- Give them different stances (warm, curious, playful, blunt, quiet) so the group doesn't all take one tone, and change them as the chat moves.
+- At most one friend may tease or push back hard. In vent or hangout mode nobody roasts.
+- If the group has been rude, dismissive or repeating itself, say so in the notes and steer them off it.
+- If ${userName} asked for something reasonable (a language, a topic), the notes should go along with it.`
+    : `Write ${story} Output only the lines.`;
   return `Here is a group chat. ${userName} brought their situation to their friends.
 
 ${previous ? `Earlier summary (may be out of date):\n${previous}\n\n` : ""}Chat:
 ${formatTranscript(messages.map((m) => ({ ...m, from: m.from === "user" ? "user" : displayName(m.from, userName) })), userName)}
 
-Write the story so far in 2-3 short lines: who's who (names and how they relate to ${userName}), what happened, and what ${userName} wants now. When ${userName} corrects or adds a detail, their latest words win; friends' guesses are not facts. Plain English, no advice, no opinions. Output only the lines.`;
+${ask}`;
+}
+
+/** The summary call's reply: JSON with story + vibe, or (fallback) plain story lines. */
+export function parseStoryReply(raw: string, friendIds: string[]): { summary: string; vibe?: Vibe } | null {
+  const lines = (text: string) => clip(text.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3).join("\n"), 500).trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const parsed = JSON.parse(raw.slice(start, end + 1)) as { story?: unknown; mode?: unknown; language?: unknown; notes?: unknown };
+      const summary = typeof parsed.story === "string" ? lines(parsed.story) : "";
+      if (summary) {
+        const notes: Record<string, string> = {};
+        if (parsed.notes && typeof parsed.notes === "object") {
+          for (const id of friendIds) {
+            const n = (parsed.notes as Record<string, unknown>)[id];
+            if (typeof n === "string" && n.trim()) notes[id] = clip(n.trim(), 160);
+          }
+        }
+        const vibe: Vibe = { notes };
+        if (typeof parsed.mode === "string" && parsed.mode in VIBE_MODES) vibe.mode = parsed.mode as VibeMode;
+        if (typeof parsed.language === "string" && parsed.language.trim()) vibe.language = parsed.language.trim().slice(0, 60);
+        return { summary, vibe };
+      }
+    } catch {
+      // not JSON: fall through to plain lines
+    }
+  }
+  const summary = lines(raw);
+  return summary ? { summary } : null;
+}
+
+/** The language friends reply in. A keyword guess ("ok" reads as English) gives way to the chat's language. */
+export function chatLanguage(sorted: IntentResult, vibe?: Vibe): string {
+  return sorted.source === "rules" && vibe?.language ? vibe.language : sorted.language;
 }
 
 async function summarizeStory(
   messages: ChatEntry[],
   userName: string,
   previous: string | undefined,
+  podFriendIds: string[],
   provider: ProviderConfig,
   collector?: CostCollector,
-): Promise<string | null> {
+): Promise<{ summary: string; vibe?: Vibe } | null> {
   try {
+    const friends = podFriendIds.map((id) => FRIENDS_BY_ID[id]).filter((f): f is NonNullable<typeof f> => !!f);
     const { text } = await callModel(
-      "You summarize group chats in a few plain lines.",
-      buildStorySummaryPrompt(messages.slice(-40), userName, previous),
+      "You summarize group chats and read the room. Output only what's asked.",
+      buildStorySummaryPrompt(messages.slice(-40), userName, previous, friends),
       { ...provider, model: provider.synthesisModel },
-      200,
+      450,
       undefined,
       collector,
     );
-    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3);
-    const summary = clip(lines.join("\n"), 500).trim();
-    engineLog({ ts: new Date().toISOString(), event: "story-summary", chars: summary.length });
-    return summary || null;
+    const parsed = parseStoryReply(text, podFriendIds);
+    engineLog({ ts: new Date().toISOString(), event: "story-summary", chars: parsed?.summary.length ?? 0, ...(parsed?.vibe ? { vibe: parsed.vibe } : {}) });
+    return parsed;
   } catch (err) {
     engineLog({ ts: new Date().toISOString(), event: "story-summary-failed", error: String(err).slice(0, 200) });
     return null;
@@ -1090,7 +1164,7 @@ async function callFriend(
   // gender: how to refer to the user (gender.ts); missing = "neutral".
   // storySummary: the chat's "story so far". angle: a planned cast's angle (first reply).
   // facts: director research. askUser: nobody has asked the user anything yet.
-  extra: { language?: string; effort?: AnthropicEffort; allowMedia?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string; gender?: UserGender; storySummary?: string; angle?: string; facts?: string; askUser?: boolean } = {},
+  extra: { language?: string; effort?: AnthropicEffort; allowMedia?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string; gender?: UserGender; storySummary?: string; mode?: VibeMode; note?: string; angle?: string; facts?: string; askUser?: boolean } = {},
 ): Promise<FriendReply | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend) return null;
@@ -1106,6 +1180,8 @@ async function callFriend(
     userName,
     messages: allMessages,
     storySummary: extra.storySummary,
+    mode: extra.mode,
+    note: extra.note,
     language: extra.language ?? "",
     hook: extra.hook,
     angle: extra.angle,
@@ -1518,9 +1594,9 @@ export function emptyRoundStop(refusals: number, emptyStreak: number): "refusals
 
 export function smallTalkInstruction(userName: string, position: number): string {
   if (position === 0) {
-    return `${userName} just showed up with small talk and nothing to decide yet. In your own voice, tease them a little for it and ask what the actual drama is: what do they need the group to settle? You can throw in one example (a friend who owes them money, a crush who left them on seen, a boss texting on Sunday). Under 18 words.`;
+    return `${userName} just showed up to chat. Greet them back in your own voice, react to what they actually said, and ask one light question about them (what they're up to, how their day's going). They don't need a problem to be here. Under 18 words.`;
   }
-  return `React to what was just said in one short line and push ${userName} to spill the drama. Don't repeat the question the same way. Under 12 words.`;
+  return `React to what was just said in one short line, the way a friend joins in. Don't repeat the question already asked. Under 12 words.`;
 }
 
 export function pickInstruction(userName: string, label: string, votedForIt: boolean, isCloser: boolean): string {
@@ -1632,7 +1708,7 @@ type OrchestrateParams = {
   // The chat's stored "story so far" and how many user messages it has had,
   // counting this one (the chat route keeps both with the conversation).
   // Without a count, the user messages in history are counted.
-  story?: { summary?: string; userTurns?: number };
+  story?: { summary?: string; userTurns?: number; vibe?: Vibe };
   userName?: string;
   sessionMood?: { modes?: string[]; pacing?: string; energy?: string };
   characterOverrides?: string; // JSON string from Convex
@@ -1661,20 +1737,25 @@ type OrchestrateParams = {
 // refreshed alongside it (friends read the fresh one once it's ready), and the
 // new summary is yielded last for the chat route to store.
 export async function* orchestrateChat(params: OrchestrateParams): AsyncGenerator<EngineEvent> {
-  const { history, message, story, cardOnly, collector, userName = "friend" } = params;
+  const { history, message, story, cardOnly, collector, podFriendIds, userName = "friend" } = params;
   const userTurns = story?.userTurns ?? history.filter((m) => m.from === "user").length + 1;
   const provider = getActiveProvider();
   const refresh =
     provider && !cardOnly && storySummaryDue(userTurns)
-      ? summarizeStory([...history, { from: "user", text: message }], userName, story?.summary, provider, collector)
+      ? summarizeStory([...history, { from: "user", text: message }], userName, story?.summary, podFriendIds, provider, collector)
       : null;
-  const storySummary = async () => (refresh ? (await refresh) ?? story?.summary : story?.summary);
+  const storySummary = async (): Promise<StoryNow> => {
+    const fresh = refresh ? await refresh : null;
+    return fresh ?? { summary: story?.summary, vibe: story?.vibe };
+  };
   yield* runRound(params, storySummary);
   const fresh = refresh ? await refresh : null;
-  if (fresh) yield { type: "story", summary: fresh };
+  if (fresh) yield { type: "story", summary: fresh.summary, ...(fresh.vibe ? { vibe: fresh.vibe } : {}) };
 }
 
-async function* runRound(params: OrchestrateParams, storySummary: () => Promise<string | undefined>): AsyncGenerator<EngineEvent> {
+type StoryNow = { summary?: string; vibe?: Vibe };
+
+async function* runRound(params: OrchestrateParams, storySummary: () => Promise<StoryNow>): AsyncGenerator<EngineEvent> {
   const { message, podFriendIds, history, userName = "friend", sessionMood, characterOverrides, conversationDepth, userEngagementFrequency, collector, pickedOption, allowMedia = true, lastCard, lazyCard, cardOnly, cueTake } = params;
   const userGender = (): UserGender => params.getUserGender?.() ?? "neutral";
 
@@ -1740,7 +1821,8 @@ async function* runRound(params: OrchestrateParams, storySummary: () => Promise<
     classified.intent === "smalltalk" && hadDilemmaBefore && !looksLikeSmallTalk(message)
       ? { ...classified, intent: "dilemma" }
       : classified;
-  const language = sorted.language;
+  // The stored vibe (from the last refresh) knows the chat's language when this message alone doesn't.
+  const language = chatLanguage(sorted, params.story?.vibe);
   yield { type: "intent", intent: pickedOption ? "pick" : sorted.intent, language };
   engineLog({ ts: new Date().toISOString(), event: "intent", intent: pickedOption ? "pick" : sorted.intent, language, source: sorted.source });
 
@@ -1810,7 +1892,7 @@ async function* runRound(params: OrchestrateParams, storySummary: () => Promise<
   ]);
 
   // Every friend reads the story so far (a fresh one is awaited here).
-  const story = await storySummary();
+  const { summary: story, vibe } = await storySummary();
 
   // All messages: history + user's new message + round responses
   const baseMessages: ChatEntry[] = [
@@ -2069,6 +2151,8 @@ async function* runRound(params: OrchestrateParams, storySummary: () => Promise<
           forceMediaOffer,
           gender: userGender(),
           storySummary: story,
+          mode: vibe?.mode,
+          note: vibe?.notes[agent.id],
           angle: cue && firstSay ? cue.angles[agent.id] : undefined, // a planned cast's angle, first reply only
           facts: filterTopicForCharacter(topicContext, agent.id, message) || undefined,
           askUser: shouldAskUser,
@@ -2255,7 +2339,7 @@ async function* runRound(params: OrchestrateParams, storySummary: () => Promise<
       const result: FriendReply | null = await callFriend(
         id, allMessages(), provider, { index: userIdx, from: "user", text: message, score: 5 }, podFriendIds, userName, parsedOverrides, collector,
         {
-          language, allowMedia, storySummary: story, facts: filterTopicForCharacter(topicContext, id, message) || undefined, gender: userGender(),
+          language, allowMedia, storySummary: story, mode: vibe?.mode, note: vibe?.notes[id], facts: filterTopicForCharacter(topicContext, id, message) || undefined, gender: userGender(),
           hook: strict ? `${hook}. Your whole message must END with that question and a "?"; nothing after it` : hook,
         },
       ).catch((err) => {

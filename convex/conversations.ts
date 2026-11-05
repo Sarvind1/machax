@@ -55,17 +55,18 @@ export const beginStoryTurn = internalMutation({
     if (!id || !conversation || (conversation.username && conversation.username !== username)) return null;
     const userTurns = conversation.userTurns === undefined ? startTurns : conversation.userTurns + 1;
     await ctx.db.patch(id, { userTurns });
-    return { userTurns, storySummary: conversation.storySummary ?? null };
+    return { userTurns, storySummary: conversation.storySummary ?? null, storyVibe: conversation.storyVibe ?? null };
   },
 });
 
 // Saves a refreshed "story so far" for the chat.
 export const saveStorySummary = internalMutation({
-  args: { conversationId: v.string(), username: v.string(), summary: v.string() },
-  handler: async (ctx, { conversationId, username, summary }) => {
+  args: { conversationId: v.string(), username: v.string(), summary: v.string(), vibe: v.optional(v.string()) },
+  handler: async (ctx, { conversationId, username, summary, vibe }) => {
     const id = ctx.db.normalizeId("conversations", conversationId);
     const conversation = id ? await ctx.db.get(id) : null;
     if (!id || !conversation || (conversation.username && conversation.username !== username)) return;
-    await ctx.db.patch(id, { storySummary: summary });
+    // No vibe (the reply wasn't JSON) clears the old one rather than keep stale notes.
+    await ctx.db.patch(id, { storySummary: summary, storyVibe: vibe });
   },
 });

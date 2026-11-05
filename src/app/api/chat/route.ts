@@ -7,7 +7,7 @@ export const maxDuration = 300;
 import { after } from "next/server";
 import { legacyFieldsOf } from "@/lib/chat-media";
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from "convex/server";
-import { detectUserGender, orchestrateChat, sortGuestMessage } from "@/lib/orchestrator";
+import { detectUserGender, orchestrateChat, sortGuestMessage, type Vibe } from "@/lib/orchestrator";
 import { storedGenderFor, type UserGender } from "@/lib/gender";
 import type { EngineEvent } from "@/lib/engine-types";
 import { internal } from "../../../../convex/_generated/api";
@@ -143,7 +143,7 @@ function iteratorToStream(
     // Notes in the round's log that the generator did not stop in time.
     logStopTimeout: () => void;
     // Stores a refreshed "story so far" with the conversation. Must not throw.
-    onStory: (summary: string) => Promise<void>;
+    onStory: (summary: string, vibe?: Vibe) => Promise<void>;
   },
 ): { stream: ReadableStream<Uint8Array>; settleOnce: (reason?: EndReason) => Promise<TailEvent | null> } {
   let settling: Promise<TailEvent | null> | null = null;
@@ -245,7 +245,7 @@ function iteratorToStream(
         // Kept for the round's trace, saved server-side when the round ends.
         if (value.type === "trace" && value.data) engineTrace = value.data;
         if (value.type === "story") {
-          await opts.onStory(value.summary);
+          await opts.onStory(value.summary, value.vibe);
           controller.enqueue(KEEPALIVE_LINE);
           return;
         }
@@ -511,7 +511,7 @@ export async function POST(request: Request) {
 
     // The chat's "story so far", kept with the conversation (owner checked by username).
     const owner = account ? account.username : typeof guestId === "string" && GUEST_ID_RE.test(guestId) ? `${GUEST_USERNAME_PREFIX}${guestId}` : undefined;
-    let story: { summary?: string; userTurns?: number } | undefined;
+    let story: { summary?: string; userTurns?: number; vibe?: Vibe } | undefined;
     if (convId && owner && cardOnly !== true) {
       try {
         const begun = await convex.mutation(internal.conversations.beginStoryTurn, {
@@ -519,15 +519,29 @@ export async function POST(request: Request) {
           username: owner,
           startTurns: history.filter((m) => m.from === "user").length + 1,
         });
-        if (begun) story = { userTurns: begun.userTurns, ...(begun.storySummary ? { summary: begun.storySummary } : {}) };
+        if (begun) {
+          story = { userTurns: begun.userTurns, ...(begun.storySummary ? { summary: begun.storySummary } : {}) };
+          if (begun.storyVibe) {
+            try {
+              story.vibe = JSON.parse(begun.storyVibe) as Vibe;
+            } catch {
+              // a bad stored vibe is just skipped
+            }
+          }
+        }
       } catch (err) {
         console.error("story turn failed:", err);
       }
     }
-    const onStory = async (summary: string) => {
+    const onStory = async (summary: string, vibe?: Vibe) => {
       if (!convId || !owner) return;
       try {
-        await convex.mutation(internal.conversations.saveStorySummary, { conversationId: convId, username: owner, summary });
+        await convex.mutation(internal.conversations.saveStorySummary, {
+          conversationId: convId,
+          username: owner,
+          summary,
+          ...(vibe ? { vibe: JSON.stringify(vibe) } : {}),
+        });
       } catch (err) {
         console.error("story save failed:", err);
       }

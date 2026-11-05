@@ -36,8 +36,8 @@ export type EngineEvent =
   | { type: "helpline"; helpline: { name: string; numbers: string[]; note: string } }
   // Example prompts offered under a small-talk reply.
   | { type: "chips"; chips: string[] }
-  // A refreshed "story so far" for this chat; the chat route stores it with the conversation.
-  | { type: "story"; summary: string }
+  // A refreshed "story so far" (and vibe notes) for this chat; the chat route stores it with the conversation.
+  | { type: "story"; summary: string; vibe?: import("./orchestrator").Vibe }
   | { type: "trace"; data: ConversationTrace }
   | { type: "done" };
 
