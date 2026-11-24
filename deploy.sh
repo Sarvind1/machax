@@ -25,8 +25,8 @@ fi
 # Costs about $2.50 and a few minutes. Settings (env):
 #   REPLAY_ENV_FILE   file with ANTHROPIC_API_KEY (default .env.local)
 #   REPLAY_BASELINE   baseline results (default <evals>/results/baseline.json)
-#   REPLAY_SET        engine flags prod has on, e.g. "BOT_DIRECTOR=on"
-#   REPLAY_GATE_ARGS  extra gate flags, e.g. "--cap-once"
+#   REPLAY_SET        engine flags prod has on (default BOT_DIRECTOR=on)
+#   REPLAY_GATE_ARGS  extra gate flags (default --cap-once)
 if [ -n "$SKIP_GATE" ]; then
   echo ""
   echo "  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -38,14 +38,14 @@ else
   EVALS="${MACHAX_EVALS:-$HOME/Projects/machax/evals}"
   CANDIDATE="$EVALS/results/deploy-$(date +%Y%m%d-%H%M%S).json"
   SET_ARGS=()
-  for pair in ${REPLAY_SET:-}; do SET_ARGS+=(--set "$pair"); done
+  for pair in ${REPLAY_SET-BOT_DIRECTOR=on}; do SET_ARGS+=(--set "$pair"); done
   echo "==> Running the replay gate..."
   # run.ts exits 1 on failed rounds; gate.ts reads the file and has the final
   # say (no file, or a short one, fails there).
   MACHAX_EVALS="$EVALS" npx tsx scripts/replay/run.ts --root . \
     --env-file "${REPLAY_ENV_FILE:-.env.local}" --out "$CANDIDATE" ${SET_ARGS[@]+"${SET_ARGS[@]}"} || true
   if ! npx tsx scripts/replay/gate.ts --baseline "${REPLAY_BASELINE:-$EVALS/results/baseline.json}" \
-    --candidate "$CANDIDATE" ${REPLAY_GATE_ARGS:-}; then
+    --candidate "$CANDIDATE" ${REPLAY_GATE_ARGS---cap-once}; then
     echo ""
     echo "==> STOPPED: the replay gate failed. Nothing was committed, pushed or deployed."
     echo "    Override (say why in the commit): ./deploy.sh \"message\" --skip-gate"

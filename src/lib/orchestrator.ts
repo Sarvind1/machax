@@ -1330,7 +1330,7 @@ async function callFriend(
       // Still bad after the retry: skip this friend rather than show it.
       // A reply that is still a bit Hinglish or stock is kept; an empty round is worse.
       const reason2 = problemWith(text);
-      if (reason2 && reason2 !== "wrong-language" && reason2 !== "stock" && reason2 !== "self-name") {
+      if (reason2 && reason2 !== "wrong-language" && reason2 !== "stock") {
         engineLog({ ts: new Date().toISOString(), event: "garbage-retry-failed", agent: friendId, text: text.slice(0, 120), reason: reason2, length: text.length });
         return null;
       }
