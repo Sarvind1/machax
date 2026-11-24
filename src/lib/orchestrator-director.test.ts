@@ -371,3 +371,24 @@ describe("guards", () => {
     expect(prompt).toContain(`You're answering Asha: "hello there"`);
   });
 });
+
+describe("director says distress and off-limits at once", () => {
+  const input = { message: "do a thing with me", history: [], podFriendIds: ["priya", "dev"], userName: "Ravi" };
+  const both = '{"kind":"distress","language":"English","offLimits":true,"turns":[{"id":"priya"}]}';
+  const ask = (second: () => Promise<string>) => {
+    let n = 0;
+    return planRound(input, async () => (n++ === 0 ? both : second()));
+  };
+  it("is off-limits when the classifier sees no distress", async () => {
+    const plan = await ask(async () => '{"intent":"dilemma","language":"English","offLimits":true}');
+    expect(plan.kind).toBe("casual");
+    expect(plan.offLimits).toBe(true);
+  });
+  it("stays distress when the classifier agrees", async () => {
+    expect((await ask(async () => '{"intent":"distress","language":"English","offLimits":true}')).kind).toBe("distress");
+  });
+  it("stays distress when the classifier fails or returns junk", async () => {
+    expect((await ask(async () => "junk")).kind).toBe("distress");
+    expect((await ask(async () => { throw new Error("down"); })).kind).toBe("distress");
+  });
+});

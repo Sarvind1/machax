@@ -280,6 +280,14 @@ export async function planRound(
   }
   // runRound checks the crisis words first; this holds even if a caller doesn't.
   if (plan && matchesCrisis(p.message)) plan.kind = "distress";
+  // Off-limits has no kind of its own, so the director sometimes files such an ask
+  // under distress. The classifier settles it; unless it answers, distress stands.
+  else if (plan?.kind === "distress" && plan.offLimits) {
+    const earlier = p.history.filter((m) => m.from === "user").map((m) => m.text);
+    const second = await classifyMessage(p.message, earlier.slice(-2), call, Math.min(timeoutMs, 3000));
+    if (second.source === "model" && second.intent !== "distress") plan.kind = "casual";
+    engineLog({ ts: new Date().toISOString(), event: "director-second-opinion", source: second.source, intent: second.intent });
+  }
   if (!plan) engineLog({ ts: new Date().toISOString(), event: "director-failed", reason: failure, ms: Date.now() - startedAt });
   if (!plan) {
     // Softer distress and off-limits asks are the classifier's to catch when the
