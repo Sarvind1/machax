@@ -151,9 +151,9 @@ const MODEL_MAP: Record<
     label: "OpenAI (GPT-4o Mini)",
   },
   anthropic: {
-    model: "claude-haiku-4-5",
+    model: "claude-sonnet-5-5",
     synthesisModel: "claude-haiku-4-5", // topic context + decision synthesis
-    label: "Anthropic API (Haiku 4.5)",
+    label: "Anthropic API (Sonnet 5.5)",
   },
 };
 
