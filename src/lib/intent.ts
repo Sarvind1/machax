@@ -93,6 +93,12 @@ export function classifyByRules(text: string): IntentResult {
 export const CLASSIFIER_SYSTEM =
   "You label chat messages for a group-chat app where AI friends debate a user's life dilemma. Output ONLY one line of JSON, no markdown.";
 
+// Shared with the director (director.ts), so both draw the line in the same place.
+export const DISTRESS_DEFINITION =
+  "ONLY when there's a clear sign they might hurt themselves or are in danger: they talk about suicide, wanting to die or not wanting to live, self-harm (now, or a past attempt they're bringing up), a plan or means to hurt themselves, or someone hurting or threatening to hurt them right now.";
+export const OFF_LIMITS_DEFINITION =
+  "true only if the message asks the group for sexual content or sexual roleplay, or pushes hate or slurs against a race, religion, caste, gender or other group. Asking for advice about sex, dating or a hard situation is NOT offLimits; casual swearing is NOT offLimits.";
+
 export function classifierPrompt(message: string, recentUserMessages: string[]): string {
   const context = recentUserMessages.length
     ? `Earlier messages from the same user (oldest first):\n${recentUserMessages.map((m) => `- ${m}`).join("\n")}\n\n`
@@ -100,11 +106,11 @@ export function classifierPrompt(message: string, recentUserMessages: string[]):
   return `${context}Latest message from the user:\n"""${message}"""
 
 Label it:
-- "distress": ONLY when there's a clear sign they might hurt themselves or are in danger: they talk about suicide, wanting to die or not wanting to live, self-harm (now, or a past attempt they're bringing up), a plan or means to hurt themselves, or someone hurting or threatening to hurt them right now.
+- "distress": ${DISTRESS_DEFINITION}
 - "smalltalk": a greeting or chit-chat with nothing to decide or vent about ("hi", "what's up", "kya haal", "bored").
 - "dilemma": anything else — a choice, a problem, a question, a situation, a rant, a request for opinions. This includes sadness, heartbreak, missing an ex, loneliness, stress, feeling low or restless, anger, crying, and frustration with the group ("you don't get it"). Jokes and exaggeration ("kill me", "i'm dead", "this exam is killing me") are not distress. Friends handle these; they are not a crisis.
 
-Also set "offLimits": true only if the message asks the group for sexual content or sexual roleplay, or pushes hate or slurs against a race, religion, caste, gender or other group. Asking for advice about sex, dating or a hard situation is NOT offLimits; casual swearing is NOT offLimits.
+Also set "offLimits": ${OFF_LIMITS_DEFINITION}
 
 Also set "choice": true when the user faces a real decision the friends could vote on, asked outright ("should I...", "X or Y?", "do I go?") or plainly implied ("my friend owes me 15k and keeps posting Goa stories": ask for it or let it go). Set false when there's nothing to pick between: a story, gossip, news, a share, a vent with no decision in it ("the girl I like posted lilies", "my boss is so annoying today").
 

@@ -49,3 +49,19 @@ export function wornOutLine(phrases: string[]): string {
   if (phrases.length === 0) return "";
   return `You've already used these in this chat, so leave them out this time and start your message differently: ${phrases.map((p) => `"${p}"`).join(", ")}.`;
 }
+
+const letters = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{M}\p{N} ]/gu, "").replace(/\s+/g, " ").trim();
+
+/** True when a line says nearly the same thing as one of `others` (any script). */
+export function isNearDuplicate(text: string, others: string[]): boolean {
+  const a = letters(text);
+  if (!a) return false;
+  const aWords = a.split(" ");
+  return others.some((o) => {
+    const b = letters(o);
+    if (!b) return false;
+    if (a === b) return true;
+    const bWords = new Set(b.split(" "));
+    return aWords.length >= 3 && aWords.filter((w) => bWords.has(w)).length / aWords.length > 0.6;
+  });
+}

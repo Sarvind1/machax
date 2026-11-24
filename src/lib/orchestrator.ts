@@ -38,6 +38,7 @@ import type { Usage } from "./pricing";
 import { ANTHROPIC_IDLE_MS } from "./chat-limits";
 // Events go to Vercel logs, the round's saved trace, and engine-log.jsonl in dev.
 import { engineLog } from "./engine-log";
+import { claimsHuman, cuePlan, directorEnabled, namesSelf, planIntent, planRound, speakRound, stripStageDirections, DIRECTOR_MAX_TOKENS, type RoundPlan } from "./director";
 
 const execAsync = promisify(exec);
 
@@ -982,12 +983,13 @@ function displayName(id: string, userName: string): string {
 }
 
 /** The newest messages as "[Name, replying to Name] text" lines. */
-export function formatRecentChat(messages: ChatEntry[], userName: string): string {
+export function formatRecentChat(messages: ChatEntry[], userName: string, selfId?: string): string {
+  // selfId: the friend reading this; their own lines (and replies to them) say "You" / "you".
   return messages
     .slice(-RECENT_CHAT_MESSAGES)
     .map((m) => {
-      const to = m.replyTo && m.replyTo !== m.from ? `, replying to ${displayName(m.replyTo, userName)}` : "";
-      return `[${displayName(m.from, userName)}${to}] ${m.text}`;
+      const to = m.replyTo && m.replyTo !== m.from ? `, replying to ${m.replyTo === selfId ? "you" : displayName(m.replyTo, userName)}` : "";
+      return `[${m.from === selfId ? "You" : displayName(m.from, userName)}${to}] ${m.text}`;
     })
     .join("\n");
 }
@@ -1164,7 +1166,8 @@ async function callFriend(
   // gender: how to refer to the user (gender.ts); missing = "neutral".
   // storySummary: the chat's "story so far". angle: a planned cast's angle (first reply).
   // facts: director research. askUser: nobody has asked the user anything yet.
-  extra: { language?: string; effort?: AnthropicEffort; allowMedia?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string; gender?: UserGender; storySummary?: string; mode?: VibeMode; note?: string; angle?: string; facts?: string; askUser?: boolean } = {},
+  // directedPrompt: the whole prompt, from the director-led round (director.ts).
+  extra: { language?: string; effort?: AnthropicEffort; allowMedia?: boolean; mediaMoment?: CueMedia; forceMediaOffer?: boolean; hook?: string; gender?: UserGender; storySummary?: string; mode?: VibeMode; note?: string; angle?: string; facts?: string; askUser?: boolean; directedPrompt?: string } = {},
 ): Promise<FriendReply | null> {
   const friend = FRIENDS_BY_ID[friendId];
   if (!friend) return null;
@@ -1174,7 +1177,7 @@ async function callFriend(
   const replyToId = replyTarget?.from ?? null;
   const latestUserMsg = allMessages.filter((m) => m.from === "user").pop()?.text ?? null;
 
-  let prompt = buildFriendPrompt({
+  let prompt = extra.directedPrompt ?? buildFriendPrompt({
     friendName: friend.name,
     otherNames: podFriendIds.filter((id) => id !== friendId).map((id) => FRIENDS_BY_ID[id]?.name).filter((n): n is string => !!n),
     userName,
@@ -1216,8 +1219,11 @@ async function callFriend(
       extra.effort,
     );
     text = cleanResponse(text, friend.name);
+    if (extra.directedPrompt) text = stripStageDirections(text);
     // Nothing to add: this friend stays quiet.
-    if (text.replace(/[^a-z]/gi, "").toUpperCase() === STAY_QUIET) {
+    const quiet = (t: string) =>
+      t.replace(/[^a-z]/gi, "").toUpperCase() === STAY_QUIET || (!!extra.directedPrompt && new RegExp(`^\\W*${STAY_QUIET}\\b`).test(t));
+    if (quiet(text)) {
       engineLog({ ts: new Date().toISOString(), event: "stayed-quiet", agent: friendId });
       return null;
     }
@@ -1290,7 +1296,10 @@ async function callFriend(
       if (t.length < 3) return "too-short";
       if (allMessages.some(m => m.text.toLowerCase() === t.toLowerCase())) return "exact-dupe";
       if (looksIncomplete(t)) return "incomplete";
-      if (looksLikeMetaText(t, friend.name)) return "meta";
+      // In a directed round "I'm Dev" answers "who are you", so it isn't meta talk.
+      if (looksLikeMetaText(extra.directedPrompt ? t.replace(new RegExp(`\\b(i['’]?m|i am) ${friend.name}\\b`, "gi"), "") : t, friend.name)) return "meta";
+      if (extra.directedPrompt && namesSelf(t, friend.name, userName)) return "self-name";
+      if (extra.directedPrompt && claimsHuman(t)) return "claims-human";
       if (englishOnly && looksHinglish(t)) return "wrong-language";
       if (STOCK_LINE_RE.test(t)) return "stock";
       return null;
@@ -1306,14 +1315,22 @@ async function callFriend(
             ? "IMPORTANT: Write it in plain English only. No Hindi or Hinglish words."
             : reason === "stock"
               ? `IMPORTANT: "${clip(text, 80)}" is a worn-out stock line. Say something specific to THIS situation instead, with a concrete detail.`
-              : "IMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
-      ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, `${prompt}\n\n${fix}`, provider, Math.max(maxTokens, 150), undefined, collector));
+              : reason === "claims-human"
+                ? "IMPORTANT: You're an AI character and must not say or imply you're human. Own it, in your own voice."
+              : reason === "self-name"
+                ? `IMPORTANT: You are ${friend.name}. Say "I", never your own name.`
+                : "IMPORTANT: Reply with a COMPLETE sentence or reaction. Not a word fragment.";
+      ({ text, model: usedModel, paid } = await callModel(friend.systemPrompt, `${prompt}\n\n${fix}`, provider, Math.max(maxTokens, 150), undefined, collector, extra.directedPrompt ? extra.effort : undefined));
+      if (extra.directedPrompt) {
+        text = stripStageDirections(text);
+        if (quiet(text)) return null;
+      }
       text = cleanResponse(text, friend.name).replace(/\[(?:REACT|GIF|MEME)[:\s][^\]]*\]/gi, "").trim();
 
       // Still bad after the retry: skip this friend rather than show it.
       // A reply that is still a bit Hinglish or stock is kept; an empty round is worse.
       const reason2 = problemWith(text);
-      if (reason2 && reason2 !== "wrong-language" && reason2 !== "stock") {
+      if (reason2 && reason2 !== "wrong-language" && reason2 !== "stock" && reason2 !== "self-name") {
         engineLog({ ts: new Date().toISOString(), event: "garbage-retry-failed", agent: friendId, text: text.slice(0, 120), reason: reason2, length: text.length });
         return null;
       }
@@ -1806,8 +1823,25 @@ async function* runRound(params: OrchestrateParams, storySummary: () => Promise<
   // distress and to name the language.
   const earlierUserMessages = history.filter((m) => m.from === "user").map((m) => m.text);
   const rules = classifyByRules(message);
-  const classified: IntentResult =
-    pickedOption || rules.intent !== "dilemma"
+  // Director-led round (BOT_DIRECTOR=on): one call plans the round instead of the
+  // classifier. The crisis words and pick reactions never go through it.
+  let plan: RoundPlan | null = null;
+  let planMedia: ReturnType<typeof cuePlan>["media"] | undefined;
+  if (directorEnabled() && !pickedOption && rules.intent !== "distress") {
+    const chip = history.length === 0 ? resolveCue(message, podFriendIds, cueTake) : null;
+    if (chip) {
+      engineLog({ ts: new Date().toISOString(), event: "first-round-cue", take: chip.takeId, speakers: chip.speakers, mediaBy: chip.media.friendId, template: chip.media.template });
+      ({ plan, media: planMedia } = cuePlan(chip, message, userName));
+    } else {
+      plan = await planRound(
+        { message, history, podFriendIds, userName, summary: params.story?.summary, vibe: params.story?.vibe },
+        async (system, prompt) => (await callModel(system, prompt, { ...provider, model: provider.synthesisModel }, DIRECTOR_MAX_TOKENS, undefined, collector)).text,
+      );
+    }
+  }
+  const classified: IntentResult = plan
+    ? planIntent(plan, rules)
+    : pickedOption || rules.intent !== "dilemma"
       ? rules
       : await classifyMessage(message, earlierUserMessages.slice(-2), async (system, prompt) =>
           (await callModel(system, prompt, { ...provider, model: provider.synthesisModel }, 80, undefined, collector)).text,
@@ -1818,11 +1852,11 @@ async function* runRound(params: OrchestrateParams, storySummary: () => Promise<
   // the dilemma even if the classifier calls it chit-chat; only a plain "ok" /
   // "lol" counts as small talk there (and gets no new vote card).
   const sorted: IntentResult =
-    classified.intent === "smalltalk" && hadDilemmaBefore && !looksLikeSmallTalk(message)
+    !plan && classified.intent === "smalltalk" && hadDilemmaBefore && !looksLikeSmallTalk(message)
       ? { ...classified, intent: "dilemma" }
       : classified;
   // The stored vibe (from the last refresh) knows the chat's language when this message alone doesn't.
-  const language = chatLanguage(sorted, params.story?.vibe);
+  const language = plan ? plan.language : chatLanguage(sorted, params.story?.vibe);
   yield { type: "intent", intent: pickedOption ? "pick" : sorted.intent, language };
   engineLog({ ts: new Date().toISOString(), event: "intent", intent: pickedOption ? "pick" : sorted.intent, language, source: sorted.source });
 
@@ -1847,6 +1881,42 @@ async function* runRound(params: OrchestrateParams, storySummary: () => Promise<
   // Sexual or hateful asks: one friend turns it down, no debate, no vote card.
   if (!pickedOption && sorted.offLimits) {
     yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history, gender: userGender });
+    return;
+  }
+
+  if (plan) {
+    const startedAt = Date.now();
+    // The first friend doesn't wait for a story refresh; later ones read it once it's in.
+    let summary = params.story?.summary;
+    void storySummary().then((s) => { summary = s.summary; });
+    const { said, refusals, iterations } = yield* speakRound({
+      plan, message, history, podFriendIds, userName, allowMedia, cueMedia: planMedia,
+      summary: () => summary,
+      speak: (r) =>
+        callFriend(r.friendId, r.messages, provider, { index: -1, from: r.replyTo, text: "", score: 0 }, podFriendIds, userName, parsedOverrides, collector, {
+          language, effort: r.first ? FIRST_BATCH_EFFORT : undefined, allowMedia: r.allowMedia, mediaMoment: r.mediaMoment, gender: userGender(), directedPrompt: r.prompt,
+        }),
+    });
+    if (refusals > 0) {
+      // Refused topic: same as below, one friend turns it down unless someone spoke; no card.
+      if (said.length === 0) {
+        yield* deflectTurn(podFriendIds, { transcript: transcriptForSimple, provider, userName, language, collector, userText: message, history, gender: userGender });
+      }
+    } else if (said.length > 0 && (plan.kind === "newcomer" || (plan.kind === "casual" && !hadDilemmaBefore))) {
+      yield { type: "chips", chips: pickStarterChips(message) };
+    } else if (said.length > 0 && sorted.intent === "dilemma") {
+      if (plan.choice === false) engineLog({ ts: new Date().toISOString(), event: "card-skip", why: "no choice in message" });
+      else if (lazyCard) yield { type: "card-ready" };
+      else yield* synthesizeCard({ history, message, roundResponses: said, userName, podFriendIds, language, prevCard: lastCard ?? lastCardFromHistory(history), provider, collector });
+    }
+    yield {
+      type: "trace",
+      data: {
+        prompt: message, userName, podFriendIds, provider: provider.label,
+        sessionMood: sessionMood ? JSON.stringify(sessionMood) : undefined,
+        totalTimeMs: Date.now() - startedAt, totalIterations: iterations.length, totalMessages: said.length, finalEnergy: 1, iterations,
+      },
+    };
     return;
   }
 
